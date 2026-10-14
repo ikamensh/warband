@@ -68,10 +68,19 @@ def test_native_clipboard_smoke_creates_a_casual_room(tmp_path):
     (other native CI checks the frozen app itself)."""
     with local_server(PACKAGE.online) as endpoint:
         frames, report = tmp_path / "native.png", tmp_path / "native.json"
-        process = subprocess.run(
-            [sys.executable, "-c", NATIVE_JOURNEY,
-             str(PACKAGE.root), str(PACKAGE.check), str(frames), str(report), endpoint],
-            cwd=PACKAGE.root, capture_output=True, text=True, timeout=280)
+        try:
+            process = subprocess.run(
+                [sys.executable, "-c", NATIVE_JOURNEY,
+                 str(PACKAGE.root), str(PACKAGE.check), str(frames), str(report), endpoint],
+                cwd=PACKAGE.root, capture_output=True, text=True, timeout=280)
+        except subprocess.TimeoutExpired as error:
+            # Pytest abbreviates TimeoutExpired's captured bytes in its locals.
+            # Preserve the actual blocked stack before propagating the timeout.
+            if error.stdout is not None:
+                print(error.stdout.decode("utf-8"), flush=True)
+            if error.stderr is not None:
+                print(error.stderr.decode("utf-8"), file=sys.stderr, flush=True)
+            raise
     assert process.returncode == 0, (process.stdout + process.stderr)[-3000:]
     result = json.loads(report.read_text(encoding="utf-8"))
     assert result["passed"] is True
