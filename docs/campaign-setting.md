@@ -8,8 +8,7 @@ the default in `warband/story/catalog.py` beside *The Thornwood War*
 remains the world/story design record; `docs/undertow-campaign.md` is the
 player/design guide to what shipped, with solver-measured durations.
 
-Deviations from this blueprint, each forced by a reproduced engine behaviour
-rather than taste: idle/attack-move acquisition fights any hostile body in
+Changes from this blueprint: idle/attack-move acquisition fights any hostile body in
 sight, so the Mill pylon stands across the river on the north bank (not
 beside the vault), Pell's crew strikes camp and withdraws at the parley
 (resign; the mill stands empty), the grove's cut/whole plan is chosen in
@@ -36,7 +35,7 @@ stands: `warband/story/{campaign,missions,mission_scene,dialog}.py`,
 | Title | **The Undertow** |
 | Tagline | *Every lock in the valley is a held breath. Someone has started letting go.* |
 | Missions | 5, one per Step of the valley, descending |
-| Length | 50–65 minutes on Medium, first time through |
+| Original length target | 50–65 minutes on Medium; the shipped routes are measured in `docs/undertow-campaign.md` |
 | You play | Humans, Orcs, Elves, Dwarves, Humans — one Step's keeper per mission |
 | New unit types | **None.** Every body on screen already has painted art and a voice |
 | New simulation rules | **None.** Story-layer only; the sim fingerprint must not move |
@@ -1236,7 +1235,6 @@ cap/rate, spell grants via upgrades, sapper blast vs. buildings, treant
 forest-walking and tree-regen, repair pro-rata, scripted-side resign,
 `ProBrain` casting, `World.lay_rifts`) was read in the code or its design
 notes during writing, with the uncertain ones isolated above as probes.
-
 
 
 
