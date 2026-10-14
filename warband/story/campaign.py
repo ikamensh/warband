@@ -41,6 +41,7 @@ class Speaker:
     race: Race
     subject: UnitType | BuildingType
     player: int = 0  # whose colours the portrait wears
+    portrait: str | None = None  # authored character art, relative to warband/assets
 
 
 @dataclass(frozen=True)

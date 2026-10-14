@@ -8,9 +8,12 @@ paused while the panel is up.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Callable
 
-from saga2d import Anchor, Button, Column, Component, InputEvent, KeyHints, Label, Row, Scene
+from PIL import Image as PILImage
+
+from saga2d import Anchor, Button, Column, Component, Image, InputEvent, KeyHints, Label, Row, Scene
 from warband.story.campaign import Choice, Dialog, Item, Line, Speaker
 from warband.art.production import ProductionIcon
 from warband.audio.sound import play_sound
@@ -72,8 +75,15 @@ class DialogScene(Scene):
                 answers.add(Button(option.label, shortcut=str(number), on_click=lambda value=option.value: self.choose(value),
                                    style=ACTION_BUTTON if number == 1 else GHOST_BUTTON, width=max(180, (text_width - 10 * (len(item.options) - 1)) // len(item.options))))
             column.add(answers)
-        portrait: Component = (ProductionIcon(speaker.subject, speaker.player, speaker.race, size=PORTRAIT) if speaker is not None
-                               else Component(width=PORTRAIT, height=PORTRAIT))
+        if speaker is not None and speaker.portrait is not None:
+            key = f"story.portrait.{speaker.portrait}"
+            if not self.game.assets.has_image(key):
+                with PILImage.open(Path(__file__).resolve().parents[1] / "assets" / speaker.portrait) as picture:
+                    self.game.assets.image_from_pil(key, picture)
+            portrait: Component = Image(key, width=PORTRAIT, height=PORTRAIT)
+        else:
+            portrait = (ProductionIcon(speaker.subject, speaker.player, speaker.race, size=PORTRAIT) if speaker is not None
+                        else Component(width=PORTRAIT, height=PORTRAIT))
         self.ui.add(Row(portrait, column, spacing=18, anchor=Anchor.BOTTOM_CENTER, margin=(0, BOTTOM), style=OVERLAY_STYLE))
 
     def draw(self) -> None:
