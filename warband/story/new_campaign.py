@@ -829,7 +829,7 @@ def _setup_maw(run: Run) -> None:
     farms = farm_spots[:-1] if run.get("undertow_dam") else farm_spots  # a blown dam: one farm of dry millpond
     for spot in farms:
         _put(run, 0, B.FARM, spot)
-    keystone = _put(run, 0, B.MAGE_TOWER, KEYSTONE_POS, hp_share=0.4)
+    keystone = _put(run, 0, B.MAGE_TOWER, KEYSTONE_POS, hp_share=0.25)
     keystone_hp = keystone.hp
     pylons = [_put(run, 1, B.FARM, pos) for pos in PYLON_POS]
     _put(run, 1, B.TOWN_HALL, (36, 56)); _put(run, 1, B.BARRACKS, (30, 56))

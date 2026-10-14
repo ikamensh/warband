@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from warband.story.campaign import Choice, Run  # noqa: E402
 from warband.story.mission_scene import build_world  # noqa: E402
 from warband.story.new_campaign import CAMPAIGN  # noqa: E402
-from warband.sim.model import dist  # noqa: E402
+from warband.sim.model import Hold, dist  # noqa: E402
 from warband.sim.rules import BUILDINGS, BuildingType as B, SIM_DT, Terrain, UnitType as U, Upgrade  # noqa: E402
 
 CHUNK = int(round(1.0 / SIM_DT))  # one simulated second between solver decisions
@@ -68,6 +68,11 @@ def answer(run: Run, key: str, value: Any) -> None:
 
 def _idle(unit) -> bool:
     return not unit.orders and not unit.hidden
+
+
+def _free(unit) -> bool:
+    """Idle, or merely holding position: a worker the solver may put to a new job."""
+    return not unit.hidden and all(isinstance(order, Hold) for order in unit.orders)
 
 
 def _last(run: Run) -> dict[str, float]:
@@ -169,7 +174,7 @@ def ensure_buildings(run: Run, plans: list[tuple[B, tuple[int, int]]], *, second
                 continue
             site = next((b for b in r.buildings(0, btype, done=None) if b.pos == pos), None)
             if site is not None:
-                helpers = [w for w in workers(r) if _idle(w)][:2]
+                helpers = [w for w in workers(r) if _free(w)][:2]
                 if helpers and not site.done:  # helping raise a site is the repair order's other half
                     world.repair([w.id for w in helpers], site.id)
                 continue
@@ -401,33 +406,46 @@ def solve_weight(run: Run, *, seam: str) -> float:
     if seam == "mine":
         for w in workers(run):
             world.harvest([w.id], seam_building.id)
+    elif seam == "cap":
+        for w in workers(run)[-2:]:  # a little seam income keeps the purse alive while the cap is raised
+            world.harvest([w.id], seam_building.id)
     else:
         _hold_workers(run)
 
-    def defend(r: Run) -> None:
+    def defend(r: Run, *, engage: bool = True) -> None:
         answer(r, "seam_intent", seam)
-        train(r, B.BARRACKS, U.FOOTMAN, 12)
+        if seam != "cap" or r.get("seam_settled") or r.world.players[0].gold >= 850:
+            train(r, B.BARRACKS, U.FOOTMAN, 12)  # before the cap, never train away the vault's own price
         mend_wounded(r)
         damaged = [b for b in r.buildings(0, B.VAULT) + r.buildings(0, B.TOWN_HALL) if b.hp < b.max_hp]
-        free = [w for w in workers(r) if _idle(w)]
+        free = [w for w in workers(r) if _free(w)]
         if damaged and free:
             r.world.repair([free[0].id], damaged[0].id)
-        fight(r, tuple(r.get("weight_target")))
+        if engage:
+            fight(r, tuple(r.get("weight_target")))
 
     if seam == "cap":
         ensure_buildings(run, [(B.VAULT, tuple(run.get("seam_rift")))], seconds=900, act=defend)
         play_until(run, lambda r: bool(r.get("seam_settled")), seconds=120, act=defend, what="seam capped")
 
     def besiege(r: Run) -> None:
-        defend(r)
+        # The counter-assault is a march of the whole band, not an errand for whoever is idle:
+        # the defence orders would otherwise recall it to the Weights every few seconds.
         if seam == "mine":  # the defensive win still has to raze the workshop it spends
-            target = r.get("enemy_workshop")
-            if target in r.world.buildings and all(f"band_{i}" in r.fired for i in (1, 2, 3)):
-                attack_building(r, target)
+            target = r.get("enemy_workshop") if all(f"band_{i}" in r.fired for i in (1, 2, 3)) else None
         else:
-            target = r.get("enemy_hall")
-            if target in r.world.buildings and "band_1" in r.fired:
-                attack_building(r, target)
+            target = r.get("enemy_hall") if "band_1" in r.fired else None
+        building = r.world.buildings.get(target) if target is not None else None
+        if building is None:
+            defend(r)
+            return
+        defend(r, engage=False)
+        near = [u for u in r.units(1) if r.world.is_visible(0, u.tile)
+                and any(dist(u.pos, w.pos) < 9 for w in r.soldiers(0))]
+        if near:
+            fight(r, near[0].pos)
+        elif _every(r, f"assault:{target}", 10.0):
+            r.world.attack([u.id for u in r.soldiers(0) if r.world.can_strike(u, building)], building.id)
 
     play_until(run, lambda r: bool(r.get("siege_broken")), seconds=1800, act=besiege, what="siege broken")
 
@@ -463,7 +481,7 @@ def solve_maw(run: Run, *, ending: str) -> float:
             defend(r, tuple(r.get("keystone_center")))
             keystone = building_at(r, 0, B.MAGE_TOWER, keystone_pos)
             if keystone is not None and keystone.hp < keystone.max_hp:
-                free = [w.id for w in workers(r) if _idle(w)][:3]
+                free = [w.id for w in workers(r) if _free(w)][:3]
                 if free:
                     r.world.repair(free, keystone.id)
 
@@ -497,7 +515,7 @@ def solve_maw(run: Run, *, ending: str) -> float:
             for pos in (tuple(p) for p in r.get("maw_rifts")):
                 vault = building_at(r, 0, B.VAULT, pos)
                 if vault is not None and vault.hp < vault.max_hp:
-                    free = [w.id for w in workers(r) if _idle(w)][:1]
+                    free = [w.id for w in workers(r) if _free(w)][:1]
                     if free:
                         r.world.repair(free, vault.id)
 
