@@ -49,6 +49,7 @@ def save_serializers_rigged(monkeypatch: pytest.MonkeyPatch):
     yield
 
 
+@pytest.mark.source_only("rigs the save serializers to fail by patching World.to_dict and its helpers, which compiled extension types do not let a test replace")
 def test_seat_snapshot_is_built_without_the_save_and_still_decodes(save_serializers_rigged) -> None:
     match = fogged_match()
     world = match.world
@@ -64,6 +65,7 @@ def test_seat_snapshot_is_built_without_the_save_and_still_decodes(save_serializ
         assert rival_hall.id not in seen.buildings
 
 
+@pytest.mark.source_only("rigs the save serializers to fail by patching World.to_dict and its helpers, which compiled extension types do not let a test replace")
 def test_observer_snapshot_is_built_without_the_save_and_still_decodes(save_serializers_rigged) -> None:
     match = fogged_match()
     world = match.world
@@ -120,6 +122,7 @@ def test_every_snapshot_record_carries_only_its_named_fields() -> None:
                    for plan in world["settlement"]["plans"])
 
 
+@pytest.mark.source_only("smuggles a field into the save by patching World.to_dict, which a compiled extension type does not let a test replace")
 def test_a_smuggled_save_field_never_appears_in_either_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
     """Even if a future save grows a new field, an explicit snapshot cannot inherit it."""
     real = World.to_dict
