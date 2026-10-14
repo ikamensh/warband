@@ -101,8 +101,10 @@ seat at once. The New game caption shows it under the layout's promise, the buil
 carries it as `story`, and `tests/warband/test_mapgen.py` pins the correspondence: the
 motif drawn is the place measured at the centre, water is a few bodies rather than
 speckle, the natural's far side is walled and its mouth open. One audit number moved with
-the ground: a natural must now stand nine tiles out on either axis as well as on the
-circle, so a diagonal mine cannot pass as an expansion while standing in the home clearing.
+the ground: in roomy duels a natural must now stand nine tiles out on either axis as well as
+on the circle, so a diagonal mine cannot pass as an expansion while standing in the home
+clearing. Compact multiplayer cells retain their radial spacing: rejecting their diagonal
+sites crowds out the later contested mine and its guard den (Giant, sixteen seats, seed 1).
 
 ## The proposal in short
 

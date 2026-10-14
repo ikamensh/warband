@@ -103,12 +103,17 @@ def test_three_players_leave_the_fourth_corner_to_a_neutral_mine() -> None:
 
 @pytest.mark.parametrize("layout", [each for each in Layout if each is not Layout.KLONDIKE])
 def test_every_player_has_a_natural_expansion_of_their_own(layout: Layout) -> None:
-    """A 30 000 mine ten to eighteen tiles out, nearer its owner than any rival by half again."""
+    """A 30 000 mine nine to eighteen tiles out, nearer its owner than any rival by half again.
+
+    Duels also keep it outside the home clearing on an axis; compact multiplayer cells
+    permit diagonal expansions so later contested deposits still have room for guards.
+    """
     for players in (2, 4):
         world = mapgen.generate(seed=9, players=players, layout=layout)
         for hall in halls(world):
             own = [m for m in world.mines() if m.gold == EXPANSION_GOLD
-                   and 9 <= max(abs(m.center[0] - hall.center[0]), abs(m.center[1] - hall.center[1])) <= 18]
+                   and 9 <= _dist(m.center, hall.center) <= 18
+                   and (players != 2 or max(abs(m.center[0] - hall.center[0]), abs(m.center[1] - hall.center[1])) >= 9)]
             assert any(all(_dist(m.center, other.center) >= 1.4 * _dist(m.center, hall.center) for other in halls(world) if other is not hall)
                        for m in own), (layout, players, hall.player)
 

@@ -1094,9 +1094,10 @@ def _natural_site(cv: _Canvas, rng: random.Random, spec: _Spec, hc: Pos, halls: 
     for pos in _canonical_sites(cv):
         c = _mine_centre(pos)
         own = _dist(c, halls[0])
-        # Out means out on either axis too: a diagonal mine can pass the circle at nine tiles
-        # while standing seven from the hall's wall, a second main mine rather than an expansion.
-        if not low <= own <= high or max(abs(c[0] - halls[0][0]), abs(c[1] - halls[0][1])) < 9 \
+        # Roomy duels also keep the mine outside the home clearing on an axis. Compact
+        # multiplayer cells need the diagonal sites their radial range already permits:
+        # excluding them crowds out the later contested mine and its guard den (Giant/16 seed 1).
+        if not low <= own <= high or (cv.wide and max(abs(c[0] - halls[0][0]), abs(c[1] - halls[0][1])) < 9) \
                 or any(_dist(c, hall) < 1.4 * own for hall in halls[1:]):
             continue
         scored.append((own + rng.uniform(0, 4) + (prefer(pos) if prefer else 0.0), pos))
