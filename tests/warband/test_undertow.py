@@ -130,7 +130,8 @@ def test_millfield_can_hold_the_vault_through_the_surges() -> None:
     """Slow: a whole mission of beast waves fought with attack-move orders."""
     run = build_world(mission("undertow_mill"), flags={})
     seconds = solver.solve_mill(run, shutter=False)
-    assert run.won and run.remembered() == {"undertow_mill_vault": True}
+    assert run.won and run.remembered() == {
+        "undertow_mill_vault": True, "undertow_mill_shuttered": False, "undertow_mill_lost": False}
     assert seconds < 900
 
 
@@ -139,7 +140,8 @@ def test_millfield_can_shutter_the_vault_at_its_pylon() -> None:
     """Slow: a whole mission, won by attacking the hostile pylon and clearing the last beasts."""
     run = build_world(mission("undertow_mill"), flags={})
     solver.solve_mill(run, shutter=True)
-    assert run.won and run.remembered() == {"undertow_mill_vault": False}
+    assert run.won and run.remembered() == {
+        "undertow_mill_vault": False, "undertow_mill_shuttered": True, "undertow_mill_lost": False}
     assert not run.world.vaults(0), "the shuttered vault no longer draws"
 
 

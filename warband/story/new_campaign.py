@@ -205,15 +205,22 @@ def _mill_shutter(run: Run) -> None:
     run.set("mill_decided", True)
     run.set("undertow_mill_vault", False)
     vault = run.world.buildings.get(run.get("mill_vault_id"))
+    lost = vault is None
+    run.set("undertow_mill_shuttered", not lost)
+    run.set("undertow_mill_lost", lost)
     if vault is not None:
         run.replace(vault, 0, B.FARM)  # the shuttered husk: same footprint, draws nothing
     _landmark_state(run, "mill_vault", "ruined")
-    _landmark_state(run, "mill_pylon", "ruined")
+    if run.get("mill_pylon") not in run.world.buildings:
+        _landmark_state(run, "mill_pylon", "ruined")
     run.say(
-        Line("Issa", "There it goes. Feel that? The hum's stopped. Whatever they were smelling, it's gone."),
+        Line("Issa", "The vault fell. We lost the lock; we still have the village. Clear the beasts from the fields.",
+             when="undertow_mill_lost"),
+        Line("Issa", "There it goes. Feel that? The hum's stopped. Whatever they were smelling, it's gone.",
+             when="undertow_mill_shuttered"),
         Line("Hasp", "Then we keep the farms and lose the spell-light. I can mill by daylight, Captain."),
     )
-    run.toast("The vault is shuttered", "Clear the beasts still in Millfield")
+    run.toast("The vault fell" if lost else "The vault is shuttered", "Clear the beasts still in Millfield")
 
 
 def _mill_reserve(run: Run) -> None:
@@ -232,19 +239,8 @@ MILL = Mission(
     id="undertow_mill", title="Millfield", act=ACT_1,
     sides=(Side("Millfield", Race.HUMAN), Side("The Straining", Race.ORC)),
     size="Small", theme=MapTheme.SUMMER, layout=Layout.PLAINS, seed=2101,
-    briefing=(
-        Line("", "Below Millfield's farmland the ground is cracked, and violet aether breathes out of the cracks. "
-                 "The village vault that meters that breath has begun to strain — and beasts are coming uphill to it."),
-        Line("Hasp", "Flour first, Captain. Whatever's coming out of the low ground, my mill feeds half the Hollow."),
-        Line("Issa", "Nobody dies for a metaphor on my watch. The vault is a lid, Mother. We mend lids."),
-        Line("Issa", "Soldiers to the south fields. Peasants inside if it turns. Keep Sister's Mend ready — the vault's aether pays for it."),
-    ),
-    debrief=(
-        Line("Brakk", "Captain Renn. Brakk, of the Saltmarches. My people are moving uphill before the bloom does — all of them, this time.", ),
-        Line("Brakk", "You held your lock and risked your village for it. I have seen that arithmetic before, Captain. I carry the paper.", when="undertow_mill_vault"),
-        Line("Brakk", "You shuttered your own lock to spare your farms. That is… not the arithmetic I was braced for.", unless="undertow_mill_vault"),
-        Line("Issa", "Then we walk down together, Brakk. Whatever's breathing under this valley, it's breathing harder."),
-    ),
+    briefing=dialogue.MILL_BRIEFING,
+    debrief=dialogue.MILL_DEBRIEF,
     setup=_setup_mill,
     objectives=(
         Objective("wave_1", "Drive the beasts out of Millfield's fields",
@@ -282,8 +278,9 @@ MILL = Mission(
                                  lambda run: not run.get("mill_decided")),
                 _wave(1, [U.WOLF] * 3 + [U.SPIDER] * 2, MILL_WAVE_ORIGINS["s"], "mill_vault_center", "wave_3_band",
                       Line("Issa", "Last surge. Everything the low ground has, coming at the vault. Hold the line!"))),
-        Trigger("shuttered", lambda run: run.get("mill_pylon") not in run.world.buildings
-                or run.get("mill_vault_id") not in run.world.buildings and "wave_1" in run.fired, _mill_shutter),
+        Trigger("shuttered", all_of(lambda run: not run.get("mill_decided"),
+                                    lambda run: run.get("mill_pylon") not in run.world.buildings
+                                    or run.get("mill_vault_id") not in run.world.buildings), _mill_shutter),
         Trigger("held", all_of(_band_cleared("wave_3_band"), lambda run: not run.units(1),
                                lambda run: not run.get("mill_decided")), _mill_hold),
         Trigger("cleared", all_of(lambda run: bool(run.get("mill_decided")) and not run.get("undertow_mill_vault"),
@@ -295,7 +292,7 @@ MILL = Mission(
                 _mill_reserve),
     ),
     win=var("mill_resolved", True),
-    remember=("undertow_mill_vault",),
+    remember=("undertow_mill_vault", "undertow_mill_shuttered", "undertow_mill_lost"),
 )
 # -- 2. The Salt Caravan (undertow_caravan) -------------------------------------
 

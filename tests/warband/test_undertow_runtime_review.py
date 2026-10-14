@@ -135,3 +135,22 @@ def test_a_keeper_returns_from_the_first_death_but_the_second_death_loses(missio
     advance(run, 10, until=lambda run: run.unit(keeper) is None)
     assert run.hall(0) is not None
     assert run.lost is not None, "a dead keeper cannot keep leading the story"
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("destroyed", ["pylon", "vault"])
+def test_mill_remembers_deliberate_shuttering_separately_from_a_lost_vault(destroyed):
+    """Slow: march on the real pylon, or let an attacking band destroy the real village vault."""
+    run = build_world(CAMPAIGN.mission("undertow_mill"), flags={})
+    world = run.world
+    if destroyed == "pylon":
+        world.attack([unit.id for unit in run.soldiers(0)], run.get("mill_pylon"))
+    else:
+        vault = world.buildings[run.get("mill_vault_id")]
+        enemies = run.spawn(1, [U.TROLL] * 2, vault.center)
+        world.attack([unit.id for unit in enemies], vault.id)
+    advance(run, 60, until=lambda run: bool(run.get("mill_decided")))
+    flags = run.remembered()
+    assert flags["undertow_mill_vault"] is False
+    assert flags["undertow_mill_shuttered"] is (destroyed == "pylon")
+    assert flags["undertow_mill_lost"] is (destroyed == "vault")
