@@ -90,6 +90,8 @@ def test_caravan_cannot_win_with_a_camp_that_was_already_destroyed():
     world = run.world
     farm = next(farm for farm in run.buildings(0, B.FARM) if farm.pos == (54, 24))
     for _ in range(2):
+        if farm.id not in world.buildings:
+            break  # the first blast can already finish a farm damaged during settlement
         saboteur = run.spawn(1, [U.SAPPER], farm.center)[0]
         world.attack([saboteur.id], farm.id)
         advance(run, 15, until=lambda run: saboteur.id not in world.units)
