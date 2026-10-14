@@ -9,12 +9,15 @@ or a damaged file) is never written over: the screen says why and offers only St
 from __future__ import annotations
 
 from typing import Any
+from pathlib import Path
+
+from PIL import Image as PILImage
 
 from saga2d import Anchor, Button, Column, Image, KeyHints, Label, Row, SaveError, Scene
 from warband.story.campaign import Campaign, Mission, Progress, ProgressStore
 from warband.story.dialog import DialogScene
-from warband.story.mission_scene import CAMPAIGN_SLOT, MissionScene, build_world, start_mission
-from warband.story.missions import CAMPAIGN
+from warband.story.mission_scene import MissionScene, build_world, campaign_save_slot, start_mission
+from warband.story import catalog
 from warband.sim.rules import Difficulty
 from warband.ui.profile_scene import home_relative
 from warband.ui.scene import _clock, load_game
@@ -30,9 +33,9 @@ class CampaignScene(Scene):
     background_color = (8, 10, 14, 255)
     controls = {("return", "c"): "continue_campaign", "r": "restart_mission", "escape": "back", "e": "easy", "n": "medium", "h": "hard"}
 
-    def __init__(self, settings: dict[str, Any] | None = None, *, campaign: Campaign = CAMPAIGN) -> None:
+    def __init__(self, settings: dict[str, Any] | None = None, *, campaign: Campaign | None = None) -> None:
         self.settings = settings
-        self.campaign = campaign
+        self.campaign = campaign if campaign is not None else catalog.DEFAULT_CAMPAIGN
         self.progress: Progress | None = None
         self.unreadable = ""  # why the progress file on disk cannot be read; while it is set, nothing here writes
         self.difficulty = Difficulty.MEDIUM
@@ -40,9 +43,15 @@ class CampaignScene(Scene):
         self.confirm_reset = False
         self.resume: MissionScene | None = None
         self._difficulty_buttons: dict[Difficulty, Button] = {}
+        self.cover_key: str | None = None
 
     def on_enter(self) -> None:
-        self.store = ProgressStore(self.game.data_dir)
+        cover_path = self.campaign.cover
+        self.cover_key = f"campaign.cover.{self.campaign.id}" if cover_path is not None else None
+        if self.cover_key is not None and not self.game.assets.has_image(self.cover_key):
+            with PILImage.open(Path(__file__).resolve().parents[1] / "assets" / cover_path) as cover:
+                self.game.assets.image_from_pil(self.cover_key, cover)
+        self.store = ProgressStore(self.game.data_dir, self.campaign.id)
         try:
             self.progress = self.store.load()
         except SaveError as error:
@@ -62,14 +71,14 @@ class CampaignScene(Scene):
         if mission is None:
             return None
         try:
-            saved = self.game.save_manager.load(CAMPAIGN_SLOT)
+            saved = self.game.save_manager.load(campaign_save_slot(self.campaign))
             if saved is None or saved["state"].get("mission", {}).get("id") != mission.id:
                 return None
             scene = load_game(saved["state"], settings=self.settings)
+            if not isinstance(scene, MissionScene) or scene.campaign.id != self.campaign.id:
+                raise SaveError("the saved mission belongs to another campaign")
         except SaveError as error:
             self.notice = f"The saved mission cannot be played by this version of Warband ({error}); Continue starts it again from its briefing"
-            return None
-        if not isinstance(scene, MissionScene):
             return None
         return scene
 
@@ -92,6 +101,10 @@ class CampaignScene(Scene):
         panel = Column(spacing=12, anchor=Anchor.CENTER, style=OVERLAY_STYLE)
         panel.add(Label(self.campaign.title, text_style="title"))
         panel.add(Label(self.campaign.tagline, text_style="sub"))
+        if len(catalog.CAMPAIGNS) > 1:
+            panel.add(Row(*(Button(campaign.title, on_click=lambda selected=campaign: self.select_campaign(selected),
+                                   style=ACTION_BUTTON if campaign.id == self.campaign.id else GHOST_BUTTON,
+                                   width=360) for campaign in catalog.CAMPAIGNS), spacing=8))
         if self.unreadable:
             self._build_unreadable(panel)
         elif self.progress is None:
@@ -112,7 +125,8 @@ class CampaignScene(Scene):
         panel.add(Label(f"Kept in {home_relative(self.store.path.parent)}", text_style="sub"))
 
     def _build_fresh(self, panel: Column) -> None:
-        panel.add(Label(f"{len(self.campaign.missions)} missions in three acts. The difficulty shifts every computer opponent one step; it is set for the whole campaign.",
+        acts = len({mission.act for mission in self.campaign.missions})
+        panel.add(Label(f"{len(self.campaign.missions)} missions in {acts} {'act' if acts == 1 else 'acts'}. The difficulty shifts every computer opponent one step; it is set for the whole campaign.",
                         text_style="body", width=760, wrap=True))
         row = Row(Label("Difficulty", text_style="body", width=110), spacing=8)
         for difficulty, key in ((Difficulty.EASY, "E"), (Difficulty.MEDIUM, "N"), (Difficulty.HARD, "H")):
@@ -175,9 +189,28 @@ class CampaignScene(Scene):
 
     def draw(self) -> None:
         w, h = self.game.resolution
+        if self.cover_key is not None:
+            source_width, source_height = self.game.backend.get_image_size(self.game.assets.image(self.cover_key))
+            scale = max(w / source_width, h / source_height)
+            width, height = source_width * scale, source_height * scale
+            self.draw_image(self.cover_key, (w - width) / 2, (h - height) / 2, width, height)
         self.draw_rect(0, 0, w, h, (6, 8, 14, 150))
 
     # -- Actions --------------------------------------------------------------------------
+
+    def select_campaign(self, campaign: Campaign) -> None:
+        """Open a story's own progress and saved mission without changing another story."""
+        if campaign.id == self.campaign.id:
+            return
+        play_sound("button")
+        self.campaign = campaign
+        self.progress = None
+        self.unreadable = self.notice = ""
+        self.difficulty = Difficulty.MEDIUM
+        self.confirm_reset = False
+        self.resume = None
+        self._difficulty_buttons.clear()
+        self.on_enter()
 
     def set_difficulty(self, difficulty: Difficulty) -> None:
         if self.progress is not None or self.unreadable:
@@ -223,7 +256,7 @@ class CampaignScene(Scene):
         if self.progress is None or mission is None:
             return
         play_sound("button")
-        self.game.save_manager.delete(CAMPAIGN_SLOT)
+        self.game.save_manager.delete(campaign_save_slot(self.campaign))
         start_mission(self.game, self.campaign, mission, self.progress, self.settings)
 
     def start_over(self) -> None:
@@ -241,8 +274,9 @@ class CampaignScene(Scene):
         else:
             self.store.clear()
             self.notice = ""
-        self.game.save_manager.delete(CAMPAIGN_SLOT)
+        self.game.save_manager.delete(campaign_save_slot(self.campaign))
         self.progress = None
+        self.resume = None
         self.unreadable = ""
         self.confirm_reset = False
         self._build()

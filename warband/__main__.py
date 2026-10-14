@@ -95,10 +95,12 @@ def _run_with_args(args: argparse.Namespace, parser: argparse.ArgumentParser) ->
     from warband.ui.title import TitleScene
 
     if args.mission == "list":
-        from warband.story.missions import CAMPAIGN
+        from warband.story.catalog import CAMPAIGNS
 
-        for mission in CAMPAIGN.missions:
-            print(f"{mission.id:16} {CAMPAIGN.index(mission)}. {mission.title} · {mission.act}")
+        for campaign in CAMPAIGNS:
+            print(campaign.title)
+            for mission in campaign.missions:
+                print(f"{mission.id:24} {campaign.index(mission)}. {mission.title} · {mission.act}")
         return
     if args.selftest:
         selftest(args.selftest)
@@ -117,14 +119,18 @@ def _run_with_args(args: argparse.Namespace, parser: argparse.ArgumentParser) ->
     if args.campaign or args.mission is not None:
         from warband.story.campaign_scene import CampaignScene
         from warband.story.mission_scene import MissionScene, build_world, current_progress
-        from warband.story.missions import CAMPAIGN
+        from warband.story.catalog import find_mission
 
         if args.mission is None:
             game.run(CampaignScene(settings))
             return
-        progress = current_progress(game, CAMPAIGN, Difficulty(args.difficulty))
-        run = build_world(CAMPAIGN.mission(args.mission), flags=progress.flags)
-        game.run(MissionScene(CAMPAIGN, run, difficulty=progress.difficulty, settings=settings))
+        try:
+            campaign, mission = find_mission(args.mission)
+        except KeyError as error:
+            parser.error(str(error))
+        progress = current_progress(game, campaign, Difficulty(args.difficulty))
+        run = build_world(mission, flags=progress.flags)
+        game.run(MissionScene(campaign, run, difficulty=progress.difficulty, settings=settings))
         return
     layout = None if args.layout == "any" else Layout(args.layout)
     refused = mapgen.refusal(*mapgen.dimensions(args.size, args.players), args.players, layout)

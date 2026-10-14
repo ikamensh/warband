@@ -27,6 +27,7 @@ from warband.sim.rules import BUILDINGS, BuildingType, Difficulty, Layout, MapTh
 
 FORMAT = 1  # of the progress file; bump only when an older Warband could misread a newer file
 MINE_CLEARANCE = 2
+LEGACY_CAMPAIGN_ID = "thornwood"
 
 
 # -- Story ---------------------------------------------------------------------
@@ -147,6 +148,7 @@ class Campaign:
     speakers: dict[str, Speaker]
     missions: tuple[Mission, ...]
     epilogue: Dialog
+    cover: str | None = None  # relative to warband/assets; looked up only when the campaign screen is drawn
 
     def mission(self, mission_id: str) -> Mission:
         for mission in self.missions:
@@ -468,12 +470,16 @@ class Progress:
 
 
 class ProgressStore:
-    """The progress file under the game's data directory, with the save manager's durable writes and backup.  A file
-    this version cannot read must never be written over: :meth:`set_aside` moves it out of the way first."""
+    """One campaign's durable progress. Thornwood keeps its original directory; other campaigns use a subdirectory
+    named by their stable id. An unreadable or foreign file is kept until :meth:`set_aside` moves it aside."""
 
-    def __init__(self, data_dir) -> None:
-        self.saves = SaveManager(data_dir / "campaign")
-        self.path = data_dir / "campaign" / "save_1.json"
+    def __init__(self, data_dir, campaign_id: str = LEGACY_CAMPAIGN_ID) -> None:
+        self.campaign_id = campaign_id
+        directory = data_dir / "campaign"
+        if campaign_id != LEGACY_CAMPAIGN_ID:
+            directory /= campaign_id
+        self.saves = SaveManager(directory)
+        self.path = directory / "save_1.json"
         self.aside = self.path.with_name("save_1.unreadable.json")
 
     def load(self) -> Progress | None:
@@ -481,12 +487,19 @@ class ProgressStore:
         if saved is None:
             return None
         try:
-            return Progress.from_dict(saved["state"])
+            progress = Progress.from_dict(saved["state"])
+            self._check_campaign(progress)
+            return progress
         except (KeyError, TypeError, ValueError) as error:
             raise SaveError(f"Cannot read the campaign progress: {error}") from error
 
     def save(self, progress: Progress) -> None:
+        self._check_campaign(progress)
         self.saves.save(1, progress.to_dict(), "WarbandCampaign", summary={"completed": len(progress.completed)})
+
+    def _check_campaign(self, progress: Progress) -> None:
+        if progress.campaign != self.campaign_id:
+            raise SaveError(f"campaign progress belongs to {progress.campaign!r}, not {self.campaign_id!r}")
 
     def clear(self) -> None:
         self.saves.delete(1)

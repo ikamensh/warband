@@ -17,7 +17,7 @@ from saga2d import Anchor, Button, Column, Component, KeyHints, Label, Row, Save
 from saga2d.effects import Banner, Toast
 from warband.sim import mapgen
 from warband.brains.ai import make_brain
-from warband.story.campaign import Campaign, Mission, Progress, ProgressStore, Run, shifted
+from warband.story.campaign import LEGACY_CAMPAIGN_ID, Campaign, Mission, Progress, ProgressStore, Run, shifted
 from warband.story.dialog import DialogScene
 from warband.sim.model import World
 from warband.sim.rules import BuildingType, Difficulty
@@ -32,13 +32,18 @@ MARK_COLORS = {"open": (255, 255, 255, 40), "done": GOOD, "failed": BAD}
 TEXT_COLORS = {"open": TEXT, "done": MUTED, "failed": BAD}
 
 
+def campaign_save_slot(campaign: Campaign) -> str:
+    """Thornwood keeps its original save slot; every other story autosaves independently."""
+    return CAMPAIGN_SLOT if campaign.id == LEGACY_CAMPAIGN_ID else f"campaign_{campaign.id}"
+
+
 def name_sides(world: World, mission: Mission) -> None:
     for player, side in zip(world.players, mission.sides):
         player.name = side.name
 
 
 def build_world(mission: Mission, *, flags: dict[str, Any]) -> Run:
-    """The mission's map from its seed, reshaped by its setup; the run that plays it."""
+    """The generated map reshaped by setup, or the authored World setup installs in the run."""
     width, height = mapgen.SIZES[mission.size]
     world = mapgen.generate(mission.seed, width, height, len(mission.sides), theme=mission.theme, races=[side.race for side in mission.sides],
                            layout=mission.layout)
@@ -46,6 +51,9 @@ def build_world(mission: Mission, *, flags: dict[str, Any]) -> Run:
     name_sides(world, mission)
     run = Run(mission, world, flags=flags)
     mission.setup(run)
+    world = run.world
+    world.scripted = True
+    name_sides(world, mission)
     # A mission raises what it needs where it needs it: a rift one of its buildings now stands on (a tower of the
     # Court of Thorns) is the mission's ground, not a rift nobody can ever tap.
     world.lay_rifts(rift for rift in world.rifts
@@ -58,7 +66,7 @@ def build_world(mission: Mission, *, flags: dict[str, Any]) -> Run:
 
 def current_progress(game, campaign: Campaign, difficulty: Difficulty) -> Progress:
     """The saved progress, or a fresh one when a mission was started on its own (``--mission``)."""
-    progress = ProgressStore(game.data_dir).load()
+    progress = ProgressStore(game.data_dir, campaign.id).load()
     return progress if progress is not None else Progress(campaign.id, difficulty)
 
 
@@ -69,12 +77,15 @@ def restart_mission(game, scene: MissionScene) -> str | None:
         progress = current_progress(game, scene.campaign, scene.difficulty)
     except SaveError:
         return "Cannot restart: the campaign progress is unreadable. Campaign says why."
+    game.save_manager.delete(scene.AUTOSAVE_SLOT)
     start_mission(game, scene.campaign, scene.mission, progress, scene.settings, briefing=False)
     return None
 
 
 def start_mission(game, campaign: Campaign, mission: Mission, progress: Progress, settings, *, briefing: bool = True) -> None:
     """Build the mission and play its briefing over the current screen, then replace everything with the match."""
+    if progress.campaign != campaign.id or mission not in campaign.missions:
+        raise ValueError("mission and progress must belong to the selected campaign")
     run = build_world(mission, flags=progress.flags)
     scene = MissionScene(campaign, run, difficulty=progress.difficulty, settings=settings)
     if briefing:
@@ -124,6 +135,7 @@ class MissionScene(GameScene):
     def __init__(self, campaign: Campaign, run: Run, *, difficulty: Difficulty, settings=None) -> None:
         super().__init__(run.world, run.mission.seed, difficulty=difficulty, settings=settings, ranked=False)
         self.campaign = campaign
+        self.AUTOSAVE_SLOT = campaign_save_slot(campaign)
         self.run = run
         self.mission = run.mission
         self.tutorial = None
@@ -224,14 +236,14 @@ class MissionScene(GameScene):
 
     def _record(self) -> None:
         """Write the mission into the progress at the moment of victory; the debrief is a story, not a condition."""
-        store = ProgressStore(self.game.data_dir)
+        store = ProgressStore(self.game.data_dir, self.campaign.id)
         try:
             progress = store.load()
             if progress is None:
                 progress = Progress(self.campaign.id, self.difficulty)
             progress.complete(self.mission, self.run.remembered())
             store.save(progress)
-            self.game.save_manager.delete(CAMPAIGN_SLOT)
+            self.game.save_manager.delete(self.AUTOSAVE_SLOT)
         except SaveError as error:
             self.progress_error = str(error)
             return
@@ -252,22 +264,26 @@ class MissionScene(GameScene):
 def load_mission(state: dict[str, Any], *, settings=None) -> MissionScene:
     """The mission scene a save holds, or a SaveError saying why it cannot be played by this version.  Called only by
     :func:`~warband.ui.scene.load_game`, which then restores what every save keeps beside the world."""
-    from warband.story.missions import CAMPAIGN
+    from warband.story.catalog import get_campaign
 
     world = check_save(state)
     block = state["mission"]
     if not isinstance(block, dict) or not isinstance(block.get("id"), str):
         raise SaveError("the save's mission block is damaged")
+    campaign_id = state.get("campaign")
+    if not isinstance(campaign_id, str):
+        raise SaveError("the save names no campaign")
     try:
-        mission = CAMPAIGN.mission(block["id"])
-    except KeyError:
-        raise SaveError(f"this save's mission ({block['id']}) is not in this version of the campaign") from None
+        campaign = get_campaign(campaign_id)
+        mission = campaign.mission(block["id"])
+    except KeyError as error:
+        raise SaveError(f"this save's campaign or mission cannot be played ({error})") from None
     try:
         run = Run.from_dict(mission, world, block)
     except (KeyError, TypeError, ValueError) as error:
         raise SaveError(f"the save's mission block is damaged ({error})") from error
     name_sides(world, mission)
-    return MissionScene(CAMPAIGN, run, difficulty=Difficulty(state["difficulty"]), settings=settings)
+    return MissionScene(campaign, run, difficulty=Difficulty(state["difficulty"]), settings=settings)
 
 
 class MissionPauseScene(PauseScene):
@@ -296,8 +312,8 @@ class MissionPauseScene(PauseScene):
         from warband.story.campaign_scene import CampaignScene
 
         scene: MissionScene = self.game_scene  # type: ignore[assignment]
-        self.game.save(CAMPAIGN_SLOT, scene=scene)
-        self.game.clear_and_push(CampaignScene(scene.settings))
+        self.game.save(scene.AUTOSAVE_SLOT, scene=scene)
+        self.game.clear_and_push(CampaignScene(scene.settings, campaign=scene.campaign))
 
 
 class MissionResultScene(_Overlay):
@@ -357,7 +373,7 @@ class MissionResultScene(_Overlay):
         # A choice made in the debrief is part of the mission's memory, so it is recorded after the words are said.
         if scene.progress is not None and scene.mission.remember:
             try:
-                store = ProgressStore(self.game.data_dir)
+                store = ProgressStore(self.game.data_dir, scene.campaign.id)
                 scene.progress.complete(scene.mission, scene.run.remembered())
                 store.save(scene.progress)
             except SaveError as error:
@@ -375,7 +391,7 @@ class MissionResultScene(_Overlay):
     def campaign(self) -> None:
         from warband.story.campaign_scene import CampaignScene
 
-        self.game.clear_and_push(CampaignScene(self.scene.settings))
+        self.game.clear_and_push(CampaignScene(self.scene.settings, campaign=self.scene.campaign))
 
     def quit(self) -> None:
         self.game.quit()
