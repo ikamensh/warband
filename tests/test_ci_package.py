@@ -79,6 +79,7 @@ def candidate(tmp_path):
              "online": dict.fromkeys(ONLINE, True)}
     native = {**receipt, "backend": "pyglet", "native_multiplayer_input": True,
               "native_clipboard_join": True, "live_match_menu": True,
+              "native_campaign": True, "campaign_autosave_load": True,
               "native_settlement_planning": True, "start_after_resize": True, "compiled_simulation": True, "images": ["native.png"]}
     (directory / "verification").mkdir()
     (directory / "verification/native.png").write_bytes(b"\x89PNG\r\n\x1a\nfixture")
@@ -132,6 +133,18 @@ def test_verified_package_is_bound_to_identity_and_archive_bytes(candidate):
     assert len(accepted["artifacts"]) == 2
     for artifact in accepted["artifacts"]:
         assert digest((candidate / artifact["file"]).read_bytes()) == artifact["sha256"]
+
+
+@pytest.mark.parametrize("flag", ["native_campaign", "campaign_autosave_load"])
+def test_campaign_delivery_evidence_is_required(candidate, flag):
+    """A package without the native campaign/load journey cannot pass publication validation."""
+    path = candidate / "verification.json"
+    value = json.loads(path.read_text())
+    value["native"][flag] = False
+    write_json(path, value)
+    result = validate(candidate)
+    assert result.returncode != 0
+    assert "Incomplete native checks" in result.stderr
 
 
 @pytest.mark.parametrize("problem", ["archive", "regression_log", "stale_receipt", "missing_app",
