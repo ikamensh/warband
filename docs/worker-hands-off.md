@@ -68,8 +68,8 @@ policy `placed`, and by construction such a worker's `commanded` is `None`.
 behaviour), and it survives replays because every stamp is set inside a
 `@recorded` World method or inside the step.
 
-It does **not** travel to a rival. `authority.STRANGER_UNIT` masks it beside
-`orders` and `home`: whose hand a peasant is in is an intention, and a seat is
+It does **not** travel to a rival. A stranger's unit record in `warband/online/snapshot.py`
+withholds it beside `orders` and `home`: whose hand a peasant is in is an intention, and a seat is
 told what a unit is doing, not what its owner means by it.
 
 ## What it cost

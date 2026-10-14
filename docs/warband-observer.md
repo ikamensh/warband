@@ -59,11 +59,19 @@ never are.
 
 What would let the snapshot stand in for the authority never travels: the random stream
 (`NO_DICE` stands in, as for a seat), each seat's explored ground and worker memory, the
-settlement's plans, unit intentions (`STRANGER_UNIT`, as for a stranger), and a camp's
+settlement's plans, unit intentions (withheld as for a stranger), and a camp's
 damage ledger and timers. The envelope carries no checkpoint keys (`event_id`, `event_seen`,
 `begun`) and no session or account credentials — there are none on the match to leak.
 Taking it changes nothing: fog, seats, time, the stream, the seat snapshots and the
 checkpoint read the same after. Covered by `tests/warband/test_observer_snapshot.py`.
+
+Both snapshots are built by `warband/online/snapshot.py` (`seat_world`, `observer_world`),
+which names every field an audience is permitted and reads it off the live world. Neither
+starts from `World.to_dict()`: a field the save grows later has no snapshot record to ride
+in on until a constructor there names it for an audience on purpose (the authority's
+checkpoint, by contrast, *is* the save). `tests/warband/test_snapshot_explicit.py` holds
+each record to its named fields and proves snapshots stand with the save serializers
+rigged to fail.
 
 ## Network observer: Online and LAN
 

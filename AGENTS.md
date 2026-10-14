@@ -67,9 +67,11 @@ of the package, `sim` and `online`.
 - `records/` — `profile.py` (the player's rating and the rule for leaving a
   match), `scores.py`, `replay.py` (the start world plus the `@recorded` order
   log).
-- `online/` — `authority.py`, the authoritative match; its `ONLINE` table
-  registers `warband-v2` (the server loads `warband.online.authority:ONLINE`);
-  `online_ai.py`, a headless AI client that can sit in a room.
+- `online/` — `authority.py`, the authoritative match (orders, events, the
+  checkpoint); its `ONLINE` table registers `warband-v2` (the server loads
+  `warband.online.authority:ONLINE`); `snapshot.py`, what each seat and a
+  watcher may know, built field by field for that audience, never from the
+  save; `online_ai.py`, a headless AI client that can sit in a room.
 - `art/` — `textures.py` renders through `sagaforge.render3d` (nine frames per
   facing from one `Pose` table); painted sheets under `assets/restyled/`
   (`tools/restyle.py`) replace frames, recoloured per team

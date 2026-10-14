@@ -7,7 +7,7 @@ settlement plans, no unit intentions, no camp damage ledger, and none of the sea
 """
 import json
 
-from warband.online.authority import NO_DICE, PRIVATE_EVENTS, STRANGER_UNIT, WarbandMatch
+from warband.online.authority import NO_DICE, PRIVATE_EVENTS, WarbandMatch
 from warband.sim.model import World, tile_center
 from warband.sim.rules import BuildingType, UnitType, Upgrade
 from warband.sim.worker_knowledge import WorkerKnowledge
@@ -99,8 +99,9 @@ def test_the_observer_is_told_no_memory_plans_or_intentions() -> None:
     assert seen['worker_knowledge'] == [blank] * len(world.players)
     assert seen['settlement'] == {'next_id': 1, 'plans': []}
     for unit in seen['units']:
-        for key in ('orders', 'worker_orders', 'home', 'auto_work', 'commanded'):
-            assert unit[key] == STRANGER_UNIT[key], f"unit {unit['id']} tells its {key}"
+        told_no_intentions = {'orders': [], 'worker_orders': [], 'home': None, 'auto_work': False, 'commanded': None}
+        for key, withheld in told_no_intentions.items():
+            assert unit[key] == withheld, f"unit {unit['id']} tells its {key}"
         assert unit['constructing'] == world.units[unit['id']].constructing
     sent = [d['id'] for key in ('units', 'buildings', 'projectiles') for d in seen[key]]
     assert seen['next_id'] == max(sent) + 1

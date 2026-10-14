@@ -120,8 +120,8 @@ one of each kind; laying it on again restarts its timer, and different kinds
 combine (multipliers multiply, armour adds). A seat sees the conditions of a
 rival's units in its sight, so a kind that only research lays on would tell
 that research: until the match is decided, the authority sends
-`bloodlust_rage` to the other seats as `rage` (`authority.STRANGER_KINDS`), and
-a new kind like it gets a row there.
+`bloodlust_rage` to the other seats as `rage` (`snapshot._KINDS_AS_STRANGERS_SEE_THEM`),
+and a new kind like it gets a row there.
 
 ### spells.toml
 

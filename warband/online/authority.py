@@ -1,13 +1,12 @@
 """Authoritative RTS matches and server registration, independent of client scenes."""
 import inspect
-import random
 
 from saga2d import CommandError
+from warband.online.snapshot import NO_DICE, observer_world, seat_world, terrain_rows  # NO_DICE re-exported for its readers
 from warband.sim import mapgen
 from warband.sim.model import Unit, World, RuleError, field_values
-from warband.sim.worker_knowledge import WorkerKnowledge
 from saga2d.server.games import GameSpec, option_choice, option_int, option_keys, option_seed
-from warband.sim.rules import BLOODLUST_RAGE, RAGE, SPELLS, BuildingType, UnitType, Upgrade, SIM_DT, Layout, MapTheme, Race
+from warband.sim.rules import SPELLS, BuildingType, UnitType, Upgrade, SIM_DT, Layout, MapTheme, Race
 
 GROUP_ORDERS = {'smart', 'move', 'attack_move', 'patrol', 'attack', 'repair', 'salvage', 'stop', 'hold', 'release_workers'}
 BUILDING_ORDERS = {'set_rally', 'train', 'research', 'cancel_train', 'cancel_research', 'cancel_building', 'set_auto_train'}
@@ -16,8 +15,6 @@ SEAT_ORDERS = SETTLEMENT_ORDERS | {'resign', 'cast'}  # orders about the seat's 
 ORDERS = GROUP_ORDERS | BUILDING_ORDERS | SEAT_ORDERS | {'build'}
 #: Ticks an event rides the snapshots (five seconds): long enough for a client that hiccups, not for ever.
 EVENT_TICKS = 100
-#: What a seat is told of the server's random stream: a fixed state, so no client can read the damage rolls to come.
-NO_DICE = random.Random(0).getstate()
 #: News for its owner alone: what it trains and researches, what it is refused or left to plans, its deposits, what it
 #: salvages, its alarms, its plunder and the aether a lost vault spilled.
 PRIVATE_EVENTS = frozenset({'trained', 'researched', 'refused', 'deferred', 'deposit', 'salvage', 'under_attack', 'plunder', 'spilled', 'hoard'})
@@ -27,29 +24,7 @@ PUBLIC_EVENTS = frozenset({'victory', 'eliminated', 'surrendered', 'resigned', '
 #: tells them the spell and the point.  Neither private (a cast in sight is no secret) nor public: a blind cast into
 #: the fog, or one far from a rival, is not that rival's to hear of.
 SPELL_EVENTS = frozenset({'cast', 'spell'})
-#: What a seat learns of a unit it sees but does not own is where it stands and how it moves and strikes, not where it is
-#: going, nor how lately its owner had it in hand.
-STRANGER_UNIT = {'orders': [], 'worker_orders': [], 'home': None, 'constructing': None, 'auto_work': False, 'commanded': None}
-#: The conditions a stranger's unit is shown carrying under another kind's name until the match is decided: a kind of
-#: its own would tell its owner's research.  Rage under Bloodlust is Rage.
-STRANGER_KINDS = {BLOODLUST_RAGE.key: RAGE.key}
-#: Of a building it sees but does not own: footprint, hit points, construction and abandonment, not its work.  A site
-#: keeps its builder's id (the builder itself is inside, out of sight): a site with none is one from a save older than
-#: WB-048, and a load removes it.
-STRANGER_BUILDING = {'queue': [], 'train_progress': 0.0, 'rally': None, 'research': None, 'research_progress': 0.0, 'auto': []}
-
-
-def _stranger_unit(d, undecided):
-    """What a seat is told of the unit *d* it sees and does not own: :data:`STRANGER_UNIT`, and while the match is
-    *undecided* its conditions as :data:`STRANGER_KINDS` names them."""
-    stranger = {**d, **STRANGER_UNIT, 'orders': [], 'worker_orders': []}
-    if undecided and d['conditions']:
-        stranger['conditions'] = [{**c, 'kind': STRANGER_KINDS.get(c['kind'], c['kind'])} for c in d['conditions']]
-    return stranger
-
-
-def _terrain_rows(world):
-    return ["".join(t.value[0] for t in row) for row in world.terrain]
+# What each audience may know is named by warband.online.snapshot, which builds every snapshot field by field.
 
 
 #: The most seats a Warband room can hold.  The offline game seats sixteen, but every client
@@ -78,7 +53,7 @@ class WarbandMatch:
         self.event_ticks = []  # the tick each of them happened at
         self.event_seen = []  # the seats that may hear of each: decided when it happens, not when a snapshot goes out
         self.event_id = 0
-        self.begun = _terrain_rows(self.world)  # the map as it began: what a seat is told of ground it never saw
+        self.begun = terrain_rows(self.world)  # the map as it began: what a seat is told of ground it never saw
 
     def _events(self):
         """Number the world's new events and drop the old ones: a snapshot carries the recent ones only, for a client
@@ -122,117 +97,21 @@ class WarbandMatch:
             for y in range(y0, y1 + 1) for x in range(x0, x1 + 1))
 
     def snapshot(self, player):
-        """The match as seat *player* may know it (``to_dict`` builds it afresh, the receiver may keep it).
+        """The match as seat *player* may know it (built afresh, the receiver may keep it).
 
-        All of its own.  Of everyone else's, what it sees now, without intentions: a unit's orders and home, a
-        building's work.  The ground and the mines out of sight as it last saw them, ground it never saw as the
-        map began, mines it never saw not at all.  Of the news, what it saw happen, its own affairs and what is
-        public.  Which rival lies exposed to it (:meth:`World.exposures`), which its world holds too little of its
-        rivals to judge.  The other seats' purse (gold, lumber and aether), research (and the conditions that would
-        tell it) and scores once the match is decided, their plans and memory never, and the server's random stream
-        never: a fixed state stands in for it."""
-        world = self.world
-        data = world.to_dict()
-        data['rng'] = NO_DICE
-        unexplored = bytes(world.width * world.height).hex()
-        unknown = WorkerKnowledge(world.width, world.height).to_dict()
-        for seat, record in enumerate(data['players']):
-            if seat != player:
-                data['explored'][seat], data['worker_knowledge'][seat] = unexplored, unknown
-                if world.winner is None:
-                    record.update(gold=0, lumber=0, aether=0, aether_charge=0, upgrades=[], cooldowns={},
-                                  stats=dict.fromkeys(record['stats'], 0), last_alert=None, last_hit=None, assembly=None)
-        visible, knowledge = world.visible[player], world.worker_knowledge[player]
-        data['units'] = [d if unit.player == player else _stranger_unit(d, world.winner is None)
-                         for unit, d in zip(world.units.values(), data['units'])
-                         if unit.player == player or (not unit.hidden and world.is_visible(player, unit.tile))]
-        buildings = []
-        for building, d in zip(world.buildings.values(), data['buildings']):
-            if building.player == player:
-                buildings.append(d)
-            elif knowledge.sees(visible, building.x, building.y, building.size):
-                buildings.append(d if building.player is None else {**d, **STRANGER_BUILDING})
-            elif building.id in knowledge.mines:
-                buildings.append({**d, 'gold': knowledge.mines[building.id].gold})
-        data['buildings'] = buildings
-        # Encounter identities/rewards are public once the lair is observed. Its current guards,
-        # home posts, recovery timer and damage ledger are server state, not scouting information.
-        seen_units = {unit['id']: unit for unit in data['units']}
-        seen_buildings = {building['id'] for building in buildings}
-        known_camps = []
-        for camp in data['camps']:
-            if camp['lair'] not in seen_buildings and camp['lair'] not in knowledge.encounters:
-                continue
-            guards = [uid for uid in camp['guards'] if uid in seen_units]
-            remembered_origin = knowledge.encounters.get(camp['lair'])
-            origin = remembered_origin if remembered_origin is not None else world.buildings[camp['lair']].center
-            known_camps.append({**camp, 'guards': guards,
-                                'origin': list(origin),
-                                'posts': [[seen_units[uid]['x'], seen_units[uid]['y']] for uid in guards],
-                                'roused': any(seen_units[uid]['state'] == 'attack' for uid in guards),
-                                'quiet_since': -1.0, 'struck': -1000.0, 'credit': {},
-                                'cleared': camp['lair'] in knowledge.cleared_encounters})
-        data['camps'] = known_camps
-        data['projectiles'] = [d for shot, d in zip(world.projectiles.values(), data['projectiles'])
-                               if shot.player == player or world.is_visible(player, _tile(world.shot_ground(shot, world.time)))]
-        data['next_id'] = 1 + max((d['id'] for key in ('units', 'buildings', 'projectiles') for d in data[key]), default=0)
-        plans = [plan for plan in data['settlement']['plans'] if plan['player'] == player]
-        data['settlement'] = {'next_id': 1 + max((plan['id'] for plan in plans), default=0), 'plans': plans}
-        data['terrain'] = self._terrain_as_known(player, data['terrain'])
-        data['regrowth'] = [entry for entry in data['regrowth'] if world.is_visible(player, tuple(entry[0]))]
-        data['exposures'] = [[exposed, told] for exposed, told in world.exposures() if told == player]
-        return {'seed': self.seed, 'world': data, 'events': self._recent_events(player)}
+        :func:`warband.online.snapshot.seat_world` builds it field by field for that seat; of the news,
+        what it saw happen, its own affairs and what is public."""
+        return {'seed': self.seed, 'world': seat_world(self.world, player, self.begun),
+                'events': self._recent_events(player)}
 
     def observer_snapshot(self):
-        """The match as a watcher may see it (``to_dict`` builds it afresh, the receiver may keep it).
+        """The match as a watcher may see it (built afresh, the receiver may keep it).
 
-        Watching is a deliberate omniscient role, not a third seat.  The observer sees the current map
-        whole: every faction's units (a stranger's intentions stripped with :data:`STRANGER_UNIT`, as for
-        a seat), buildings, shots, camps and regrowth, the ground as it stands, and every seat's purse,
-        research and scores.  Recent news of every kind rides along except a seat's own affairs
-        (:data:`PRIVATE_EVENTS`): blows no seat saw are the observer's, alarms and refusals never are.
-
-        What would let the snapshot stand in for the authority never travels: the random stream (a fixed
-        state stands in for it, as for a seat), each seat's explored ground and worker memory, the
-        settlement's plans, and a camp's damage ledger and timers.  The envelope holds no checkpoint keys,
-        so it restores a world to look at through :meth:`World.from_dict`, never the running match.  It
-        changes nothing: fog, seats, time, the stream, the seat snapshots and the checkpoint read the same
-        after."""
-        world = self.world
-        data = world.to_dict()
-        data['rng'] = NO_DICE
-        unexplored = bytes(world.width * world.height).hex()
-        data['explored'] = [unexplored] * len(data['explored'])
-        data['worker_knowledge'] = [WorkerKnowledge(world.width, world.height).to_dict()
-                                    for _ in data['worker_knowledge']]
-        # Fresh lists per unit: STRANGER_UNIT's own are shared, and a kept snapshot must never bleed into
-        # the next.  A builder's site names it already, so its post stays: stripping it would stand the
-        # builder back on the map where the authority has it inside, and a reload would draw it.
-        data['units'] = [{**d, **STRANGER_UNIT, 'orders': [], 'worker_orders': [],
-                          'constructing': d['constructing']} for d in data['units']]
-        # Encounter identities, guards and rewards are on the map for all to see.  Whose blows earned them
-        # and when the camp settles again are the authority's, as they are to a seat that stands outside.
-        data['camps'] = [{**camp, 'quiet_since': -1.0, 'struck': -1000.0, 'credit': {}} for camp in data['camps']]
-        data['next_id'] = 1 + max((d['id'] for key in ('units', 'buildings', 'projectiles') for d in data[key]),
-                                 default=0)
-        data['settlement'] = {'next_id': 1, 'plans': []}
-        data['exposures'] = [[exposed, told] for exposed, told in world.exposures()]
-        return {'seed': self.seed, 'world': data, 'events': self._observer_events()}
-
-    def _terrain_as_known(self, player, rows):
-        """The map's rows with every tile *player* does not see now as it remembers it, or as it began if never seen."""
-        width, visible = self.world.width, self.world.visible[player]
-        remembered = self.world.worker_knowledge[player].terrain
-        known = []
-        for y, (now, began) in enumerate(zip(rows, self.begun)):
-            base = y * width
-            seen = visible[base:base + width]
-            if seen.count(0) == 0:
-                known.append(now)
-                continue
-            known.append("".join(letter if sees else (memory.value[0] if (memory := remembered[base + x]) is not None else first)
-                                 for x, (letter, sees, first) in enumerate(zip(now, seen, began))))
-        return known
+        :func:`warband.online.snapshot.observer_world` builds it field by field for a watcher.  Recent
+        news of every kind rides along except a seat's own affairs (:data:`PRIVATE_EVENTS`).  The envelope
+        holds no checkpoint keys, so it restores a world to look at through :meth:`World.from_dict`, never
+        the running match.  It changes nothing."""
+        return {'seed': self.seed, 'world': observer_world(self.world), 'events': self._observer_events()}
 
     def _knows(self, player, entity):
         """Whether seat *player* may name *entity* in an order: all of its own, what its snapshot shows it now, and
@@ -365,10 +244,6 @@ def _create(options):
         raise CommandError(f'{exc} Choose a larger map or another layout.') from exc
 
 
-def _tile(point):
-    return int(point[0]), int(point[1])
-
-
 def _checkpoint(match):
     return {'seed': match.seed, 'world': match.world.to_dict(), 'events': match._recent_events(), 'event_id': match.event_id,
             'event_seen': match.event_seen, 'begun': match.begun}
@@ -384,7 +259,7 @@ def _restore(snapshot):
     # A checkpoint from before WB-011 kept no record of who saw what, nor of the map's beginning: its last news
     # goes to every seat once, and the ground as it stands now stands for how it began.
     match.event_seen = snapshot.get('event_seen', [list(range(match.world.seats))] * len(match.events))
-    match.begun = snapshot.get('begun', _terrain_rows(match.world))
+    match.begun = snapshot.get('begun', terrain_rows(match.world))
     return match
 
 
