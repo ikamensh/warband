@@ -105,7 +105,9 @@ def _read_dialog(data: list[dict[str, Any]]) -> Dialog:
 class Objective:
     """A line of the objectives panel.  ``done`` and ``failed`` read the run; ``shown`` hides the line until it holds
     (then it stays).  A failed objective loses the mission.  An optional one is never required to win: a second way
-    to win that the mission's ``win`` counts, or a condition that only matters by failing (``done`` never true)."""
+    to win that the mission's ``win`` counts, or a condition that only matters by failing (``done`` never true).
+    An ``ongoing`` condition reopens when it stops holding: its checkmark describes the current crew or buildings,
+    rather than a historical arrival or construction."""
 
     id: str
     text: str
@@ -113,6 +115,7 @@ class Objective:
     failed: Callable[[Run], bool] | None = None
     shown: Callable[[Run], bool] | None = None
     optional: bool = False
+    ongoing: bool = False
 
 
 @dataclass(frozen=True)
@@ -392,7 +395,7 @@ class Run:
                     self.state[objective.id] = state = "open"
                 else:
                     continue
-            if state != "open":
+            if state != "open" and not (state == "done" and objective.ongoing):
                 continue
             if objective.failed is not None and objective.failed(self):
                 self.state[objective.id] = "failed"
@@ -400,7 +403,10 @@ class Run:
                     self.lost = objective.text
             elif objective.done(self):
                 self.state[objective.id] = "done"
-                self.completed.append(objective.id)
+                if state != "done":
+                    self.completed.append(objective.id)
+            elif state == "done":
+                self.state[objective.id] = "open"
         if not self.won and self.lost is None and self.mission.won(self):
             self.won = True
 
