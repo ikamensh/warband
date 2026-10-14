@@ -485,7 +485,9 @@ def solve_maw(run: Run, *, ending: str) -> float:
         fight(r, near[0].pos if near else point, sides=(1, 2),
               exclude=(issa.id,) if issa is not None else ())
         if issa is not None and _idle(issa):
-            r.world.move([issa.id], point)  # Issa must live: she holds the work, not the front
+            work = (tuple(r.get("relief_sluice")) if r.get("ending_path") == "open" and not r.get("maw_relief_open")
+                    else tuple(r.get("camp_center"))) if ending == "open" else point
+            r.world.move([issa.id], work)  # Issa must live: she holds the work, not the front
 
     if ending == "sealed":
         def repair_act(r: Run) -> None:
@@ -499,6 +501,10 @@ def solve_maw(run: Run, *, ending: str) -> float:
         play_until(run, lambda r: r.won, seconds=1800, act=repair_act, what="Maw resealed")
     elif ending == "open":
         def demolish(r: Run) -> None:
+            issa = r.unit("issa")
+            if r.get("ending_path") == "open" and not r.get("maw_relief_open") and issa is not None:
+                if _idle(issa):
+                    r.world.move([issa.id], tuple(r.get("relief_sluice")))
             near = enemies_near(r)
             if near:
                 defend(r, near[0].pos)
@@ -508,11 +514,11 @@ def solve_maw(run: Run, *, ending: str) -> float:
                 pylon = building_at(r, 1, B.FARM, pos)
                 if pylon is not None:
                     attack_building(r, pylon.id)
-                    ids = [u.id for u in r.soldiers(0) if _idle(u)]
+                    ids = [u.id for u in r.soldiers(0) if _idle(u) and u.id != r.get("issa")]
                     if ids:
                         r.world.attack_move(ids, pylon.center)
                     return
-            fight(r, tuple(r.get("camp_center")), sides=(1, 2))
+            fight(r, tuple(r.get("camp_center")), sides=(1, 2), exclude=(r.get("issa"),))
 
         play_until(run, lambda r: r.won, seconds=1800, act=demolish, what="Maw opened")
     else:

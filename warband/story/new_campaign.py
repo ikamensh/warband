@@ -815,6 +815,7 @@ WEIGHT = Mission(
 MAW_RIFTS: tuple[Pos, ...] = ((33, 26), (45, 26), (39, 36))
 KEYSTONE_POS: Pos = (39, 29)
 PYLON_POS: tuple[Pos, ...] = ((39, 47), (24, 31), (54, 31))  # south, west, east gates: none within idle sight of either camp
+RELIEF_SLUICE: Point = (34.5, 22.5)
 
 
 def _ground_eligible(run: Run) -> bool:
@@ -876,7 +877,7 @@ def _setup_maw(run: Run) -> None:
     _defaults(run, issa=band[0].id, keystone_pos=list(KEYSTONE_POS), keystone_hp=keystone_hp,
               pylon_pos=[list(p) for p in PYLON_POS], maw_rifts=[list(r) for r in MAW_RIFTS],
               keystone_center=list(keystone.center), camp_center=list(hall.center),
-              sella_tower=sella_tower.id)
+              sella_tower=sella_tower.id, relief_sluice=list(RELIEF_SLUICE))
     _landmark(run, "keystone", "The Keystone (repair it)", keystone.center, kind="bell", radius=4, state="active")
     for i, pylon in enumerate(pylons):
         _landmark(run, f"seal_pylon_{i + 1}", f"Seal-pylon {'I II III'.split()[i]} (destroy it)", pylon.center,
@@ -885,6 +886,8 @@ def _setup_maw(run: Run) -> None:
         _landmark(run, f"maw_rift_{i + 1}", f"Maw rift {'I II III'.split()[i]} (build a vault)",
                   (rift[0] + 1.0, rift[1] + 1.0), kind="anchor", state="active")
     _landmark(run, "keepers_camp", "The Keepers' camp", hall.center, kind="refuge", radius=6, state="active")
+    _landmark(run, "relief_sluice", "Relief Sluice (Issa opens the surveyed bypass)", RELIEF_SLUICE,
+              kind="gate", radius=4, state="active")
     world.update_vision()
 
 
@@ -959,6 +962,13 @@ def _maw_opened(run: Run) -> None:
                       "That's my own plan, finished by a steadier hand."),
         Line("Issa", "Then help me ride out what comes through, Sella. Towers silent, all hands to the camp."),
     )
+
+
+def _maw_relief_opened(run: Run) -> None:
+    """Issa operates Dagna's measured bypass before the demolished pylons release the Maw."""
+    run.set("maw_relief_open", True)
+    _landmark_state(run, "relief_sluice", "open")
+    run.say(Line("Dagna", "The surveyed bypass is open. Tarnlock drains clear of the release. Now take down the remaining pylons."))
 
 
 def _maw_resolve(path: str):
@@ -1042,7 +1052,10 @@ MAW = Mission(
         Trigger("keystone_full", all_of(lambda run: run.get("ending_path") == "sealed",
                                         lambda run: (k := _keystone(run)) is not None and k.hp >= k.max_hp),
                 _maw_final_sealed),
+        Trigger("relief_opened", all_of(lambda run: run.get("ending_path") == "open",
+                                        lambda run: run.near("issa", RELIEF_SLUICE, 4)), _maw_relief_opened),
         Trigger("pylons_down", all_of(lambda run: run.get("ending_path") == "open",
+                                      lambda run: bool(run.get("maw_relief_open")),
                                       lambda run: _pylons_standing(run) == 0), _maw_opened),
         Trigger("resolve_sealed", all_of(lambda run: run.get("ending_path") == "sealed",
                                          lambda run: "keystone_full" in run.fired, _band_cleared("final_band"),
