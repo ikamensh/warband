@@ -27,7 +27,7 @@ import numpy as np
 
 from saga2d import Game
 from sagaforge.synth import BELL, BRASS, DARK, GLASS, level, mix, noise, thump, tone, write_wav
-from warband.audio import bodies, combat_sound, deaths, music, presence, spells, voices, wreckage
+from warband.audio import bodies, campaign, combat_sound, deaths, music, presence, spells, voices, wreckage
 from warband.sim.model import Event
 from warband.audio.music import Director
 from warband.sim.rules import BuildingType, Race, UnitType
@@ -221,7 +221,7 @@ class SynthBank:
         self._audio.muted = value
 
 
-SOUND_VERSION = "16"  # 16: the spells and the Aether Elemental (WB-066)
+SOUND_VERSION = "17"  # 17: campaign bells, anchors, gates, refuges and memorials
 MUSIC = music.TRACKS
 
 #: ``play_sound(name)`` forwards here when set; ``None`` is silent.
@@ -356,6 +356,7 @@ SOUNDS: dict[str, Callable[[], np.ndarray]] = {
     **presence.SOUNDS,
     **wreckage.SOUNDS,
     **spells.SOUNDS,
+    **campaign.SOUNDS,
 }
 
 # -- Bank --------------------------------------------------------------------
