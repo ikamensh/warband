@@ -8,8 +8,9 @@ import pytest
 
 from tools import play_undertow as solver
 from warband.sim.model import Hold, dist
-from warband.sim.rules import BuildingType as B, SIM_DT, UnitType as U
+from warband.sim.rules import BuildingType as B, SIM_DT, UnitType as U, Upgrade
 from warband.story.mission_scene import build_world
+from warband.story.landmarks import occupied
 from warband.story.new_campaign import CAMPAIGN, MESA
 from warband.story import undertow_dialogue as dialogue
 
@@ -170,3 +171,55 @@ def test_grove_attack_move_routes_the_crew_and_queues_issas_warrant_aftermath():
     assert run.get("mill_id") not in world.buildings
     advance(run, 1, until=lambda run: "grove_plan" in run.fired)
     assert dialogue.GROVE_ROUT_AFTERMATH in run.pending, "the violent route still must reveal Issa's own order"
+
+
+@pytest.mark.slow
+def test_razing_tarnlocks_hall_stops_new_bands_but_requires_clearing_existing_attackers():
+    """Slow: the starting catapult flanks the hall while soldiers wait at the seam and a worker caps it."""
+    run = build_world(CAMPAIGN.mission("undertow_weight"), flags={})
+    world = run.world
+    catapult = run.units(0, U.CATAPULT)[0]
+    world.move([catapult.id], (44.5, 38.5))
+    world.move([catapult.id], (29.5, 47.5), queue=True)
+    world.attack([catapult.id], run.get("enemy_hall"), queue=True)
+    world.move([unit.id for unit in run.soldiers(0) if unit.id != catapult.id], (54.5, 6.5))
+    workers = run.units(0, U.PEASANT)
+    world.hold([worker.id for worker in workers])
+    world.move([workers[0].id], (53.0, 12.0))
+    ordered = False
+
+    def cap(run):
+        nonlocal ordered
+        if not ordered and world.can_place(B.VAULT, tuple(run.get("seam_rift")), 0, builder=workers[0].id) is None:
+            world.build(workers[0].id, B.VAULT, tuple(run.get("seam_rift")))
+            ordered = True
+
+    advance(run, 240, until=lambda run: bool(run.get("siege_broken")), act=cap)
+    assert run.units(1), "the flanking attack leaves live siege attackers in Tarnlock"
+    assert not run.won, "destroying the hall does not remove its existing attack bands"
+    assert "confession" in run.fired and dialogue.WEIGHT_CONFESSION in run.pending
+    assert run.get("seam_settled") == "cap", "waiting soldiers must not overwrite the completed cap"
+
+    def clear(run):
+        solver.answer(run, "seam_intent", "cap")
+        solver.train(run, B.BARRACKS, U.FOOTMAN, 12)
+        visible = [unit for unit in run.units(1) if world.is_visible(0, unit.tile)]
+        if visible:
+            target = min(visible, key=lambda unit: dist(unit.pos, tuple(run.get("weight_target"))))
+            solver.cast_at(run, Upgrade.FLAME_STRIKE, target.pos)
+        solver.fight(run, tuple(run.get("weight_target")), exclude=(run.get("dagna"),))
+
+    advance(run, 300, until=lambda run: run.won or run.lost is not None, act=clear)
+    assert run.won and run.lost is None
+    assert "band_3" not in run.fired, "a razed siege headquarters cannot keep sending reinforcements"
+
+
+def test_a_seam_scout_does_not_complete_the_settlement_objective():
+    """Reaching the face before its siege is broken is scouting, not a closed seam."""
+    run = build_world(CAMPAIGN.mission("undertow_weight"), flags={})
+    world = run.world
+    world.hold([worker.id for worker in run.units(0, U.PEASANT)])
+    world.move([run.units(0, U.ARCHER)[0].id], (51.5, 6.5))
+    advance(run, 30, until=lambda run: occupied(run, "seam"))
+    assert run.state["seam"] == "open"
+    assert not run.get("seam_settled") and run.get("undertow_seam_guarded") is False

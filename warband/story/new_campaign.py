@@ -418,17 +418,17 @@ CARAVAN = Mission(
     objectives=(
         Objective("strip", "Salvage the Old Camp's four ruins",
                   lambda run: not any(b.player == 2 for b in run.world.buildings.values())),
-        Objective("camp", "Mesa: build a Great Hall and three Pig Farms",
+        Objective("camp", "Mesa: Hall + 3 Pig Farms",
                   _caravan_camp_ready,
                   shown=objective_done("strip"), ongoing=True),
-        Objective("drovers", "Bring five living drovers onto the mesa",
+        Objective("drovers", "5 drovers on the mesa",
                   _caravan_drovers_ready,
                   shown=objective_done("strip"), ongoing=True),
-        Objective("dam", "Optional: blast the mill-dam; flood the camp",
+        Objective("dam", "Optional: blast the dam",
                   lambda run: bool(run.get("undertow_dam")), optional=True),
         Objective("brakk", "Brakk must survive", lambda run: bool(run.get("caravan_resolved")),
                   failed=lambda run: run.unit("brakk") is None, optional=True),
-        Objective("builders", "Keep a drover or a finished Great Hall after the stragglers join",
+        Objective("builders", "Keep a drover or a Hall",
                   lambda run: bool(run.get("caravan_resolved")),
                   failed=lambda run: "stragglers" in run.fired and not run.units(0, U.PEASANT)
                   and run.hall(0) is None, optional=True),
@@ -590,12 +590,13 @@ GROVE = Mission(
     objectives=(
         Objective("parley_or_rout", "Woodcutters: parley or raze their mill",
                   lambda run: bool(run.get("parleyed")) or run.get("mill_id") not in run.world.buildings),
-        Objective("cut", f"Firebreak: harvest {STRIP_NEEDED} marked trees",
-                  lambda run: _felled(run) >= STRIP_NEEDED, shown=objective_done("parley_or_rout"), optional=True),
-        Objective("weather", "Or muster at Moon Hall; keep the grove whole",
+        Objective("cut", f"Fell {STRIP_NEEDED} firebreak trees",
+                  lambda run: _felled(run) >= STRIP_NEEDED,
+                  shown=all_of(objective_done("parley_or_rout"), var("grove_intent", "cut")), optional=True),
+        Objective("weather", "Muster at Moon Hall",
                   lambda run: bool(run.get("grove_resolved")) and not run.get("undertow_grove_cut"),
-                  shown=objective_done("parley_or_rout"), optional=True),
-        Objective("guardian", "Ancient: send Wrenna alone or bring it down",
+                  shown=all_of(objective_done("parley_or_rout"), var("grove_intent", "whole")), optional=True),
+        Objective("guardian", "Ancient: courtesy or combat",
                   lambda run: bool(run.get("undertow_guardian_ally") or run.get("undertow_guardian_core")),
                   optional=True),
         Objective("survive_bloom", "Weather the bloom-front", lambda run: bool(run.get("grove_resolved")),
@@ -648,6 +649,22 @@ SEAM_POS: Pos = (52, 4)
 def _weights_standing(run: Run) -> int:
     """Finished vaults on the Three Weights' rifts, rebuilt ones included (footprints, not ids)."""
     return sum(1 for rift in WEIGHT_RIFTS if _at_footprint(run, 0, B.VAULT, rift) is not None)
+
+
+def _weight_siege_active(run: Run) -> bool:
+    return not run.get("siege_broken") and run.get("enemy_hall") in run.world.buildings
+
+
+def _weight_siege_destroyed(run: Run) -> bool:
+    return (run.get("enemy_hall") not in run.world.buildings
+            or run.get("enemy_workshop") not in run.world.buildings
+            and all(_band_cleared(f"band_{i}_band")(run) for i in (1, 2, 3)))
+
+
+def _weight_attackers_cleared(run: Run) -> bool:
+    keys = [f"band_{i}_band" for i in (1, 2, 3)]
+    keys.extend(f"shed_{rift[0]}_{rift[1]}" for rift in WEIGHT_RIFTS[:2])
+    return not any(unit_id in run.world.units for key in keys for unit_id in run.get(key, []))
 
 
 def _poll_seam(run: Run) -> int:
@@ -715,18 +732,7 @@ def _weight_band(units: list[U], store_key: str, *say: Any):
 
 
 def _weight_confession(run: Run) -> None:
-    run.say(
-        Line("Dagna", "Stop a moment and hear it from me before you hear it from the rock. That seam is not a vein. "
-                      "It is two hundred years of breath, crystallised under this basin. The seam is the lid, Captain."),
-        Line("Dagna", "Every cart we mine thins the cap. Every cart also bought the gaskets that kept the locks shut. "
-                      "We've been selling the lid to pay for the pot. I am done not saying it."),
-        Line("Dagna", "Sella's numbers never had the seam's measure — my council kept it from her. Her sequence opens the "
-                      "locks first and the 'vein' last. Done that way, it bursts this Step with us on it."),
-        Choice("seam_intent", "Dagna", "The seam, Captain?",
-               (Option("Cap it with a vault on its rift", "cap"), Option("Work it and pay for the siege", "mine"),
-                Option("Post a guard and close the face", "guard"))),
-        Line("Dagna", "Then do it with your hands, where I can witness it. North-east, and no more not-saying.", when="seam_intent"),
-    )
+    run.say(*dialogue.WEIGHT_CONFESSION)
     run.look(run.world.buildings[run.get("seam_id")].center)
 
 
@@ -750,6 +756,7 @@ def _weight_settle(kind: str):
             run.set("undertow_seam_mined", True)
             run.say(Line("Dagna", "Three hundred out of the lid, spent on not dying. The Maw will feel every cart of it. So be it."))
         else:
+            run.set("undertow_seam_guarded", True)
             run.say(Line("Dagna", "Guard posted, face closed, nothing drawn and nothing capped. A held breath, honestly held."))
         run.set("seam_settled", kind)
         _landmark_state(run, "seam", "open")
@@ -759,73 +766,64 @@ def _weight_settle(kind: str):
 
 def _weight_siege_broken(run: Run) -> None:
     run.set("siege_broken", True)
-    run.toast("The siege is broken", "Now settle the seam — cap it, work it, or close its face")
+    run.toast("The siege train is broken", "Clear its remaining attackers, then settle the seam")
 
 
 WEIGHT = Mission(
     id="undertow_weight", title="The Weight", act=ACT_2,
     sides=(Side("Tarnlock", Race.DWARF), Side("The Open Hand", Race.HUMAN)),
     size="Medium", theme=MapTheme.WINTER, layout=Layout.BASTION, seed=2404,
-    briefing=(
-        Line("", "Tarnlock: the lock-works of the Hollow, three great vaults — the Weights — glowing in a snow basin. "
-                 "Sella Voss's Open Hand is on the south tree-ring with a siege train."),
-        Line("Dagna", "Devout about torque, Captain, and fresh out of patience. They'll go for the Weights first — somebody told them which vaults are locks."),
-        Line("Issa", "Keep two of the three standing, break their siege. The rest is arithmetic."),
-        Line("Dagna", "One more thing stands north-east, and we will talk about it when there's a breath to talk in. To the gates."),
+    briefing=dialogue.WEIGHT_BRIEFING + (
+        Line("Dagna", "Raze their southern hall, or raze the workshop and beat three bands. Either way, clear the attackers still here. "
+                      "Then cap the seam's rift with a Rune Vault, haul 300 gold, or choose a guard and post soldiers at its face."),
     ),
-    debrief=(
-        Line("Dagna", "We took one of their engineers alive. Sella told her crews they'd have an hour to clear Tarnlock when her sequence "
-                      "reached it. On her own numbers, Captain, they'd have had nine minutes. She knew. She softened it."),
-        Line("Issa", "Then her own people may yet hear reason at the Maw — if we finish her plan more honestly than she told it."),
-        Line("Dagna", "The confession is written and witnessed either way. What we did with the seam is in it, in my hand."),
-    ),
+    debrief=dialogue.WEIGHT_DEBRIEF,
     setup=_setup_weight,
     objectives=(
         Objective("weights", "Keep two Weights standing",
                   lambda run: bool(run.get("weight_resolved")),
                   failed=lambda run: _weights_standing(run) < 2, optional=True),
-        Objective("raze", "Raze the southern hall",
-                  lambda run: run.get("enemy_hall") not in run.world.buildings, optional=True),
-        Objective("powder", "Or raze workshop + beat three bands",
-                  lambda run: run.get("enemy_workshop") not in run.world.buildings
-                  and all(_band_cleared(f"band_{i}_band")(run) for i in (1, 2, 3)), optional=True),
-        Objective("seam_work", f"Seam: harvest {SEAM_THRESHOLD} gold",
-                  lambda run: _poll_seam(run) >= SEAM_THRESHOLD, optional=True),
-        Objective("seam_cap", "Or cap its rift with a Rune Vault",
-                  lambda run: _at_footprint(run, 0, B.VAULT, SEAM_RIFT) is not None, optional=True),
-        Objective("seam_guard", "Or post soldiers at the seam",
-                  lambda run: _occupied(run, "seam"), optional=True),
-        Objective("resolved", "Hold Tarnlock and settle the seam", lambda run: bool(run.get("weight_resolved"))),
-        Objective("dagna", "Dagna must survive (one rescue)", lambda run: bool(run.get("weight_resolved")),
+        Objective("siege", "Break siege; clear attack bands",
+                  lambda run: bool(run.get("siege_broken")) and _weight_attackers_cleared(run)),
+        Objective("seam", "Settle the endless seam", lambda run: bool(run.get("seam_settled"))),
+        Objective("dagna", "Dagna: one rescue", lambda run: bool(run.get("weight_resolved")),
                   failed=lambda run: "dagna_rescue" in run.fired and run.unit("dagna") is None, optional=True),
-        Objective("hall", "The Deep Hold must stand", lambda run: bool(run.get("weight_resolved")),
+        Objective("hall", "Keep the Deep Hold standing", lambda run: bool(run.get("weight_resolved")),
                   failed=lambda run: run.hall(0) is None, optional=True),
     ),
     triggers=(
-        Trigger("band_1", at(20), _weight_band([U.FOOTMAN] * 4 + [U.ARCHER] * 2, "band_1_band",
+        Trigger("sella_exchange", at(1), lambda run: run.say(*dialogue.WEIGHT_SELLA_EXCHANGE)),
+        Trigger("band_1", all_of(at(20), _weight_siege_active), _weight_band([U.FOOTMAN] * 4 + [U.ARCHER] * 2, "band_1_band",
                                                Line("Dagna", "There — past the towers, straight for Weight I. She knows. She has always known which ones."))),
-        Trigger("band_2", any_of(_band_cleared("band_1_band"), after("band_1", 180)),
+        Trigger("band_2", all_of(_weight_siege_active, any_of(_band_cleared("band_1_band"), after("band_1", 180))),
                 _weight_band([U.FOOTMAN] * 5 + [U.ARCHER] * 2, "band_2_band")),
-        Trigger("band_3", any_of(_band_cleared("band_2_band"), after("band_2", 180)),
+        Trigger("band_3", all_of(_weight_siege_active, any_of(_band_cleared("band_2_band"), after("band_2", 180))),
                 _weight_band([U.FOOTMAN] * 5 + [U.ARCHER] * 2 + [U.CATAPULT], "band_3_band",
                              Line("Dagna", "Their last band, and a thrower with it. Spend this and their powder's done."))),
-        Trigger("confession", any_of(lambda run: "band_2" in run.fired, lambda run: int(run.get("seam_gold", 0)) >= 60),
+        Trigger("confession", any_of(lambda run: "band_2" in run.fired,
+                                      lambda run: int(run.get("seam_gold", 0)) >= 60,
+                                      lambda run: bool(run.get("siege_broken") or run.get("seam_settled")),
+                                      lambda run: any(dist(unit.pos, run.world.buildings[run.get("seam_id")].center) <= 8
+                                                      for unit in run.units(0))),
                 _weight_confession),
+        Trigger("settle_cap", lambda run: _at_footprint(run, 0, B.VAULT, SEAM_RIFT) is not None, _weight_settle("cap")),
+        Trigger("settle_mine", lambda run: _poll_seam(run) >= SEAM_THRESHOLD, _weight_settle("mine")),
         Trigger("shed_1", lambda run: _weights_standing(run) < 3, _weight_shed(WEIGHT_RIFTS[0])),
         Trigger("shed_2", lambda run: _weights_standing(run) < 2 or int(run.get("seam_gold", 0)) >= 150,
                 _weight_shed(WEIGHT_RIFTS[1])),
-        Trigger("siege_broken", any_of(objective_done("raze"), objective_done("powder")), _weight_siege_broken),
-        Trigger("settle_cap", objective_done("seam_cap"), _weight_settle("cap")),
-        Trigger("settle_mine", objective_done("seam_work"), _weight_settle("mine")),
-        Trigger("settle_guard", all_of(lambda run: _occupied(run, "seam"), lambda run: bool(run.get("siege_broken"))),
+        Trigger("siege_broken", _weight_siege_destroyed, _weight_siege_broken),
+        Trigger("settle_guard", all_of(var("seam_intent", "guard"), lambda run: not run.get("seam_settled"),
+                                       lambda run: _occupied(run, "seam"), lambda run: bool(run.get("siege_broken")),
+                                       _weight_attackers_cleared),
                 _weight_settle("guard")),
         Trigger("dagna_rescue", lambda run: run.unit("dagna") is None and run.hall(0) is not None,
                 _hero_rescue("dagna", U.CLERIC, "Dagna Leadhand")),
-        Trigger("resolved", all_of(lambda run: bool(run.get("siege_broken")), lambda run: bool(run.get("seam_settled"))),
+        Trigger("resolved", all_of(lambda run: "confession" in run.fired, lambda run: bool(run.get("siege_broken")),
+                                   lambda run: bool(run.get("seam_settled")), _weight_attackers_cleared),
                 lambda run: run.set("weight_resolved", True)),
     ),
     win=var("weight_resolved", True),
-    remember=("undertow_seam_capped", "undertow_seam_mined"),
+    remember=("undertow_seam_capped", "undertow_seam_mined", "undertow_seam_guarded"),
 )
 
 

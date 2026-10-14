@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from warband.story.campaign import Choice, Run  # noqa: E402
 from warband.story.mission_scene import build_world  # noqa: E402
 from warband.story.new_campaign import CAMPAIGN  # noqa: E402
-from warband.sim.model import Hold, dist  # noqa: E402
+from warband.sim.model import Harvest, Hold, dist  # noqa: E402
 from warband.sim.rules import BUILDINGS, BuildingType as B, SIM_DT, Terrain, UnitType as U, Upgrade  # noqa: E402
 
 CHUNK = int(round(1.0 / SIM_DT))  # one simulated second between solver decisions
@@ -417,11 +417,17 @@ def solve_weight(run: Run, *, seam: str) -> float:
 
     def defend(r: Run, *, engage: bool = True) -> None:
         answer(r, "seam_intent", seam)
+        if seam == "guard":
+            idle_workers = [worker.id for worker in workers(r)
+                            if _idle(worker) or isinstance(worker.order, Harvest) and worker.order.auto]
+            if idle_workers:
+                r.world.hold(idle_workers)  # repair crews stay out of the seam when their work is done
         if seam != "cap" or r.get("seam_settled") or r.world.players[0].gold >= 850:
             train(r, B.BARRACKS, U.FOOTMAN, 12)  # before the cap, never train away the vault's own price
         visible = [unit for unit in r.units(1) if r.world.is_visible(0, unit.tile)]
         if visible:
-            cast_at(r, Upgrade.FLAME_STRIKE, visible[0].pos)
+            target = min(visible, key=lambda unit: dist(unit.pos, tuple(r.get("weight_target"))))
+            cast_at(r, Upgrade.FLAME_STRIKE, target.pos)
         damaged = [b for b in r.buildings(0, B.VAULT) + r.buildings(0, B.TOWN_HALL) if b.hp < b.max_hp]
         free = [w for w in workers(r) if _free(w)]
         if damaged and free:
