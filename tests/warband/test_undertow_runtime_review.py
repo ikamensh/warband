@@ -11,6 +11,7 @@ from warband.sim.model import Hold, dist
 from warband.sim.rules import BuildingType as B, SIM_DT, UnitType as U
 from warband.story.mission_scene import build_world
 from warband.story.new_campaign import CAMPAIGN, MESA
+from warband.story import undertow_dialogue as dialogue
 
 
 def advance(run, seconds, *, until=lambda run: False, act=None):
@@ -154,3 +155,18 @@ def test_mill_remembers_deliberate_shuttering_separately_from_a_lost_vault(destr
     assert flags["undertow_mill_vault"] is False
     assert flags["undertow_mill_shuttered"] is (destroyed == "pylon")
     assert flags["undertow_mill_lost"] is (destroyed == "vault")
+
+
+@pytest.mark.slow
+def test_grove_attack_move_routes_the_crew_and_queues_issas_warrant_aftermath():
+    """Slow: the ordinary army assault follows the authored road and destroys the woodcutters' mill."""
+    run = build_world(CAMPAIGN.mission("undertow_grove"), flags={})
+    world = run.world
+    world.hold([run.get("wrenna")] + [worker.id for worker in run.units(0, U.PEASANT)])
+    world.attack_move([unit.id for unit in run.soldiers(0) if unit.id != run.get("wrenna")],
+                      tuple(run.get("cutter_camp")))
+    advance(run, 180, until=lambda run: run.get("mill_id") not in world.buildings or bool(run.get("parleyed")))
+    assert not run.get("parleyed"), "an army ordered to attack must be allowed to fight"
+    assert run.get("mill_id") not in world.buildings
+    advance(run, 1, until=lambda run: "grove_plan" in run.fired)
+    assert dialogue.GROVE_ROUT_AFTERMATH in run.pending, "the violent route still must reveal Issa's own order"

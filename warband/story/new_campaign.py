@@ -24,7 +24,7 @@ from warband.story.campaign import (
     after, all_of, any_of, at, objective_done, var,
 )
 from warband.story import undertow_dialogue as dialogue
-from warband.sim.model import Building, Point, Pos, World, dist, tile_center
+from warband.sim.model import Attack, AttackMove, Building, Point, Pos, World, dist, tile_center
 from warband.sim.rules import (
     BuildingType as B, Layout, MapTheme, Race, Terrain, UnitType as U, Upgrade,
 )
@@ -492,6 +492,7 @@ def _setup_grove(run: Run) -> None:
     _purse(run, 0, 700, 300, 45)
     _defaults(run, wrenna=band[0].id, pell=guard[0].id, mill_id=mill.id, guardian=guardian.id,
               guardian_hp=700, guardian_pos=[52.5, 14.5], cutter_camp=[29.5, 37.5],
+              grove_crew=[unit.id for unit in cutters + guard],
               moonwell_center=[20.5, 10.5], moon_hall_center=list(hall.center), strip_tiles=[list(t) for t in STRIP])
     _landmark(run, "moon_hall", "Moon Hall", hall.center, kind="bell", state="active")
     _landmark(run, "firebreak", "The marked firebreak line", (44.5, 27.5), kind="gate", radius=5, state="active")
@@ -515,6 +516,25 @@ def _grove_parley(run: Run) -> None:
     run.world.resign(1)
     run.world.take_events()
     _landmark_state(run, "cutter_camp", "ruined")
+
+
+def _grove_hostilities(run: Run) -> bool:
+    mill = run.world.buildings.get(run.get("mill_id"))
+    return (mill is None or mill.hp < mill.max_hp
+            or any(unit.hp < unit.max_hp for unit in run.units(1))
+            or any(unit_id not in run.world.units for unit_id in run.get("grove_crew", [])))
+
+
+def _grove_peaceful_approach(run: Run) -> bool:
+    return any(dist(unit.pos, tuple(run.get("cutter_camp"))) <= 11
+               and not any(isinstance(order, (Attack, AttackMove)) for order in unit.orders)
+               for unit in run.units(0))
+
+
+def _grove_rout_aftermath(run: Run) -> None:
+    run.set("grove_order_revealed", True)
+    _landmark_state(run, "cutter_camp", "ruined")
+    run.say(*dialogue.GROVE_ROUT_AFTERMATH)
 
 
 def _grove_bloom(run: Run) -> None:
@@ -564,19 +584,8 @@ GROVE = Mission(
     id="undertow_grove", title="The Grove That Drinks", act=ACT_2,
     sides=(Side("Deep Grove", Race.ELF), Side("The Woodcutters", Race.HUMAN), Side("The Bloom-Front", Race.ORC)),
     size="Medium", theme=MapTheme.SUMMER, layout=Layout.FOREST, seed=2303,
-    briefing=(
-        Line("", "The Deep Grove is the Hollow's overflow: it drinks the aether-breath and spends it growing. "
-                 "This spring it is drinking at its limit — and someone is cutting into it from the south."),
-        Line("Wrenna", "Saws in my grove, Captain. A marked line of my trees, coming down in rows."),
-        Line("Issa", "Drive them off, Wrenna. Whoever they are."),
-        Line("Wrenna", "Gladly. The Ancient in the stone ring east may wake for blade or for courtesy — my call too, I suppose."),
-    ),
-    debrief=(
-        Line("Wrenna", "One thing more, and it shames me. The grove's root-map is the Chain's own plan — the trees grew along the locks' lines. "
-                       "I showed that map to Sella Voss, in friendship, the winter before she resigned."),
-        Line("Issa", "Then her people know exactly which vaults are locks. Tarnlock is next, and she knows its works better than its wardens."),
-        Line("Wrenna", "I gave her the map with a pot of tea, Captain. Let me be there when it's answered for."),
-    ),
+    briefing=dialogue.GROVE_BRIEFING,
+    debrief=dialogue.GROVE_DEBRIEF,
     setup=_setup_grove,
     objectives=(
         Objective("parley_or_rout", "Woodcutters: parley or raze their mill",
@@ -591,17 +600,20 @@ GROVE = Mission(
                   optional=True),
         Objective("survive_bloom", "Weather the bloom-front", lambda run: bool(run.get("grove_resolved")),
                   shown=lambda run: bool(run.get("bloom_started"))),
-        Objective("wrenna", "Wrenna must survive", lambda run: False,
+        Objective("wrenna", "Wrenna must survive", lambda run: bool(run.get("grove_resolved")),
                   failed=lambda run: run.unit("wrenna") is None, optional=True),
-        Objective("hall", "The Moon Hall must stand", lambda run: False,
+        Objective("hall", "The Moon Hall must stand", lambda run: bool(run.get("grove_resolved")),
                   failed=lambda run: run.hall(0) is None, optional=True),
     ),
     triggers=(
-        Trigger("parley", all_of(lambda run: any(dist(u.pos, tuple(run.get("cutter_camp"))) <= 11 for u in run.units(0)),
-                                 lambda run: not run.get("grove_first_blood")), _grove_parley),
-        Trigger("first_blood", lambda run: any(u.hp < u.info.hp for u in run.units(1)) and "parley" not in run.fired,
+        Trigger("first_blood", all_of(lambda run: not run.get("parleyed"), _grove_hostilities),
                 lambda run: run.set("grove_first_blood", True)),
-        Trigger("grove_plan", objective_done("parley_or_rout"),
+        Trigger("parley", all_of(_grove_peaceful_approach, lambda run: not run.get("grove_first_blood")),
+                _grove_parley),
+        Trigger("rout_aftermath", all_of(lambda run: run.get("mill_id") not in run.world.buildings,
+                                         lambda run: not run.get("parleyed")), _grove_rout_aftermath),
+        Trigger("grove_plan", all_of(objective_done("parley_or_rout"),
+                                     lambda run: bool(run.get("parleyed") or run.get("grove_order_revealed"))),
                 lambda run: run.say(Choice("grove_intent", "Wrenna", "How shall the grove meet the bloom?",
                                           (Option("Cut the firebreak", "cut"), Option("Keep the grove whole", "whole"))))),
         Trigger("bloom", any_of(
