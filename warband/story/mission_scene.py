@@ -19,6 +19,7 @@ from warband.sim import mapgen
 from warband.brains.ai import make_brain
 from warband.story.campaign import LEGACY_CAMPAIGN_ID, Campaign, Mission, Progress, ProgressStore, Run, shifted
 from warband.story.dialog import DialogScene
+from warband.story.landmarks import LandmarkView
 from warband.sim.model import World
 from warband.sim.rules import BuildingType, Difficulty
 from warband.ui.scene import HUD_TOP, OBJECTIVES_GAP, GameScene, PauseScene, _clock, _Overlay, check_save
@@ -150,6 +151,7 @@ class MissionScene(GameScene):
 
     def on_enter(self) -> None:
         super().on_enter()
+        self.landmarks = LandmarkView(self)
         banner = Banner(f"Mission {self.campaign.index(self.mission)}: {self.mission.title}", subtitle=self.mission.act,
                         accent=rgba(self.player.color), hold=2.0)
         self.effects.add(banner)
@@ -157,6 +159,10 @@ class MissionScene(GameScene):
         # panel and the script's first notices wait for it to pass.
         self._banner_until = self.clock + banner.duration
         self._notice_until = max(self._notice_until, self._banner_until)
+
+    def draw(self) -> None:
+        super().draw()
+        self.landmarks.draw()
 
     # -- Objectives panel ---------------------------------------------------------------
 
@@ -200,6 +206,7 @@ class MissionScene(GameScene):
     def _script(self) -> None:
         run = self.run
         run.tick()
+        self.landmarks.update()
         if run.completed:
             texts = [next(o.text for o in self.mission.objectives if o.id == objective_id) for objective_id in run.completed]
             self._notices.append(("Objective complete" if len(texts) == 1 else "Objectives complete", texts, GOOD))

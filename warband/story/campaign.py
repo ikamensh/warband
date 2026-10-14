@@ -18,7 +18,7 @@ simulation advances and then shows the dialogues, toasts and camera cues it queu
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any, Callable
 
 from saga2d import SaveError, SaveManager
@@ -76,6 +76,25 @@ class Choice:
 
 Item = Line | Choice
 Dialog = tuple[Item, ...]
+
+
+def _dialog_data(dialog: Dialog) -> list[dict[str, Any]]:
+    return [{"kind": "line" if isinstance(item, Line) else "choice", **asdict(item)} for item in dialog]
+
+
+def _read_dialog(data: list[dict[str, Any]]) -> Dialog:
+    items: list[Item] = []
+    for saved in data:
+        fields = dict(saved)
+        kind = fields.pop("kind")
+        if kind == "line":
+            items.append(Line(**fields))
+        elif kind == "choice":
+            fields["options"] = tuple(Option(**option) for option in fields["options"])
+            items.append(Choice(**fields))
+        else:
+            raise ValueError(f"unknown dialogue item {kind!r}")
+    return tuple(items)
 
 
 # -- Mission definition ----------------------------------------------------------
@@ -388,7 +407,8 @@ class Run:
 
     def to_dict(self) -> dict[str, Any]:
         return {"id": self.mission.id, "vars": dict(self.vars), "fired": dict(self.fired), "state": dict(self.state),
-                "ai": {str(side): level.value for side, level in self.ai.items()}}
+                "ai": {str(side): level.value for side, level in self.ai.items()},
+                "pending": [_dialog_data(dialog) for dialog in self.pending]}
 
     @classmethod
     def from_dict(cls, mission: Mission, world: World, data: dict[str, Any]) -> Run:
@@ -401,6 +421,7 @@ class Run:
         # already gave are among them.  Dropping them lost the choice the player made before the save (the emissary
         # at Greywater Ford), with it the objective the answer opens and the flag the campaign remembers.
         run.vars = dict(data["vars"])
+        run.pending = [_read_dialog(dialog) for dialog in data.get("pending", [])]
         run.fired = {str(k): float(v) for k, v in data["fired"].items()}
         if "ai" in data:
             run.ai = {int(side): Difficulty(level) for side, level in data["ai"].items()}
