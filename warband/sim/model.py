@@ -25,7 +25,7 @@ from typing import Any, Final, Iterable, Iterator, Literal
 
 from warband.sim import config
 from warband.sim import path as pathing
-from warband.sim.navigation import BLOCKING, Navigation
+from warband.sim.navigation import Navigation
 from warband.sim.races import RACES
 try:
     from warband.sim import _native  # vision's painting in C, built only with the compiled simulation (warband/league/fastsim.py)
@@ -321,8 +321,11 @@ class RuleError(Exception):
 
     def __init__(self, refusal: Refusal | str) -> None:
         self.refusal = refusal if isinstance(refusal, Refusal) else Refusal(refusal)
-        self.short_of = self.refusal.short_of
         super().__init__(self.refusal.message)
+
+    @property
+    def short_of(self) -> str | None:
+        return self.refusal.short_of
 
 
 #: The enum each enum kind of :class:`OrderSpec` carries by value in a log or on the wire.

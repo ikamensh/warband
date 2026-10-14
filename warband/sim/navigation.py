@@ -105,14 +105,16 @@ class Navigation:
         expected = bytearray(tile in BLOCKING for row in self._terrain for tile in row)
         for x, y in building_tiles:
             expected[y * self.width + x] = 1
-        blocked = self.ground.translate(_TRUTH)
-        if blocked != expected:
-            i = next(i for i, (have, want) in enumerate(zip(blocked, expected)) if have != want)
+        # mypyc's zip lowering supports bytes, but rejects bytearray sequences.
+        expected_bytes = bytes(expected)
+        blocked = bytes(self.ground.translate(_TRUTH))
+        if blocked != expected_bytes:
+            i = next(i for i, (have, want) in enumerate(zip(blocked, expected_bytes)) if have != want)
             raise AssertionError(("blocked grid mismatch", (i % self.width, i // self.width)))
         if self._forest is not None:
             trees = bytes(tile is Terrain.TREES for row in self._terrain for tile in row)
-            want = bytes(e & (1 - t) for e, t in zip(expected, trees))
-            have = self._forest.translate(_TRUTH)
+            want = bytes(e & (1 - t) for e, t in zip(expected_bytes, trees))
+            have = bytes(self._forest.translate(_TRUTH))
             if have != want:
                 i = next(i for i, (a, b) in enumerate(zip(have, want)) if a != b)
                 raise AssertionError(("forest grid mismatch", (i % self.width, i // self.width)))

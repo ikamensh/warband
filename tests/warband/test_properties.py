@@ -113,9 +113,9 @@ def test_a_straight_line_never_leaves_the_box_its_ends_span(case) -> None:
     """A line from a point to a point crosses only tiles between theirs, so with those open it is clear however the rest
     lies.  A crowd skipping ahead along its path asked of a line ending exactly on a tile's corner, and the grid walk
     stepped across that corner at its very end, off the map (the race report's seed 27).  The walk itself is what is
-    under test, so this asks the model's private _line_clear."""
+    under test, so this asks navigation's public line-clear query."""
     width, height, a, b = case
-    assert boxed(width, height, a, b)._line_clear(a, b)
+    assert boxed(width, height, a, b).navigation.line_clear(a, b)
 
 
 @MANY
@@ -124,14 +124,14 @@ def test_a_straight_line_never_leaves_the_box_its_ends_span(case) -> None:
 def test_a_straight_line_never_leaves_the_box_its_ends_span_on_many_segments(case) -> None:
     """The same over many segments: a whole Hypothesis run is minutes of the fast tier's budget."""
     width, height, a, b = case
-    assert boxed(width, height, a, b)._line_clear(a, b)
+    assert boxed(width, height, a, b).navigation.line_clear(a, b)
 
 
 def test_the_line_that_stepped_off_the_map() -> None:
     """The exact line of the race report's seed 27 (orcs against humans on Master): it ends on the corner of the map's
     last row, and the walk crossed that corner into the row beyond."""
     world = World(48, 40, [[Terrain.GRASS] * 48 for _ in range(40)], 2)
-    assert world._line_clear((40.588868505613526, 38.11837011087797), (40.0, 39.0))
+    assert world.navigation.line_clear((40.588868505613526, 38.11837011087797), (40.0, 39.0))
 
 
 @given(grids())
