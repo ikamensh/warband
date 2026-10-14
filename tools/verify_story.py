@@ -116,11 +116,10 @@ def main(out: Path, campaign_id: str, size: tuple[int, int], flags: dict) -> Non
                     while not isinstance(game.scene.current, Choice):
                         game.scene.advance()
                     shot(f"phase-{mission_id}-choice")
-                    press(key._1 if mission_id == "undertow_mill" else key._3)
+                    press(key._3)
                     dismiss()
                     press(key.J)
-                    if mission_id == "undertow_weight":
-                        press(key.LEFT)  # the selected answer, before the following instruction
+                    press(key.LEFT)  # the selected answer, before the following instruction
                     shot(f"phase-{mission_id}-journal")
 
                 mission = campaign.mission("undertow_maw")
