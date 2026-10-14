@@ -1,0 +1,522 @@
+"""Play The Undertow's missions headlessly, the way a player must be able to.
+
+    uv run python tools/play_undertow.py                  # every mission, one path each, timings printed
+    uv run python tools/play_undertow.py undertow_maw open # one mission, one path
+
+Every action is an ordinary public ``World`` order (move, attack-move, attack, harvest, salvage,
+build, repair, train, cast) given between ``world.step()`` and ``run.tick()``, exactly as
+``MissionScene`` drives a mission.  Dialogue choices queued in ``run.pending`` are answered by
+writing the chosen value, as ``DialogScene`` does.  Nothing is teleported, no objective is marked
+done by hand, and no purse is edited: if a solver path wins here, the mission is attainable through
+the normal controls.  ``tests/warband/test_undertow.py`` drives these same solvers.
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+from typing import Any, Callable
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from warband.story.campaign import Choice, Run  # noqa: E402
+from warband.story.mission_scene import build_world  # noqa: E402
+from warband.story.new_campaign import CAMPAIGN  # noqa: E402
+from warband.sim.model import RuleError, dist  # noqa: E402
+from warband.sim.rules import BuildingType as B, SIM_DT, Terrain, UnitType as U, Upgrade  # noqa: E402
+
+CHUNK = int(round(1.0 / SIM_DT))  # one simulated second between solver decisions
+
+
+def _state(run: Run) -> str:
+    heroes = {k: (u.hp if (u := run.unit(k)) else None) for k in ("issa", "brakk", "wrenna", "dagna") if k in run.vars}
+    return (f"t={run.world.time:.0f}s objectives={run.state} fired={sorted(run.fired)} "
+            f"soldiers={[len(run.soldiers(s)) for s in range(run.world.seats)]} heroes={heroes} "
+            f"gold={run.world.players[0].gold} lumber={run.world.players[0].lumber} aether={run.world.players[0].aether}")
+
+
+def play_until(run: Run, done: Callable[[Run], bool], *, seconds: float, act: Callable[[Run], None] | None = None,
+               what: str = "condition") -> float:
+    """Step the mission in one-second chunks (acting between them) until *done* or the clock runs out."""
+    start = run.world.time
+    while run.world.time - start < seconds:
+        if done(run):
+            return run.world.time - start
+        if run.lost is not None:
+            raise AssertionError(f"mission lost ({run.lost}) waiting for {what}: {_state(run)}")
+        for _ in range(CHUNK):
+            run.world.step()
+            run.tick()
+        run.world.take_events()
+        if act is not None and not run.won:
+            act(run)
+    if done(run):
+        return run.world.time - start
+    raise AssertionError(f"timed out after {seconds:.0f}s waiting for {what}: {_state(run)}")
+
+
+def answer(run: Run, key: str, value: Any) -> None:
+    """Answer a queued dialogue choice the way DialogScene does: store the value, drop the dialogue."""
+    for dialog in list(run.pending):
+        for item in dialog:
+            if isinstance(item, Choice) and item.key == key:
+                assert value in [o.value for o in item.options], f"{value!r} is not an answer to {key}"
+                run.set(key, value)
+                run.pending.remove(dialog)
+                return
+
+
+def _idle(unit) -> bool:
+    return not unit.orders and not unit.hidden
+
+
+def _last(run: Run) -> dict[str, float]:
+    state = getattr(run, "_solver_last", None)
+    if state is None:
+        state = run._solver_last = {}
+    return state
+
+
+def _every(run: Run, key: str, interval: float) -> bool:
+    last = _last(run)
+    if run.world.time - last.get(key, -1e9) >= interval:
+        last[key] = run.world.time
+        return True
+    return False
+
+
+def fight(run: Run, point, *, sides: tuple[int, ...] = (1,)) -> None:
+    """Soldiers attack-move to the nearest visible enemy's ground, or to *point* when the field is clear.
+
+    Orders are re-issued only to idle soldiers, plus a slow refresh for soldiers not mid-blow, so a
+    fight in progress is never interrupted by the solver's own bookkeeping."""
+    world = run.world
+    soldiers = [u for u in run.soldiers(0) if not u.hidden]
+    if not soldiers:
+        return
+    enemies = [u for side in sides for u in run.units(side) if not u.hidden]
+    if enemies:
+        cx = sum(u.x for u in soldiers) / len(soldiers)
+        cy = sum(u.y for u in soldiers) / len(soldiers)
+        target = min(enemies, key=lambda e: dist(e.pos, (cx, cy))).pos
+    else:
+        target = tuple(point)
+    refresh = _every(run, f"fight:{target}", 8.0)
+    ids = [u.id for u in soldiers if _idle(u) or (refresh and u.state not in ("attack",))]
+    if ids:
+        world.attack_move(ids, target)
+
+
+def attack_building(run: Run, building_id: int) -> None:
+    """Idle soldiers are set on a building; soldiers already marching or fighting keep their orders."""
+    if building_id not in run.world.buildings:
+        return
+    ids = [u.id for u in run.soldiers(0) if _idle(u)]
+    if ids:
+        try:
+            run.world.attack(ids, building_id)
+        except RuleError:
+            pass
+
+
+def train(run: Run, building_type: B, unit_type: U, want_soldiers: int) -> None:
+    """Keep one producer training toward *want_soldiers* total soldiers, when the world allows it."""
+    world = run.world
+    queued = sum(len(b.queue) for b in run.buildings(0))
+    if len(run.soldiers(0)) + queued >= want_soldiers:
+        return
+    for building in run.buildings(0, building_type):
+        if world.can_train(building, unit_type) is None:
+            world.train(building.id, unit_type)
+            return
+
+
+def cast_at(run: Run, spell: Upgrade, point) -> bool:
+    """Cast if the world allows it right now; a refusal is the spell bar's answer, not a solver error."""
+    world = run.world
+    if world.can_cast(0, spell, tuple(point)) is not None:
+        return False
+    world.cast(0, spell, tuple(point))
+    return True
+
+
+def mend_wounded(run: Run) -> None:
+    wounded = [u for u in run.soldiers(0) if u.hp < u.max_hp * 0.6]
+    if wounded:
+        cast_at(run, Upgrade.MEND, min(wounded, key=lambda u: u.hp).pos)
+
+
+def workers(run: Run) -> list:
+    return run.units(0, U.PEASANT)
+
+
+def ensure_buildings(run: Run, plans: list[tuple[B, tuple[int, int]]], *, seconds: float = 900,
+                     act: Callable[[Run], None] | None = None) -> None:
+    """Raise each (type, pos) with ordinary scout-then-build orders, different workers in parallel."""
+    world = run.world
+    builders: dict[tuple[int, int], int] = {}
+
+    def built(btype: B, pos: tuple[int, int]) -> bool:
+        return any(b.type is btype and b.pos == pos and b.done for b in run.buildings(0, btype, done=None))
+
+    def work(r: Run) -> None:
+        if act is not None:
+            act(r)
+        for btype, pos in plans:
+            if built(btype, pos):
+                continue
+            site = next((b for b in r.buildings(0, btype, done=None) if b.pos == pos), None)
+            if site is not None:
+                helpers = [w for w in workers(r) if _idle(w)][:2]
+                if helpers:
+                    try:
+                        world.repair([w.id for w in helpers], site.id)
+                    except RuleError:
+                        pass
+                continue
+            taken = set(builders.values())
+            free = [w for w in workers(r) if w.id not in taken]
+            if not free:
+                continue
+            centre = (pos[0] + 1.0, pos[1] + 1.0)
+            worker = builders.get(pos) and world.units.get(builders[pos]) or min(free, key=lambda w: dist(w.pos, centre))
+            builders[pos] = worker.id
+            if world.can_place(btype, pos, 0) is None:
+                if _idle(worker) or _every(r, f"build:{pos}", 6.0):
+                    try:
+                        world.build(worker.id, btype, pos)
+                    except RuleError:
+                        pass
+            elif _idle(worker):
+                world.move([worker.id], centre)  # walk there first: unexplored ground cannot be built on
+
+    play_until(run, lambda r: all(built(t, p) for t, p in plans), seconds=seconds, act=work,
+               what=f"buildings {plans}")
+
+
+def building_at(run: Run, side: int, btype: B, pos: tuple[int, int]):
+    return next((b for b in run.buildings(side, btype, done=None) if b.pos == pos), None)
+
+
+def _hold_workers(run: Run) -> None:
+    ids = [w.id for w in workers(run)]
+    if ids:
+        run.world.hold(ids)
+
+
+# -- Missions ----------------------------------------------------------------------
+
+
+def solve_mill(run: Run, *, shutter: bool) -> float:
+    """Millfield: fight the surges at the vault, or fell its pylon after the fork and clear the fields."""
+    world = run.world
+    mine = next(b for b in world.mines())
+    for w in workers(run)[:3]:
+        world.harvest([w.id], mine.id)
+
+    def act(r: Run) -> None:
+        answer(r, "mill_intent", not shutter)
+        train(r, B.BARRACKS, U.FOOTMAN, 10)
+        mend_wounded(r)
+        if shutter and "wave_2" in r.fired and r.get("mill_pylon") in r.world.buildings:
+            attack_building(r, r.get("mill_pylon"))
+            fight(r, tuple(r.get("mill_vault_center")))
+        else:
+            fight(r, tuple(r.get("mill_vault_center")))
+
+    return play_until(run, lambda r: r.won, seconds=900, act=act, what="Millfield won")
+
+
+def solve_caravan(run: Run, *, blast_dam: bool) -> float:
+    """The Salt Caravan: salvage the ruins, blast the rockfall, raise the mesa camp, bring the drovers up."""
+    world = run.world
+    start = world.time
+
+    def guard(r: Run) -> None:
+        enemies = [u for u in r.units(1) if any(dist(u.pos, w.pos) < 16 for w in r.units(0))]
+        if enemies:
+            fight(r, enemies[0].pos)
+        else:
+            ids = [u.id for u in r.soldiers(0) if _idle(u)]
+            if ids:
+                r.world.attack_move(ids, (14.5, 27.5))
+
+    def strip(r: Run) -> None:
+        guard(r)
+        ruins = [b for b in r.world.buildings.values() if b.player == 2]
+        for w in workers(r):
+            if _idle(w) and ruins:
+                r.world.salvage([w.id], ruins[0].id)
+
+    play_until(run, lambda r: r.state.get("strip") == "done", seconds=900, act=strip, what="Old Camp stripped")
+
+    party = [u.id for u in run.units(0)]
+    world.move(party, (28.5, 23.5))
+    play_until(run, lambda r: "rockfall" in r.fired and "sappers" in r.fired, seconds=300, act=guard,
+               what="rockfall dropped and sappers arrived")
+
+    def blast(r: Run) -> None:
+        guard(r)
+        rock = r.get("rockfall")
+        sappers = r.units(0, U.SAPPER)
+        if rock in r.world.buildings:
+            if sappers and _every(r, "sapper_blast", 5.0):
+                try:
+                    r.world.attack([sappers[0].id], rock)
+                except RuleError:
+                    pass
+            attack_building(r, rock)
+
+    play_until(run, lambda r: r.get("rockfall") not in r.world.buildings, seconds=600, act=blast,
+               what="causeway reopened")
+
+    if blast_dam:
+        def dam(r: Run) -> None:
+            enemies = [u for u in r.units(1) if u.y < 20]
+            if enemies:
+                fight(r, enemies[0].pos)
+            sappers = r.units(0, U.SAPPER)
+            if sappers and _every(r, "dam_blast", 5.0):
+                try:
+                    r.world.attack([sappers[0].id], r.get("dam_pylon"))
+                except RuleError:
+                    pass
+            attack_building(r, r.get("dam_pylon"))
+
+        soldiers = [u.id for u in run.soldiers(0)] + [u.id for u in run.units(0, U.SAPPER)]
+        world.attack_move(soldiers, (37.0, 8.0))
+        play_until(run, lambda r: bool(r.get("undertow_dam")), seconds=600, act=dam, what="mill-dam blasted")
+
+    everyone = [u.id for u in run.units(0)]
+    world.move(everyone, tuple(run.get("mesa_center")))
+    play_until(run, lambda r: sum(1 for u in r.units(0, U.PEASANT) if u.x >= 44) >= 4, seconds=600, act=guard,
+               what="drovers on the mesa")
+
+    def camp_guard(r: Run) -> None:
+        enemies = [u for u in r.units(1) if any(dist(u.pos, w.pos) < 18 for w in r.units(0))]
+        if enemies:
+            fight(r, enemies[0].pos)
+
+    ensure_buildings(run, [(B.TOWN_HALL, (46, 19)), (B.FARM, (46, 24)), (B.FARM, (50, 24)), (B.FARM, (54, 24))],
+                     seconds=1200, act=camp_guard)
+
+    def settle(r: Run) -> None:
+        camp_guard(r)
+        stray = [w.id for w in r.units(0, U.PEASANT) if _idle(w)]
+        if stray:
+            r.world.move(stray, tuple(r.get("mesa_center")))
+
+    play_until(run, lambda r: r.won, seconds=600, act=settle, what="caravan won")
+    return world.time - start
+
+
+def solve_grove(run: Run, *, cut: bool, guardian: str | None = None) -> float:
+    """The Grove That Drinks: answer the Ancient first, then parley — and cut the strip or rout the crew."""
+    world = run.world
+    start = world.time
+    _hold_workers(run)
+
+    if guardian == "ally":
+        # Wrenna goes alone, on a move order: an escorting archer's idle shot would close this path.
+        world.move([run.get("wrenna")], (47.5, 14.5))
+        play_until(run, lambda r: bool(r.get("undertow_guardian_ally")), seconds=420,
+                   what="Wrenna reaches the Guardian")
+    elif guardian == "core":
+        def boss(r: Run) -> None:
+            g = r.world.units.get(r.get("guardian"))
+            if g is None:
+                return
+            cast_at(r, Upgrade.ENTANGLE, g.pos)
+            fighters = [u.id for u in r.soldiers(0) if _idle(u) and u.id != r.get("wrenna")]
+            if fighters:
+                try:
+                    r.world.attack(fighters, g.id)
+                except RuleError:
+                    pass
+            wrenna = r.unit("wrenna")
+            if wrenna is not None and _idle(wrenna) and dist(wrenna.pos, g.pos) < 7:
+                r.world.move([wrenna.id], (44.5, 14.5))
+
+        army = [u.id for u in run.soldiers(0)]
+        world.move(army, (47.5, 14.5))
+        play_until(run, lambda r: bool(r.get("undertow_guardian_core")), seconds=900, act=boss,
+                   what="Guardian brought down")
+
+    band = [u.id for u in run.soldiers(0)]
+    world.move(band, (29.5, 29.5))
+    play_until(run, lambda r: "parley" in r.fired, seconds=420, what="parley at the woodcutters' camp")
+
+    if cut:
+        def fell(r: Run) -> None:
+            standing = [tuple(t) for t in r.get("strip_tiles") if r.world.terrain_at(tuple(t)) is Terrain.TREES]
+            for w in workers(r):
+                if _idle(w) and standing:
+                    r.world.harvest([w.id], standing.pop(0))
+            fight(r, (44.5, 25.5), sides=(2,))
+
+        play_until(run, lambda r: bool(r.get("bloom_started")), seconds=1200, act=fell, what="firebreak finished")
+    else:
+        def rout(r: Run) -> None:
+            if r.get("mill_id") in r.world.buildings:
+                attack_building(r, r.get("mill_id"))
+            fight(r, tuple(r.get("cutter_camp")), sides=(1,))
+
+        play_until(run, lambda r: bool(r.get("bloom_started")), seconds=900, act=rout, what="woodcutters driven off")
+
+    def weather(r: Run) -> None:
+        fight(r, tuple(r.get("moonwell_center")), sides=(2,))
+        for w in workers(r):
+            if _idle(w):
+                r.world.move([w.id], (15.5, 12.5))
+
+    play_until(run, lambda r: r.won, seconds=1200, act=weather, what="bloom weathered")
+    return world.time - start
+
+
+def solve_weight(run: Run, *, seam: str) -> float:
+    """The Weight: beat off the engineer bands, break the siege, and settle the seam by hand."""
+    assert seam in ("cap", "mine", "guard")
+    world = run.world
+    start = world.time
+    seam_building = world.buildings[run.get("seam_id")]
+    if seam == "mine":
+        for w in workers(run):
+            world.harvest([w.id], seam_building.id)
+    else:
+        _hold_workers(run)
+
+    def defend(r: Run) -> None:
+        answer(r, "seam_intent", seam)
+        train(r, B.BARRACKS, U.FOOTMAN, 12)
+        mend_wounded(r)
+        damaged = [b for b in r.buildings(0, B.VAULT) + r.buildings(0, B.TOWN_HALL) if b.hp < b.max_hp]
+        free = [w for w in workers(r) if _idle(w)]
+        if damaged and free:
+            try:
+                r.world.repair([free[0].id], damaged[0].id)
+            except RuleError:
+                pass
+        fight(r, tuple(r.get("weight_target")))
+
+    if seam == "cap":
+        ensure_buildings(run, [(B.VAULT, tuple(run.get("seam_rift")))], seconds=900, act=defend)
+        play_until(run, lambda r: bool(r.get("seam_settled")), seconds=120, act=defend, what="seam capped")
+
+    def besiege(r: Run) -> None:
+        defend(r)
+        if seam == "mine":  # the defensive win still has to raze the workshop it spends
+            target = r.get("enemy_workshop")
+            if target in r.world.buildings and all(f"band_{i}" in r.fired for i in (1, 2, 3)):
+                attack_building(r, target)
+        else:
+            target = r.get("enemy_hall")
+            if target in r.world.buildings and "band_1" in r.fired:
+                attack_building(r, target)
+
+    play_until(run, lambda r: bool(r.get("siege_broken")), seconds=1800, act=besiege, what="siege broken")
+
+    if seam == "guard":
+        ids = [u.id for u in run.soldiers(0)]
+        world.move(ids, seam_building.center)
+        play_until(run, lambda r: bool(r.get("seam_settled")), seconds=600, act=defend, what="seam guard posted")
+    play_until(run, lambda r: r.won, seconds=900, act=besiege if seam == "mine" else defend, what="Tarnlock won")
+    return world.time - start
+
+
+def solve_maw(run: Run, *, ending: str) -> float:
+    """The Maw, three ways: repair the Keystone, fell the pylons, or ring the rifts with vaults."""
+    assert ending in ("sealed", "open", "ground")
+    world = run.world
+    start = world.time
+    _hold_workers(run)
+    keystone_pos = tuple(run.get("keystone_pos"))
+
+    def enemies_near(r: Run) -> list:
+        return [u for side in (1, 2) for u in r.units(side) if not u.hidden and u.y < 50]
+
+    def defend(r: Run, point) -> None:
+        train(r, B.BARRACKS, U.FOOTMAN, 16)
+        if ending != "ground":
+            mend_wounded(r)
+        near = enemies_near(r)
+        fight(r, near[0].pos if near else point, sides=(1, 2))
+
+    if ending == "sealed":
+        def repair_act(r: Run) -> None:
+            defend(r, tuple(r.get("keystone_center")))
+            keystone = building_at(r, 0, B.MAGE_TOWER, keystone_pos)
+            if keystone is not None and keystone.hp < keystone.max_hp:
+                free = [w.id for w in workers(r) if _idle(w)][:3]
+                if free:
+                    try:
+                        r.world.repair(free, keystone.id)
+                    except RuleError:
+                        pass
+
+        play_until(run, lambda r: r.won, seconds=1800, act=repair_act, what="Maw resealed")
+    elif ending == "open":
+        def demolish(r: Run) -> None:
+            near = enemies_near(r)
+            if near:
+                defend(r, near[0].pos)
+                return
+            train(r, B.BARRACKS, U.FOOTMAN, 16)
+            for pos in (tuple(p) for p in r.get("pylon_pos")):
+                pylon = building_at(r, 1, B.FARM, pos)
+                if pylon is not None:
+                    attack_building(r, pylon.id)
+                    ids = [u.id for u in r.soldiers(0) if _idle(u)]
+                    if ids:
+                        r.world.attack_move(ids, pylon.center)
+                    return
+            fight(r, tuple(r.get("camp_center")), sides=(1, 2))
+
+        play_until(run, lambda r: r.won, seconds=1800, act=demolish, what="Maw opened")
+    else:
+        army = [u.id for u in run.soldiers(0)]
+        world.move(army, tuple(run.get("keystone_center")))
+        plans = [(B.VAULT, tuple(r)) for r in run.get("maw_rifts")]
+        ensure_buildings(run, plans, seconds=1200, act=lambda r: defend(r, tuple(r.get("keystone_center"))))
+
+        def hold(r: Run) -> None:
+            defend(r, tuple(r.get("keystone_center")))
+            for pos in (tuple(p) for p in r.get("maw_rifts")):
+                vault = building_at(r, 0, B.VAULT, pos)
+                if vault is not None and vault.hp < vault.max_hp:
+                    free = [w.id for w in workers(r) if _idle(w)][:1]
+                    if free:
+                        try:
+                            r.world.repair(free, vault.id)
+                        except RuleError:
+                            pass
+
+        play_until(run, lambda r: r.won, seconds=1200, act=hold, what="Maw grounded")
+    return world.time - start
+
+
+PATHS: dict[str, dict[str, Callable[[Run], float]]] = {
+    "undertow_mill": {"hold": lambda r: solve_mill(r, shutter=False), "shutter": lambda r: solve_mill(r, shutter=True)},
+    "undertow_caravan": {"ford": lambda r: solve_caravan(r, blast_dam=False), "dam": lambda r: solve_caravan(r, blast_dam=True)},
+    "undertow_grove": {"cut": lambda r: solve_grove(r, cut=True, guardian="ally"),
+                       "whole": lambda r: solve_grove(r, cut=False, guardian="core")},
+    "undertow_weight": {"cap": lambda r: solve_weight(r, seam="cap"), "mine": lambda r: solve_weight(r, seam="mine"),
+                        "guard": lambda r: solve_weight(r, seam="guard")},
+    "undertow_maw": {"sealed": lambda r: solve_maw(r, ending="sealed"), "open": lambda r: solve_maw(r, ending="open"),
+                     "ground": lambda r: solve_maw(r, ending="ground")},
+}
+DEFAULT_PATHS = {"undertow_mill": "hold", "undertow_caravan": "ford", "undertow_grove": "cut",
+                 "undertow_weight": "cap", "undertow_maw": "sealed"}
+
+
+def main(argv: list[str]) -> int:
+    chosen = [(argv[0], argv[1] if len(argv) > 1 else DEFAULT_PATHS[argv[0]])] if argv else list(DEFAULT_PATHS.items())
+    for mission_id, path in chosen:
+        run = build_world(CAMPAIGN.mission(mission_id), flags={})
+        seconds = PATHS[mission_id][path](run)
+        print(f"{mission_id} via {path}: won={run.won} in {seconds:.0f}s of mission time; remembered={run.remembered()}")
+        assert run.won
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

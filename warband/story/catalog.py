@@ -1,10 +1,11 @@
 """Playable campaigns and their stable ids, shared by the campaign screen, CLI and save loader."""
 
 from warband.story.campaign import Campaign, Mission
-from warband.story.missions import CAMPAIGN
+from warband.story.missions import CAMPAIGN as THORNWOOD
+from warband.story.new_campaign import CAMPAIGN as UNDERTOW
 
-CAMPAIGNS = (CAMPAIGN,)
-DEFAULT_CAMPAIGN = CAMPAIGN
+CAMPAIGNS = (UNDERTOW, THORNWOOD)
+DEFAULT_CAMPAIGN = UNDERTOW
 
 
 def get_campaign(campaign_id: str) -> Campaign:
