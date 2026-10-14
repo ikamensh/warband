@@ -2,6 +2,8 @@
 
 import time
 
+import pytest
+
 from saga2d import Button, Game, MatchMenu
 from saga2d.multiplayer_ui import MatchLobby
 from saga2d.testing.online import server_fixture
@@ -11,8 +13,9 @@ from warband.ui.style import build_theme
 from warband.ui.title import TitleScene
 
 
+@pytest.mark.slow
 def test_creating_another_online_room_generates_new_terrain(server_url, tmp_path, monkeypatch):
-    """Two Create room clicks in the same menu produce distinct server-owned maps."""
+    """Slow: two Create room clicks use a real websocket server and generate two authoritative maps."""
     monkeypatch.setenv("SAGA2D_SERVER_URL", server_url)
     game = Game("room seeds", backend="mock", resolution=(1280, 800),
                 theme=build_theme(), save_dir=tmp_path / "saves")
