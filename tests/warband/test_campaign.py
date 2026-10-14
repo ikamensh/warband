@@ -401,8 +401,11 @@ def test_a_mission_save_keeps_the_answer_the_player_gave_it(game) -> None:
 def test_a_loaded_mission_keeps_what_the_player_had_seen_their_groups_and_the_autosave_clock(game) -> None:
     """A mission loaded in the match comes back the way a skirmish does, through the same restore step: the raiders'
     camp, seen once and burned since out of sight, still stands as it was seen; the control groups answer; and the
-    autosave falls due at the next interval, not on the first frames."""
+    autosave falls due at the next interval, not on the first frames. The same run identity keeps the
+    mission's frame telemetry together across the reload."""
     scene = start(game, "hollowmere")
+    run_id = scene.record.run_id
+    assert scene.telemetry_context()["run"] == run_id
     world = scene.world
     camp = world.player_buildings(1)[0]
     world.reveal_all(0)
@@ -418,6 +421,7 @@ def test_a_loaded_mission_keeps_what_the_player_had_seen_their_groups_and_the_au
     press(game, "f9")  # loaded in the match: a new mission scene, as from the title
     loaded = game.scene
     assert isinstance(loaded, MissionScene) and loaded is not scene and "Loaded" in loaded.status
+    assert loaded.record.run_id == run_id and loaded.telemetry_context()["run"] == run_id
     assert loaded.groups == {"1": band} and loaded.world.time < loaded.record.autosave_at <= loaded.world.time + AUTOSAVE_EVERY
     game.tick(1 / 60)
     seen = loaded.view.sighting(camp.id)

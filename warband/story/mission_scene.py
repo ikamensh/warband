@@ -18,7 +18,7 @@ from saga2d.effects import Banner, Toast
 from warband.sim import mapgen
 from warband.brains.ai import make_brain
 from warband.ui.match import LocalMatch
-from warband.ui.match_record import check_save
+from warband.ui.match_record import check_save, saved_run_id
 from warband.story.campaign import Campaign, Mission, Progress, ProgressStore, Run, shifted
 from warband.story.dialog import DialogScene
 from warband.sim.model import World
@@ -123,11 +123,11 @@ class MissionScene(GameScene):
 
     AUTOSAVE_SLOT = CAMPAIGN_SLOT
 
-    def __init__(self, campaign: Campaign, run: Run, *, difficulty: Difficulty, settings=None) -> None:
+    def __init__(self, campaign: Campaign, run: Run, *, difficulty: Difficulty, settings=None, run_id: str | None = None) -> None:
         execution = LocalMatch(run.world, run.mission.seed, difficulty=difficulty, player=run.human,
                                brains=[make_brain(side, shifted(level, difficulty), run.mission.seed)
                                        for side, level in run.ai.items() if run.world.players[side].alive])
-        super().__init__(run.world, run.mission.seed, difficulty=difficulty, settings=settings, ranked=False, execution=execution)
+        super().__init__(run.world, run.mission.seed, difficulty=difficulty, settings=settings, ranked=False, execution=execution, run_id=run_id)
         self.campaign = campaign
         self.run = run
         self.mission = run.mission
@@ -271,7 +271,7 @@ def load_mission(state: dict[str, Any], *, settings=None) -> MissionScene:
     except (KeyError, TypeError, ValueError) as error:
         raise SaveError(f"the save's mission block is damaged ({error})") from error
     name_sides(world, mission)
-    return MissionScene(CAMPAIGN, run, difficulty=Difficulty(state["difficulty"]), settings=settings)
+    return MissionScene(CAMPAIGN, run, difficulty=Difficulty(state["difficulty"]), settings=settings, run_id=saved_run_id(state))
 
 
 class MissionPauseScene(PauseScene):

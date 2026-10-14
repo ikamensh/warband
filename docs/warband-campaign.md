@@ -118,7 +118,8 @@ a choice made in the debrief is written after it.
 up by race and unit type at draw time, so new graphics change nothing about a
 saved campaign or a saved mission (`tests/warband/test_campaign.py` loads a
 mission save through the title's Continue and a foreign-version save through
-the campaign screen).
+the campaign screen). A resumed mission keeps its saved run identity, so frame
+telemetry before and after a load names the same match.
 
 ## Evidence
 
@@ -129,7 +130,7 @@ the campaign screen).
   a replayed mission asking again, a mission save resumed through Continue with
   its script intact, a mission lost in the frame before its save still lost
   after it, a loaded mission keeping what the player had seen, their control
-  groups and the autosave clock (one restore step with the skirmish's), a save
+  groups, run identity and the autosave clock (one restore step with the skirmish's), a save
   from another version costing the mission and not the campaign, Start over,
   the escort won and lost, the dialogue's branching and skipping. `tests/warband/test_layout.py` checks the campaign screen
   (fresh, under way and over unreadable progress), a mission with its
