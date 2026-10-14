@@ -23,7 +23,16 @@ variable with a 300 threshold, plus a third settle act (post a guard).
 GROUND reads an explicit 450-aether threshold, and the first committed
 ending locks the other two resolutions out. Solver mission-time for a full
 run is roughly 15–25 minutes across all forks, well under the 50–65 below —
-the blueprint's rosters and timers were compressed, not padded.
+the blueprint’s rosters and timers were compressed, not padded. That range predates the review’s
+concluding encounters and is not a measured first-time player duration.
+The independent story, mechanics, and UI/delivery review tightened the implemented version:
+Issa answers Brakk’s accusation, Sella is encountered before the finale, violent routes cannot
+skip essential revelations, and all three endings face an actual concluding crisis. OPEN now
+requires Issa to operate the marked Relief Sluice with Dagna’s corrected survey before release;
+GROUND must defeat its final surge. The player guide records current runtime behavior. The
+remaining sections preserve the original world and campaign blueprint rather than replacing it
+with an implementation listing.
+
 Every mechanic, file, and seam named below was checked against the code as it
 stands: `warband/story/{campaign,missions,mission_scene,dialog}.py`,
 `docs/warband-{campaign,magic,races,maps}.md`, `docs/controls.md`,

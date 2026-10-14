@@ -8,31 +8,35 @@ World and story design: `docs/campaign-setting.md`. This note records what shipp
 
 Each playable keeper has a named map tag and an authored portrait in dialogue, the selection
 card and the army grid. **F3** selects and centres the current keeper; that link follows a rescue
-or saved mission. Detailed orders appear in dialogue; the HUD keeps the objectives compact.
+or saved mission. Detailed orders appear in dialogue; the HUD keeps the objectives compact. The first ending act
+commits its course; the briefing names these acts before play begins.
 
 ## The missions
 
 | # | Mission (id) | You | Wins by | The choice (by action) |
 |---|---|---|---|---|
-| 1 | Millfield (`undertow_mill`) | Humans | Hold the straining vault through two surges, or shutter it and clear the fields | Destroy the hostile lock-pylon on the north bank → vault shuttered (`undertow_mill_vault`) |
-| 2 | The Salt Caravan (`undertow_caravan`) | Orcs | Salvage the Old Camp, raise a hall + three farms on the Broken Tooth mesa, bring ≥5 drovers up | Blast the rockfall with a sapper or walk the south ford; optionally blast the mill-dam pylon, sweeping the Open Hand camp (`undertow_dam`) |
+| 1 | Millfield (`undertow_mill`) | Humans | Hold the straining vault through two surges, or shutter it and clear the fields | Hold (`undertow_mill_vault`), deliberately destroy the north-bank pylon (`undertow_mill_shuttered`), or lose the vault (`undertow_mill_lost`) |
+| 2 | The Salt Caravan (`undertow_caravan`) | Orcs | Salvage the Old Camp, raise a hall + three farms on the Broken Tooth mesa, keep ≥5 live drovers on the mesa at completion | Blast the rockfall with a sapper or walk the south ford; optionally blast the mill-dam pylon, sweeping the Open Hand camp (`undertow_dam`) |
 | 3 | The Grove That Drinks (`undertow_grove`) | Elves | Choose cut/whole in dialogue, then fell 6 of the 8 marked firebreak trees, or muster at the Moon Hall and weather both bloom waves | Cut/whole (`undertow_grove_cut`); the Ancient Guardian: Wrenna alone in peace (`undertow_guardian_ally`) or bring it down (`undertow_guardian_core`) |
-| 4 | The Weight (`undertow_weight`) | Dwarves | Raze the Open Hand hall, or raze their workshop and break all three engineer bands — and settle the seam | Cap the seam's throat-rift with a vault (`undertow_seam_capped`), haul 300 gold out of it (`undertow_seam_mined`), or post soldiers on the seam landmark and close the face |
+| 4 | The Weight (`undertow_weight`) | Dwarves | Raze the Open Hand hall, or raze their workshop and break all three engineer bands — and settle the seam | Cap the seam's throat-rift with a vault (`undertow_seam_capped`), haul 300 gold out of it (`undertow_seam_mined`), or post soldiers on the seam landmark after the siege and close the face (`undertow_seam_guarded`) |
 | 5 | The Maw (`undertow_maw`) | Humans | One committed ending (below) | The first ending act — repairing the Keystone, felling a seal-pylon, finishing a Maw vault — locks the others out |
 
 ## The three endings
 
-- **RESEAL** — repair the Keystone (a player Mage Tower at 25 % in the crater) to full, then break
+- **RESEAL** — order **peasants to repair** the Keystone (a player Mage Tower at 25 % in the crater) to full, then break
   Sella's final assault on it. It must still stand fully repaired at victory; a rebuilt tower on
-  the same footprint counts.
-- **OPEN** — destroy the three hostile seal-pylons (south, west, east gates). Sella stands her side
-  down; ride out one bloom wave of wild elementals and wolves.
+  the same footprint counts. The Mend spell heals units; it cannot repair buildings.
+- **OPEN** — after the first pylon commits this ending, send **Issa to the marked Relief Sluice**
+  inside the north rim. She opens the bypass using Dagna’s corrected seam survey. Destroy the
+  three hostile seal-pylons (south, west, east gates); release waits for the bypass. Sella stands
+  her side down permanently, and the Keepers must defeat the escaping bloom.
 - **GROUND** — a finished vault on each of the three Maw rifts, held until the aether store reaches
-  **450**. Needs somewhere for the breath to go: the grove whole, or the Guardian, living or as
+  **450**, and defeat the final surge that begins at the first completed vault. Needs somewhere for the breath to go: the grove whole, or the Guardian, living or as
   heart-stone. Without one, the mission says so in dialogue and the other endings remain.
 
 Exactly one of `undertow_ending_sealed/open/ground` is remembered; the epilogue composes a verse
-per flag. Every remembered flag defaults in setup and is set by an action before victory, so
+per flag. Sparing or destroying Sella’s refuge mage tower is also remembered and changes the closing
+account of its engineers and wounded crews. Every remembered flag defaults in setup and is set by an action before victory, so
 leaving at the result screen never skips one.
 
 ## What carries into the Maw
@@ -41,7 +45,8 @@ leaving at the result screen never skips one.
   (4 footmen, 2 archers) in the player's colours.
 - Dam blown → one farm fewer, +800 gold of salvaged millstones.
 - Guardian ally → a player-owned Ancient Guardian at the camp. Heart-stone → +120 starting aether.
-- Seam mined → +2000 gold and a wild-elemental bloom at a Maw rift every 100 s (five scripted);
+- Seam mined → +2000 gold and a wild-elemental bloom immediately on ending commitment, then
+  further blooms at 200, 300, 400 and 500 seconds; all arrived pressure bands must be defeated;
   also capped → half the gold and no blooms. Capped alone → quiet rifts.
 - Starting supply (hall + up to six farms) covers every combination of these arrivals; a test
   audits the combinations.
@@ -61,10 +66,11 @@ variable, never as a purse delta. No simulation rules changed; the sim fingerpri
 knowledge, queued dialogue choices answered as the dialog scene does), and
 `tests/warband/test_undertow.py` drives it: fast-tier build/supply/landmark invariants, slow-tier
 whole-mission win paths for every fork and ending, loss paths, a mid-phase `Run` round-trip, a
-standard-loader save, the ending choice-lock, and the Guardian retirement. Solver mission-time on
-the source simulation (a first human run is slower): Millfield 108 s hold / 69 s shutter; Caravan
-161 s ford / 186 s dam; Grove 109 s cut / 290 s whole (includes the boss and rebuilding); Weight
-493 s cap / 110 s mine / 215 s guard; Maw 48 s reseal / 71 s open / 112 s ground.
+standard-loader save, the ending choice-lock, and the Guardian retirement. Solver mission-time is measured by the public-order driver; a first human run is slower.
+The campaign keeps five short missions rather than adding waiting time to reach the blueprint’s
+original length target. Review regressions also cover current caravan occupancy, exhausted
+builders, deliberate parley, outstanding siege attackers, keeper rescues, ending commitment,
+the corrected release and a save during the final crisis.
 
 Known simplifications against the design blueprint are listed at the top of
 `docs/campaign-setting.md`.

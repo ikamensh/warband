@@ -159,7 +159,7 @@ MAW_BRIEFING: Dialog = (
 MAW_COMMIT_SEALED: Dialog = (
     Line("Issa", "We reseal. Public gauges on every Step, spell quotas when pressure rises, "
                  "and no vent without the downstream keeper's consent."),
-    Line("Dagna", "Mend the Keystone fully, then keep it whole through their last assault. "
+    Line("Dagna", "Repair the Keystone fully with peasants, then keep it whole through their last assault. "
                   "A sealed lock still needs a watch. These limits will be our work, not just words."),
     Line("Sella", "Quotas can be bought, Issa. Councils can forget. I will not leave another lambing camp beneath your promises."),
 )
