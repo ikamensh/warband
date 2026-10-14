@@ -338,8 +338,7 @@ def test_a_summoning_over_water_stands_its_elementals_on_the_nearest_ground_or_i
     world.players[0].aether = 1000
     for y in range(2, 20):
         for x in range(14, 30):
-            world.terrain[y][x] = Terrain.WATER
-            world._blocked[y * world.width + x] = 1  # staging a lake: the grid follows the terrain
+            world.navigation.set_terrain((x, y), Terrain.WATER)  # staging a lake: the grid follows the terrain
     world.cast(0, Upgrade.SUMMON, (15.5, 10.5))  # two tiles off the shore
     assert all(world.passable(u.tile[0], u.tile[1]) for u in world.units.values() if u.type is UnitType.AETHER_ELEMENTAL)
     world.players[0].cooldowns.clear()

@@ -41,7 +41,7 @@ if __name__ == "__main__":  # run as a program, not imported as a library
 from warband.sim import mapgen  # noqa: E402
 from warband.brains.ai import make_brain  # noqa: E402
 from warband.brains.pro_ai import PRO, ProBrain, RaceBrain  # noqa: E402
-from warband.sim.model import BLOCKING, RuleError, World  # noqa: E402
+from warband.sim.model import RuleError, World  # noqa: E402
 from warband.sim.rules import AETHER_TICKS, BUILDINGS, CHOICES, LEVEL_NAMES, SIM_DT, BuildingType, Difficulty, Terrain, Upgrade  # noqa: E402
 
 GAME_MINUTES = 15
@@ -57,7 +57,7 @@ def check_world(world: World) -> None:
             assert world.in_bounds(tile), ("building off map", b)
             assert tile not in blocked_by_building, ("buildings overlap", b)
             blocked_by_building.add(tile)
-            assert world._blocked[tile[1] * world.width + tile[0]], ("building tile not blocked", b)
+            assert world.navigation.ground[tile[1] * world.width + tile[0]], ("building tile not blocked", b)
         if b.builder is not None:
             builder = world.units.get(b.builder)
             assert builder is not None and builder.constructing == b.id, ("dangling builder", b)
@@ -65,21 +65,7 @@ def check_world(world: World) -> None:
         for tile in b.tiles():  # a ley rift is kept for the vault standing square on it
             rift = world.rift_at(tile)
             assert rift is None or (b.type is BuildingType.VAULT and b.pos == rift), ("a building on a ley rift", b, rift)
-    expected = bytearray(t in BLOCKING for row in world.terrain for t in row)
-    for x, y in blocked_by_building:
-        expected[y * world.width + x] = 1
-    blocked = world._blocked.translate(TRUTH)
-    if blocked != expected:
-        i = next(i for i, (have, want) in enumerate(zip(blocked, expected)) if have != want)
-        raise AssertionError(("blocked grid mismatch", (i % world.width, i // world.width)))
-    forest = world._forest  # the forest walkers' grid, once a treant has asked for it: trees open, the rest as the map's
-    if forest is not None:
-        trees = bytes(t is Terrain.TREES for row in world.terrain for t in row)
-        want = bytes(e & (1 - t) for e, t in zip(expected, trees))
-        have = forest.translate(TRUTH)
-        if have != want:
-            i = next(i for i, (a, b) in enumerate(zip(have, want)) if a != b)
-            raise AssertionError(("forest grid mismatch", (i % world.width, i // world.width)))
+    world.navigation.check(blocked_by_building)
     for u in world.units.values():
         assert 0 < u.hp <= u.max_hp, ("unit hp", u)
         assert 0 <= u.x <= world.width and 0 <= u.y <= world.height, ("unit off map", u)

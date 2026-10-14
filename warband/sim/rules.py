@@ -554,6 +554,12 @@ class SpellInfo:
         return self.touches is Touch.OWN
 
 
+def spell_damage(info: SpellInfo, gap: float) -> float:
+    """Damage *gap* tiles from a spell's point, falling linearly to its edge's damage."""
+    share = min(max(gap, 0.0), info.radius) / info.radius
+    return info.damage - (info.damage - info.edge) * share
+
+
 #: How much dearer a cast is beyond the reach of every finished vault: its aether and its cooldown both.
 SPELL_FAR: Final = config.current().spell_far
 LEVEL_NAMES: Final = config.LEVELS  # "I", "II", "III": what the HUD and the tower's card call the levels

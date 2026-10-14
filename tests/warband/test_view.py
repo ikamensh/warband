@@ -330,11 +330,10 @@ def test_a_site_shows_its_foundation_then_its_walls_raised_and_a_battered_buildi
 
 def flood(world, x0: int, y0: int, size: int = 3) -> None:
     """Water painted into a generated map where the test needs it, as map generation carves a road: the terrain and
-    the grid the model paths on (the World has no public way to change a tile, and nothing a player does can)."""
+    the grid the model paths on, through navigation's terrain-editing interface."""
     for y in range(y0, y0 + size):
         for x in range(x0, x0 + size):
-            world.terrain[y][x] = Terrain.WATER
-            world._blocked[y * world.width + x] = 1
+            world.navigation.set_terrain((x, y), Terrain.WATER)
 
 
 def test_water_moves_once_its_phases_are_painted_while_land_stays_still() -> None:

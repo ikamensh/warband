@@ -12,7 +12,7 @@ import math
 from collections.abc import Iterator
 from typing import Final
 
-from warband.sim.model import Attack, Camp, Event, Move, Point, Unit, World, dist, hypot, int_sum, plain_sum, tile_center
+from warband.sim.model import Attack, Camp, Event, Move, Point, Unit, World, entity_point, dist, hypot, int_sum, plain_sum, tile_center
 from warband.sim.rules import (CAMP_CALM, CAMP_HOLD, CAMP_POST, CAMP_REGEN, CAMP_WATCH, SIM_DT,
                                CAMP_ENCOUNTERS, BuildingType, CampInfo, UnitType)
 
@@ -151,10 +151,10 @@ def _rouse(world: World, camp: Camp, standing: list[tuple[Unit, Point]], middles
                 dx, dy = guard.x - close.x, guard.y - close.y
                 length = hypot(dx, dy)
                 if length > 0.01:
-                    spot = world._clamp((guard.x + dx / length * 2.0, guard.y + dy / length * 2.0))
+                    spot = world.navigation.clamp((guard.x + dx / length * 2.0, guard.y + dy / length * 2.0))
                     if (any(dist(spot, middle) <= CAMP_HOLD for middle in middles)
                             and world.passable(int(spot[0]), int(spot[1]))
-                            and world._line_clear(guard.pos, spot)):
+                            and world.navigation.line_clear(guard.pos, spot)):
                         guard.orders.clear()
                         guard.orders.append(Move(spot))
                         continue
@@ -162,7 +162,7 @@ def _rouse(world: World, camp: Camp, standing: list[tuple[Unit, Point]], middles
         if isinstance(order, Attack):
             current = world.entity(order.target)
             if (current is not None and current.hp > 0
-                    and any(dist(world._target_point(current), middle) <= CAMP_HOLD + CHASE_SLACK for middle in middles)
+                    and any(dist(entity_point(current), middle) <= CAMP_HOLD + CHASE_SLACK for middle in middles)
                     and (guard.type is not UnitType.WOLF or current is target)):
                 continue
         guard.orders.clear()
@@ -255,7 +255,7 @@ def place(world: World, lair_pos: tuple[int, int], roster: list[UnitType], hoard
     camp = Camp(lair=lair.id, kinds=[], posts=[], guards=[], gold=hoard, origin=lair.center, watch=watch)
     for i, kind in enumerate(roster):
         angle = 2.0 * math.pi * i / len(roster) + math.pi / 4.0
-        spot = world._clamp((cx + math.cos(angle) * CAMP_POST, cy + math.sin(angle) * CAMP_POST))
+        spot = world.navigation.clamp((cx + math.cos(angle) * CAMP_POST, cy + math.sin(angle) * CAMP_POST))
         tile = (int(spot[0]), int(spot[1]))
         if not world.passable(tile[0], tile[1]) or world.building_at(tile) is not None:
             held = world.building_at((int(cx), int(cy)))
@@ -331,7 +331,7 @@ def _mirror_spots(world: World, lair_pos: tuple[int, int], offsets: list[Point],
     ix, iy = lair_pos[0] + 1.5, lair_pos[1] + 1.5  # a lair is 3x3: its middle, like :func:`place` reads it
     put_x = -1.0 if flip_x else 1.0
     put_y = -1.0 if flip_y else 1.0
-    return [world._clamp((ix + put_x * dx, iy + put_y * dy)) for dx, dy in offsets]
+    return [world.navigation.clamp((ix + put_x * dx, iy + put_y * dy)) for dx, dy in offsets]
 
 
 def _mirror_camp(world: World, lair_pos: tuple[int, int], info: CampInfo, encounter: str, spots: list[Point],

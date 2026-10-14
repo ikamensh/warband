@@ -207,7 +207,7 @@ def can_reach_point(world: World, unit: Unit, point: Point) -> bool:
 
     goal = nearest_passable((int(point[0]), int(point[1])), open_tile,
                             max_radius=max(world.width, world.height), prefer=unit.tile)
-    regions = world._regions_of(unit)
+    regions = world.navigation.regions(forest=unit.forest)
     return goal is not None and regions.label(unit.tile) == regions.label(goal)
 
 
@@ -656,7 +656,7 @@ def site_inputs(world: World, building_type: BuildingType, player: int, taken: S
     only a vault may stand on, square."""
     blockers = world.placement_blockers(building_type, player)
     standing, mines = blockers if blockers is not None else ([], [])
-    return (blockers is not None, BUILDINGS[building_type].size, taken, world.terrain, Terrain.GRASS, world._blocked,
+    return (blockers is not None, BUILDINGS[building_type].size, taken, world.terrain, Terrain.GRASS, world.navigation.ground,
             world.explored[player], standing, mines, [b.rect for b in world.player_buildings(player)], world.width,
             world.height, MINE_CLEARANCE, world.rifts, RIFT, building_type is BuildingType.VAULT)
 
@@ -939,7 +939,7 @@ class Brain:
         if not damaged:
             return
         b = min(damaged, key=lambda b: b.hp / b.max_hp)
-        if world._nearest_enemy(self.player, b.center, 8.0, air=False) is not None:  # a flyer overhead does not stop the hammer
+        if world.nearest_enemy(self.player, b.center, 8.0, air=False) is not None:  # a flyer overhead does not stop the hammer
             return
         spare = [p for p in self._peasants(world) if not p.hidden and p.carrying is None and not isinstance(p.order, Build)]
         if not spare:

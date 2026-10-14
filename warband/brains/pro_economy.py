@@ -165,7 +165,7 @@ class _ProBrainEconomy(_ProBrainCore):
         for target in damaged:
             if mending >= profile.repair_crew or not spare:
                 return
-            under_fire = world._nearest_enemy(self.player, target.center, 8.0, air=False) is not None
+            under_fire = world.nearest_enemy(self.player, target.center, 8.0, air=False) is not None
             if under_fire and not (profile.repair_under_fire
                                    and target.type in (BuildingType.TOWER, BuildingType.TOWN_HALL)):
                 if profile.repair_crew <= 1:

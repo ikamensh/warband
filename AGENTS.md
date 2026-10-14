@@ -171,8 +171,9 @@ keeps where code goes and the rules below.
   every race's table holds it, so asking never fails, and whether a race trains
   it is `RaceInfo.unit_allowed` (`World.foreign_unit` in the rules): whatever
   lists a building's `trains` for a player filters by it. A `forest` unit walks
-  `World.ground_of`, so a write to `_blocked` outside `_set_blocked` must keep
-  `World._forest` in step (`docs/unit-motion.md` part 11). A blow that is its
+  `World.ground_of`; `World.navigation` owns both static grids and their regions.
+  Terrain edits go through `navigation.set_terrain`, footprints through
+  `navigation.set_footprint` (`docs/unit-motion.md` part 11). A blow that is its
   striker's end (`blast`) removes it spent: no death event and no loss.
 - Every unit type a race fields, a spell summons, and every creature, wears a
   painted sheet or stands in `textures.UNPAINTED_UNITS` with the reason and the

@@ -350,7 +350,7 @@ class Run:
             raise ValueError(f"a {building_type.value} is not the size of a {building.type.value}")
         world = self.world
         del world.buildings[building.id]
-        world._set_blocked(building, False)
+        world.navigation.set_footprint(building.rect, False)
         placed = world.place_building(side, building_type, building.pos)
         world.update_vision()
         return placed

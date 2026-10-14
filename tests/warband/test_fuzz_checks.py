@@ -34,7 +34,7 @@ def test_a_sound_world_passes() -> None:
 def test_a_blocked_grid_out_of_step_with_the_map_is_named_at_its_tile(tile, flag) -> None:
     world = sound_world()
     x, y = tile
-    world._blocked[y * world.width + x] = flag  # a private write: the corruption the check exists to find
+    world.navigation.ground[y * world.width + x] = flag  # a private write: the corruption the check exists to find
     with pytest.raises(AssertionError) as caught:
         check_world(world)
     assert caught.value.args[0] in (("blocked grid mismatch", tile), ("building tile not blocked", world.building_at(tile)))

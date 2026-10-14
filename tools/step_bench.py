@@ -62,8 +62,7 @@ def battle_world(seed: int = 3, width: int = 64, height: int = 48) -> World:
     for y in range(hy + 3, min(height, hy + 19)):
         for x in range(hx + 3, min(width, hx + 40)):
             if w.building_at((x, y)) is None:
-                w.terrain[y][x] = Terrain.GRASS
-                w._blocked[y * w.width + x] = 0
+                w.navigation.set_terrain((x, y), Terrain.GRASS)
     w.reveal_all(0)
     types = [UnitType.FOOTMAN, UnitType.ARCHER, UnitType.KNIGHT, UnitType.FLYING_MACHINE, UnitType.CATAPULT, UnitType.CLERIC]
     for i in range(75):

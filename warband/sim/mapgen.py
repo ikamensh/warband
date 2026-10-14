@@ -1267,7 +1267,7 @@ def _certify_opening(world: World, centres: list[Point], doors: list[Pos], safe_
     The stamp is production's own (:func:`camps.navigation`, nearest-edge with unit clearance),
     not a looser centre mask: a bypass this certifies is one the brains' routing accepts too.
     """
-    grid = camping.navigation(world, 0, world._blocked, set(), _CERTIFY_MARGIN, lairs=centres)
+    grid = camping.navigation(world, 0, world.navigation.ground, set(), _CERTIFY_MARGIN, lairs=centres)
     shut = frozenset((x, y) for y in range(world.height) for x in range(world.width) if grid[y * world.width + x])
     region = reachable(world, doors[0], shut=shut)
     return all(goal in region for goal in doors[1:] + safe_doors)
@@ -1302,7 +1302,7 @@ def _walk_cost(world: World, start: Pos, goal: Pos, shut: set[Pos]) -> int | Non
 
 def _watch_tiles(world: World, centres: list[Point]) -> set[Pos]:
     """Tiles production routing avoids round the planned *centres*: the bypass's other side."""
-    grid = camping.navigation(world, 0, world._blocked, set(), _CERTIFY_MARGIN, lairs=centres)
+    grid = camping.navigation(world, 0, world.navigation.ground, set(), _CERTIFY_MARGIN, lairs=centres)
     return {(x, y) for y in range(world.height) for x in range(world.width) if grid[y * world.width + x]}
 
 
@@ -1558,10 +1558,7 @@ def _clear_arena(world: World, cv: _Canvas, centre: Point) -> None:
     """Clear only trees, preserving protected walls and both walkers' static grids."""
     for tx, ty in cv.orbit(cv.within(centre, 4)):
         if (tx, ty) not in cv.protected and world.terrain[ty][tx] is Terrain.TREES:
-            world.terrain[ty][tx] = Terrain.GRASS
-            world._blocked[ty * world.width + tx] = 0
-            if world._forest is not None:
-                world._forest[ty * world.width + tx] = 0
+            world.navigation.set_terrain((tx, ty), Terrain.GRASS)
 
 
 def _orbit_mirrors(cv: _Canvas) -> list[tuple[bool, bool]]:
@@ -1649,9 +1646,7 @@ def _claim_choke(world: World, cv: _Canvas, short: list[Pos], halls: list[Point]
     """
     for pos in _choke_sites(world, cv, short, halls, safe_mines, rects, camp_sites,
                             gate_tiles, doors, safe_doors, rng):
-        terrain = [row[:] for row in world.terrain]
-        blocked = bytearray(world._blocked)
-        forest = bytearray(world._forest) if world._forest is not None else None
+        before = world.navigation.checkpoint()
         if not _claim_camp(world, cv, pos, rng.choice(_role_keys("Stronghold", "choke")), doors,
                            rects, camp_sites, orbits, "choke"):
             continue
@@ -1660,11 +1655,7 @@ def _claim_choke(world: World, cv: _Canvas, short: list[Pos], halls: list[Point]
         _drop_orbit(rects, camp_sites, orbits)
         # A failed shortlist entry is not an arena: retain no accidental shortcut that
         # could erase a later candidate's role or thin the Forest before it is tried.
-        for row, saved in zip(world.terrain, terrain):
-            row[:] = saved
-        world._blocked[:] = blocked
-        if world._forest is not None and forest is not None:
-            world._forest[:] = forest
+        world.navigation.restore(before)
     return False
 
 
@@ -2190,10 +2181,7 @@ def _carve(world: World, cv: _Canvas, route: list[Pos], *, trees_only: bool = Fa
                 if cv.inside(nx, ny) and (nx, ny) not in cv.protected and world.building_at((nx, ny)) is None \
                         and world.terrain_at((nx, ny)) is not Terrain.GRASS \
                         and (not trees_only or world.terrain_at((nx, ny)) is Terrain.TREES):
-                    world.terrain[ny][nx] = Terrain.GRASS
-                    world._blocked[ny * world.width + nx] = 0
-                    if world._forest is not None:
-                        world._forest[ny * world.width + nx] = 0
+                    world.navigation.set_terrain((nx, ny), Terrain.GRASS)
 
 
 # -- The story a map tells --------------------------------------------------------
@@ -2357,7 +2345,7 @@ def _route(world: World, start: Pos, goal: Pos, *, ignore_camps: bool = False) -
     """The production pathfinder's route, or None when its budget runs out first."""
     if start == goal:
         return []
-    grid = world._blocked
+    grid = world.navigation.ground
     if ignore_camps and world.camps:
         grid = bytearray(grid)
         for camp in world.camps:

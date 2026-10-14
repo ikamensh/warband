@@ -492,7 +492,7 @@ every neighbour), so the next flyer is a row and its art.
 - **Only a shot reaches it.** `World.can_strike` is the one answer: anything armed strikes the ground; a flyer
   only by a striker with `UnitInfo.strikes_air` (damage, a range of a tile or more, not siege: archers, the
   cleric's bolt, spiders) or a tower. Auto-acquire, the hold, retaliation, towers and the brains ask
-  `_nearest_enemy(air=...)`; an attack order that none of the group can carry out is a `RuleError` the HUD
+  `nearest_enemy(air=...)`; an attack order that none of the group can carry out is a `RuleError` the HUD
   shows, and a mixed group sends its shooters and walks the rest along. Stones and their splash come down
   beneath it.
 - **It is drawn above everything.** The view lifts it `view.FLIGHT` over its ground point on the `EFFECTS`
@@ -504,20 +504,18 @@ every neighbour), so the next flyer is a row and its art.
 
 A unit type with `forest = true` (the elves' treant) walks through trees: tree tiles are open ground to it, water,
 rock and buildings are not. It is a walker in every other way — it has a body, keeps the hard core, is routed by A* —
-only on a grid of its own. `World.ground_of(u)` is that answer, asked wherever a walk reads the static grid: `_plan`
-(and its regions, `_regions_of`, for the nearest reachable goal), `_follow`, `_steer`, the shove (`_nudge`/`_shove`)
-and `stands_at`. A walker gets the map's `_blocked`, so none of those changed for anybody else, and the fingerprint
-on a treant-free match did not move.
+only on a grid of its own. `World.ground_of(u)` selects the walking grid for movement; `World.navigation`
+owns both grids, straight-line clearance and each grid's connected regions. Its `regions(forest=u.forest)`
+answers reachability without exposing a private World cache.
 
-- **Built only when asked.** `World.forest_ground()` copies `_blocked` with its tree tiles opened the first time a
-  forest walker asks, so a match without a treant never pays for it (a brain asking whether a forest route pays
-  builds it too).
-- **Kept in step by the buildings alone.** A building stands only on grass, so the forest grid differs from the
-  map's exactly on the tree tiles; felling a tree turns a tree tile into grass and a regrown tree turns it back, and
-  both are open to a treant either way. Only placing and removing a building (`_set_blocked`) changes it, and that
-  is where it is kept. `tools/fuzz.py` checks it against the terrain and the buildings every simulated second once
-  it exists, beside the map's own grid. A write to `_blocked` anywhere else (mapgen carves before any unit exists)
-  would need the same care.
+- **Built only when asked.** `navigation.grid(forest=True)` copies the ordinary grid with tree tiles opened on
+  the first request. A match without a treant never pays for it unless a brain compares a forest shortcut.
+- **One owner for edits.** `navigation.set_terrain(tile, kind)` keeps terrain and both grids in step;
+  `navigation.set_footprint(rect, blocked)` places or removes a building's solid footprint. Felling and regrowing
+  trees leave forest movement open. Map generation also uses these methods, and its rejected candidates restore
+  a navigation checkpoint instead of copying private grids separately. Connectivity rebuilds when a grid changes;
+  the world's route caches are invalidated through a change notification. `tools/fuzz.py` asks navigation to check
+  both grids against the terrain and building footprints every simulated second.
 - **No shared trunks.** A group's march shares one corridor per target on the map's grid (`_join_march`); a treant
   plans alone, so a treant in an army takes the wood where the rest take the road.
 - **Standing in the trees.** A treant among trees mends (`regen_in_trees`: its tile or a neighbour a tree),

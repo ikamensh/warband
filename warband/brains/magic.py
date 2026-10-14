@@ -48,7 +48,7 @@ from warband.brains.ai import fighters, guarded, known_enemy_buildings
 from warband.brains.pro_profiles import ProProfile
 from warband.sim import mapgen
 from warband.sim.model import Build, Building, Point, Pos, Unit, World, dist, int_sum, rect_gap
-from warband.sim.rules import (AETHER_EVERY, CHOICES, FRIENDLY_WORTH, LEVEL_NAMES, SIEGE_BUILDING_WORTH, SIEGE_WORTH, SIM_DT, SPELLS,
+from warband.sim.rules import (spell_damage, AETHER_EVERY, CHOICES, FRIENDLY_WORTH, LEVEL_NAMES, SIEGE_BUILDING_WORTH, SIEGE_WORTH, SIM_DT, SPELLS,
                                UPGRADES, BuildingType, SpellInfo, Touch, Upgrade)
 
 #: The postures' spells, a level each (``ProProfile.spell_1``..``spell_3`` overrule them one by one).  The rush and the
@@ -249,7 +249,7 @@ def _buff(world: World, player: int, info: SpellInfo, sides: Sides) -> Candidate
 
 def _landing(world: World, info: SpellInfo, unit: Unit, gap: float) -> float:
     """What of *unit*'s life *info*'s blow takes, *gap* tiles from its edge to the point."""
-    damage = world._spell_damage(info, gap)
+    damage = spell_damage(info, gap)
     if not info.pierces:
         damage = max(1.0, damage - world.armor_of(unit))
     for kind in info.lays:
@@ -287,7 +287,7 @@ def _blow(world: World, player: int, info: SpellInfo, sides: Sides) -> Candidate
                 walls.append(b)
     out: Candidates = []
     for spot in spots:
-        point = world._clamp(spot)
+        point = world.navigation.clamp(spot)
         total = 0.0
         for u, at in zip(targets, spots):
             gap = dist(point, at) - u.radius
@@ -296,7 +296,7 @@ def _blow(world: World, player: int, info: SpellInfo, sides: Sides) -> Candidate
         for b in walls:
             gap = rect_gap(point, b.rect)
             if gap <= info.radius:
-                damage = world._spell_damage(info, gap) * info.building_factor
+                damage = spell_damage(info, gap) * info.building_factor
                 wall = SIEGE_BUILDING_WORTH * (2.0 if b.info.damage and b.done else 1.0)
                 total += wall * min(1.0, damage / max(1, b.hp))
         if info.touches is Touch.ALL and total > 0.0:
@@ -369,7 +369,7 @@ def _summon(world: World, player: int, info: SpellInfo, sides: Sides) -> Candida
     if not theirs or not world.in_reach(player, ours):
         return []
     there = _centre(theirs)
-    point = world._clamp(((ours[0] + there[0]) / 2.0, (ours[1] + there[1]) / 2.0))
+    point = world.navigation.clamp(((ours[0] + there[0]) / 2.0, (ours[1] + there[1]) / 2.0))
     worth = 0.0
     for foe in theirs:
         worth += weight(foe)

@@ -102,7 +102,7 @@ def test_a_seam_seats_more_hands_than_a_mine_and_no_more_than_its_own() -> None:
 def test_the_seam_takes_more_ground_than_a_mine() -> None:
     assert BUILDINGS[BuildingType.GOLD_SEAM].size == 5 > BUILDINGS[BuildingType.GOLD_MINE].size
     world, seam = seam_world()
-    assert len(seam.tiles()) == 25 and all(world._blocked[y * world.width + x] for x, y in seam.tiles())
+    assert len(seam.tiles()) == 25 and all(world.navigation.ground[y * world.width + x] for x, y in seam.tiles())
 
 
 # -- What it never does ------------------------------------------------------------------

@@ -25,6 +25,7 @@ from typing import Any, Final, Iterable, Iterator, Literal
 
 from warband.sim import config
 from warband.sim import path as pathing
+from warband.sim.navigation import BLOCKING, Navigation
 from warband.sim.races import RACES
 try:
     from warband.sim import _native  # vision's painting in C, built only with the compiled simulation (warband/league/fastsim.py)
@@ -46,7 +47,7 @@ from warband.sim.rules import (
     FORMATION_ARMOR, FORMATION_HOLD, FORMATION_LOOKAHEAD, FORMATION_MARCH, FORMATION_SLACK, FORMATION_SPACING, FORMATION_WIDTH, ARROW_SPEED, DIRECT_HIT, FRIENDLY_MARGIN, FRIENDLY_WORTH, SIEGE_BUILDING_WORTH, SIEGE_STEP, SIEGE_WORTH, STONE_MIN_FLIGHT, STONE_SPEED, WINDUP_SLACK,
     CREATURES, MAX_QUEUED_ORDERS, MAX_UNIT_RADIUS, NEUTRAL, RAGE, REGEN_CALM, UNDER_ATTACK_COOLDOWN, UNITS, UPGRADES, VISION_EVERY, BuffInfo, BuildingInfo, BuildingType, Cost, MapTheme, Race, Resource,
     Terrain, UnitInfo, UnitType, Upgrade, UpgradeInfo, ArmorClass, AttackType, an, damage_factor, listing,
-    CHOICES, LEVEL_NAMES, SPELL_FAR, SPELLS, SUMMONED, SpellInfo, Touch,
+    CHOICES, LEVEL_NAMES, SPELL_FAR, SPELLS, SUMMONED, SpellInfo, Touch, spell_damage,
 )
 
 #: The fastest any unit of any race moves, with every upgrade and every condition that quickens it at once (a unit
@@ -161,7 +162,6 @@ hypot_port: Final = hypot  # the port itself, whichever hypot runs, for the test
 if isinstance(hypot, FunctionType):  # run from source: math.hypot is far quicker than this port interpreted
     hypot = math.hypot  # type: ignore[assignment]  # noqa: F811
 
-BLOCKING: Final = frozenset({Terrain.WATER, Terrain.TREES, Terrain.ROCK})
 ARRIVE: Final = 0.12  # a unit is "there" within this many tiles of its target point
 TOUCH: Final = 0.4  # gap at which a peasant can enter a mine, deliver, or start building (a diagonal neighbour counts)
 CHOP_HOLD: Final = 0.3  # tiles past that reach a chopping worker may be jostled and still keep its swing; beyond it,
@@ -560,6 +560,11 @@ class Building:
 Entity = Unit | Building
 
 
+def entity_point(target: Entity) -> Point:
+    """The point a viewer, spell or striker uses for an entity."""
+    return target.pos if isinstance(target, Unit) else target.center
+
+
 @dataclass
 class Camp:
     """A finite encounter: its lair, original guard roster and surviving contribution.
@@ -776,11 +781,7 @@ class World:
         self._order_depth = 0
         self._next_id = 1
         self.path_budget = pathing.budget(width, height)  # a route across a big map costs more than one across a small
-        self._blocked = bytearray(width * height)
-        for y in range(height):
-            for x in range(width):
-                if terrain[y][x] in BLOCKING:
-                    self._blocked[y * width + x] = 1
+        self.navigation = Navigation(width, height, terrain, self._note_grid_changed)
         self.explored = [bytearray(width * height) for _ in self.players]
         self.visible = [bytearray(width * height) for _ in self.players]
         # The wilds have no fog: a creature is roused by what walks up to it, and its own reach is its sight
@@ -810,11 +811,6 @@ class World:
         # A world rebuilt from a seat's snapshot holds only what that seat sees of its rivals, too little to judge who
         # stands exposed (a farm seen alone is no side without a hall): it keeps the authority's answer, see exposures().
         self._judged_exposures: list[tuple[int, int]] | None = None
-        self._region_map: pathing.Regions | None = None  # walkable regions of the static grid, see _regions()
-        #: The forest walkers' static grid (WB-068): the map's with its trees open, built the first time one of them asks
-        #: (:meth:`ground_of`), so a map without a treant never pays for it; and its regions, as ``_region_map``.
-        self._forest: bytearray | None = None
-        self._forest_regions: pathing.Regions | None = None
         self._route_cache: dict[tuple[Pos, int, int], tuple[list[Pos], Pos]] = {}  # march trunks, see _join_march()
         self._camp_routes: dict[tuple[int, bool, tuple[int, ...], float], tuple[int, tuple[tuple[float, float, float], ...], bytearray]] = {}
         self._camp_views: dict[int, tuple[int, list[tuple[int, list[Point]]]]] = {}
@@ -840,7 +836,7 @@ class World:
         return self.terrain[pos[1]][pos[0]]
 
     def passable(self, x: int, y: int) -> bool:
-        return 0 <= x < self.width and 0 <= y < self.height and not self._blocked[y * self.width + x]
+        return 0 <= x < self.width and 0 <= y < self.height and not self.navigation.ground[y * self.width + x]
 
     def entity(self, entity_id: int) -> Entity | None:
         return self.units.get(entity_id) or self.buildings.get(entity_id)
@@ -1441,7 +1437,7 @@ class World:
         spots: list[Point] = []
         for i in range(count):
             angle = math.pi / 2 + math.tau * i / count
-            spot = self._clamp((point[0] + SUMMON_RING * math.cos(angle), point[1] + SUMMON_RING * math.sin(angle)))
+            spot = self.navigation.clamp((point[0] + SUMMON_RING * math.cos(angle), point[1] + SUMMON_RING * math.sin(angle)))
             if not self.passable(int(spot[0]), int(spot[1])):
                 open_tile = self._open_tile_near((int(point[0]), int(point[1])))
                 if open_tile is None:
@@ -1481,11 +1477,6 @@ class World:
                 touched.append(u)
         return touched
 
-    def _spell_damage(self, info: SpellInfo, gap: float) -> float:
-        """What *info* deals *gap* tiles from its point: its damage there, falling in a straight line to its edge's."""
-        share = min(max(gap, 0.0), info.radius) / info.radius
-        return info.damage - (info.damage - info.edge) * share
-
     def _land_spell(self, player: int, info: SpellInfo, point: Point) -> None:
         """*info*, cast by *player*, takes effect at *point*: its blow, then the conditions it ends and lays, on every
         unit it touches; the buildings it reaches take the blow and the whole of its drains at once; then what it
@@ -1494,7 +1485,7 @@ class World:
         source = info.key.value
         for u in self._touched(player, info, point):
             if info.damage:
-                self._spell_blow(u, int(round(self._spell_damage(info, dist(point, u.pos) - u.radius))), info, player)
+                self._spell_blow(u, int(round(spell_damage(info, dist(point, u.pos) - u.radius))), info, player)
                 if u.hp <= 0:
                     continue
             for kind in info.cleanses:
@@ -1510,7 +1501,7 @@ class World:
                     continue
                 gap = rect_gap(point, b.rect)
                 if gap <= info.radius:
-                    self._spell_blow(b, int(round(self._spell_damage(info, gap) * info.building_factor + drain)), info, player)
+                    self._spell_blow(b, int(round(spell_damage(info, gap) * info.building_factor + drain)), info, player)
         if info.summons is not None:
             spots = self._summon_spots(point, info.count)
             assert spots is not None, "checked when it was cast"  # a delayed summoning would have to ask again here
@@ -1706,7 +1697,7 @@ class World:
         standing, mines = blockers
         size = BUILDINGS[building_type].size
         width, height = self.width, self.height
-        terrain, blocked, explored = self.terrain, self._blocked, self.explored[player]
+        terrain, blocked, explored = self.terrain, self.navigation.ground, self.explored[player]
         grass = Terrain.GRASS
         for pos in positions:
             left, top = pos
@@ -1742,7 +1733,7 @@ class World:
         width = self.width
         if left < 0 or top < 0 or left + size > width or top + size > self.height:
             return "Off the map"
-        terrain, blocked, explored = self.terrain, self._blocked, self.explored[player]
+        terrain, blocked, explored = self.terrain, self.navigation.ground, self.explored[player]
         # A site that reaches into ground the player has never seen is unexplored, whatever stands there: online the
         # refusal goes back to the seat, and "Something is in the way" traced a rival's hall under the fog.
         for y in range(top, top + size):
@@ -1803,7 +1794,7 @@ class World:
         """
         left, top = pos
         footprint = {(x, y) for y in range(top, top + size) for x in range(left, left + size)}
-        width, height, blocked = self.width, self.height, self._blocked
+        width, height, blocked = self.width, self.height, self.navigation.ground
         def doors(site: Pos) -> set[Pos]:
             x, y = site
             edge = {(x - 1, row) for row in range(y, y + 3)} | {(x + 3, row) for row in range(y, y + 3)}
@@ -1861,7 +1852,7 @@ class World:
     @recorded
     def set_assembly(self, player: int, point: Point | None) -> None:
         """Set the fallback destination for new combat recruits across the settlement."""
-        self.players[player].assembly = self._clamp(point) if point is not None else None
+        self.players[player].assembly = self.navigation.clamp(point) if point is not None else None
 
     # -- Commands ------------------------------------------------------------------
 
@@ -1878,9 +1869,6 @@ class World:
                 raise RuleError(f"Too many queued orders (a unit takes {MAX_QUEUED_ORDERS})")
             units.append(unit)
         return units
-
-    def _clamp(self, point: Point) -> Point:
-        return (min(max(point[0], 0.05), self.width - 0.05), min(max(point[1], 0.05), self.height - 0.05))
 
     def _issue(self, unit: Unit, order: Order, *, queue: bool = False, manual: bool = True) -> None:
         """Put *order* on *unit*.  *manual* is the default because an order comes from a player or a brain; the
@@ -1913,7 +1901,7 @@ class World:
 
     @recorded
     def move(self, unit_ids: list[int], target: Point, *, queue: bool = False) -> None:
-        target = self._clamp(target)
+        target = self.navigation.clamp(target)
         units = self._own_units(unit_ids, queue=queue)
         pace = min((self.listed_speed(u) for u in units), default=None) if len(units) > 1 and not queue else None
         slots = {} if queue else self._line_slots(units, target)
@@ -1922,7 +1910,7 @@ class World:
 
     @recorded
     def attack_move(self, unit_ids: list[int], target: Point, *, queue: bool = False) -> None:
-        target = self._clamp(target)
+        target = self.navigation.clamp(target)
         units = self._own_units(unit_ids, queue=queue)
         pace = min((self.listed_speed(u) for u in units), default=None) if len(units) > 1 and not queue else None
         slots = {} if queue else self._line_slots(units, target)
@@ -1933,7 +1921,7 @@ class World:
     @recorded
     def patrol(self, unit_ids: list[int], target: Point, *, queue: bool = False) -> None:
         """Patrol between where each unit stands and *target*."""
-        target = self._clamp(target)
+        target = self.navigation.clamp(target)
         for unit in self._own_units(unit_ids, queue=queue):
             if unit.is_worker:
                 self._issue(unit, Move(target), queue=queue)
@@ -1967,7 +1955,7 @@ class World:
             if unit.id in strikers:
                 self._issue(unit, Attack(target_id), queue=queue)
             else:
-                self._issue(unit, Move(self._target_point(target)), queue=queue)  # it cannot strike this one: it follows the fight
+                self._issue(unit, Move(entity_point(target)), queue=queue)  # it cannot strike this one: it follows the fight
 
     @recorded
     def stop(self, unit_ids: list[int]) -> None:
@@ -2111,7 +2099,7 @@ class World:
         building = self.buildings.get(building_id)
         if building is None or building.player is None:
             raise RuleError("No such building")
-        building.rally = self._clamp(point) if point is not None else None
+        building.rally = self.navigation.clamp(point) if point is not None else None
 
     @recorded
     def set_auto_train(self, building_id: int, unit_type: UnitType, on: bool) -> None:
@@ -2317,13 +2305,7 @@ class World:
         return building
 
     def _set_blocked(self, building: Building, flag: bool) -> None:
-        forest = self._forest  # a building is as solid to a forest walker as to anybody: its grid keeps step
-        for x, y in building.tiles():
-            if self.in_bounds((x, y)):
-                self._blocked[y * self.width + x] = 1 if flag else 0
-                if forest is not None:
-                    forest[y * self.width + x] = 1 if flag else 0
-        self._note_grid_changed()
+        self.navigation.set_footprint(building.rect, flag)
 
     def _note_grid_changed(self) -> None:
         """The static grid changed under the units' feet: shared march trunks walked the old one."""
@@ -2397,13 +2379,11 @@ class World:
             if self.time < when:
                 pending.append((tile, when))
                 continue
-            if self.terrain[y][x] is not Terrain.GRASS or self._blocked[y * self.width + x] or any(
+            if self.terrain[y][x] is not Terrain.GRASS or self.navigation.ground[y * self.width + x] or any(
                     u.tile == tile and not u.flying for u in self.units_near(tile_center(tile), 1.0)):  # a miner inside comes out where it went in
                 pending.append((tile, self.time + 5.0))  # try again shortly
                 continue
-            self.terrain[y][x] = Terrain.TREES
-            self._blocked[y * self.width + x] = 1
-            self._note_grid_changed()
+            self.navigation.set_terrain(tile, Terrain.TREES)
             for unit in self.units.values():
                 if tile in unit.path:
                     unit.path = []
@@ -2492,7 +2472,7 @@ class World:
         excluded = {lair for lair, points in grouped.items()
                     if prefer is not None
                     and any(dist(prefer, point) <= camps.CAMP_WATCH for point in points)}
-        navigation = camps.navigation(self, b.player, self._blocked, excluded, radius + .5)
+        navigation = camps.navigation(self, b.player, self.navigation.ground, excluded, radius + .5)
         spot = self.free_tile_near(b.rect, prefer=prefer, navigation=navigation)
         if spot is None:
             # A player may build where every adjacent exit lies in a known watch.
@@ -2520,7 +2500,7 @@ class World:
         if b.cooldown > 0:
             return
         info = b.info
-        target = self._nearest_enemy(b.player, b.center, self.building_range(b) + b.size / 2, units_only=True, air=True)  # type: ignore[arg-type]
+        target = self.nearest_enemy(b.player, b.center, self.building_range(b) + b.size / 2, units_only=True, air=True)  # type: ignore[arg-type]
         if target is None:
             return
         self._launch_arrow(b, target, self.damage_of(b))
@@ -2763,8 +2743,8 @@ class World:
         if u.info.siege:
             return self._siege_choice(u, SIEGE_STEP)
         if u.info.blast:
-            return self._nearest_enemy(u.player, u.pos, u.info.sight, air=False, buildings_only=True, striker=u)
-        return self._nearest_enemy(u.player, u.pos, u.info.sight, min_radius=u.info.min_range, air=u.info.strikes_air, striker=u)
+            return self.nearest_enemy(u.player, u.pos, u.info.sight, air=False, buildings_only=True, striker=u)
+        return self.nearest_enemy(u.player, u.pos, u.info.sight, min_radius=u.info.min_range, air=u.info.strikes_air, striker=u)
 
     def _camp_target(self, target: Entity, striker: Unit | None = None) -> bool:
         """Automatic fighting answers active encounters; an unrelated march leaves settled camps alone.
@@ -2875,8 +2855,8 @@ class World:
             return None
         angle = _atan2(ay, ax) + self.rng.uniform(-EASE_JITTER, EASE_JITTER)
         step = EASE_STEP + self.rng.uniform(-EASE_STEP_VARIANCE, EASE_STEP_VARIANCE)
-        spot = self._clamp((u.x + math.cos(angle) * step, u.y + math.sin(angle) * step))
-        if not flying and (not self.passable(int(spot[0]), int(spot[1])) or not self._line_clear(u.pos, spot)):
+        spot = self.navigation.clamp((u.x + math.cos(angle) * step, u.y + math.sin(angle) * step))
+        if not flying and (not self.passable(int(spot[0]), int(spot[1])) or not self.navigation.line_clear(u.pos, spot)):
             return None
         return spot if self._room(u, spot) >= self._room(u, u.pos) + EASE_GAIN else None
 
@@ -3003,7 +2983,7 @@ class World:
             # Only what it can strike from here, measured from its centre: a more dangerous enemy just out of reach
             # must not keep it from answering one in reach.
             target = (self._siege_choice(u, 0.0, standing=True) if u.info.siege
-                      else self._nearest_enemy(u.player, u.pos, self.range_of(u) + u.radius + 0.05, min_radius=u.info.min_range + u.radius,
+                      else self.nearest_enemy(u.player, u.pos, self.range_of(u) + u.radius + 0.05, min_radius=u.info.min_range + u.radius,
                                                air=u.info.strikes_air, buildings_only=u.info.blast > 0, striker=u))
             if target is None or not self._in_range(u, target):
                 return
@@ -3050,7 +3030,7 @@ class World:
         if order.offset is not None and not self.stands_at(u, slot):
             fx, fy, _, cx, cy = self._line(u, order)
             if dist((cx, cy), order.target) > FORMATION_LOOKAHEAD:
-                point = self._clamp((cx + fx * FORMATION_LOOKAHEAD + order.offset[0], cy + fy * FORMATION_LOOKAHEAD + order.offset[1]))
+                point = self.navigation.clamp((cx + fx * FORMATION_LOOKAHEAD + order.offset[0], cy + fy * FORMATION_LOOKAHEAD + order.offset[1]))
                 if (dist(u.pos, point) > FORMATION_SPACING and self._along_its_route(u, slot, point)
                         and self._steer(u, point, dt, dressing=True, keep_path=True)):
                     return False  # straight at its place while the way there is clear: a path would keep a grid row
@@ -3071,7 +3051,7 @@ class World:
             self._plan(u, goal, slot)
         path = u.path
         while (len(path) > 1 and dist(u.pos, tile_center(path[1])) <= dist(tile_center(path[0]), tile_center(path[1]))
-               and self._line_clear(u.pos, tile_center(path[1]), navigation=self._movement_ground(u))):
+               and self.navigation.line_clear(u.pos, tile_center(path[1]), navigation=self._movement_ground(u))):
             path.pop(0)  # walked past on the shortcut: the next waypoint is no further than this one was from it
         ahead = tile_center(path[min(2, len(path) - 1)]) if path else slot
         sx, sy = point[0] - u.x, point[1] - u.y
@@ -3082,7 +3062,7 @@ class World:
         """Where a Move or AttackMove takes its unit: its slot in a marching line, or the shared target."""
         if order.offset is None:
             return order.target
-        return self._clamp((order.target[0] + order.offset[0], order.target[1] + order.offset[1]))
+        return self.navigation.clamp((order.target[0] + order.offset[0], order.target[1] + order.offset[1]))
 
     def _line_slots(self, units: list[Unit], target: Point) -> dict[int, Point]:
         """Offsets from *target* that stand the formation units among *units* in a line across the way they are
@@ -3113,8 +3093,8 @@ class World:
         in the trees or across the water from it: that one goes to the spot itself."""
         px, py = -fy, fx
         offset = (px * side - fx * back, py * side - fy * back)
-        sx, sy = self._clamp((target[0] + offset[0], target[1] + offset[1]))
-        regions = self._regions()
+        sx, sy = self.navigation.clamp((target[0] + offset[0], target[1] + offset[1]))
+        regions = self.navigation.regions()
         if self.passable(int(sx), int(sy)) and regions.label(unit.tile) == regions.label((int(sx), int(sy))):
             slots[unit.id] = offset
 
@@ -3192,7 +3172,7 @@ class World:
             threat = self._threat(target)
             if threat > 0:
                 # A bystander or a building holds a unit's attention only until something more dangerous shows up.
-                better = self._nearest_enemy(u.player, u.pos, u.info.sight, min_radius=u.info.min_range, air=u.info.strikes_air, striker=u)
+                better = self.nearest_enemy(u.player, u.pos, u.info.sight, min_radius=u.info.min_range, air=u.info.strikes_air, striker=u)
                 if better is not None and self._threat(better) < threat:
                     target = better
                     self._retarget(u, order, better)
@@ -3217,7 +3197,7 @@ class World:
         if self._in_range(u, target) and not self._siege_creeps(u, target, order.auto):
             self._fight(u, target, dt, auto=order.auto, chase=True)
             return
-        aim = self._target_point(target)
+        aim = entity_point(target)
         if self.range_of(u) < 1:
             aim = self._melee_position(u, target)
         elif isinstance(target, Building):
@@ -3245,7 +3225,7 @@ class World:
         away is still caught."""
         u.path = []
         u.path_goal = None
-        faced = self._turn_toward(u, self._target_point(target), dt)
+        faced = self._turn_toward(u, entity_point(target), dt)
         if u.windup > 0.0:
             if chase and u.info.melee and not self._in_range(u, target):
                 self._steer(u, self._melee_position(u, target), dt)
@@ -3263,7 +3243,7 @@ class World:
                 return  # no clear shot: the crew waits rather than drop a stone on its own side
             u.windup = u.info.windup * u.blow_mult  # drawn back from now; the blow lands that many seconds on
             if u.type in (UnitType.GOLEM, UnitType.ANCIENT_GUARDIAN) and not (isinstance(target, Unit) and target.flying):
-                u.slam_point = self._target_point(target)
+                u.slam_point = entity_point(target)
             if u.windup <= 0.0:
                 self._release(u, target, auto=auto)
 
@@ -3338,10 +3318,10 @@ class World:
 
     def _back_off(self, u: Unit, target: Entity, dt: float) -> bool:
         """Step straight away from a target inside the engine's minimum range; True if there was room."""
-        px, py = self._target_point(target)
+        px, py = entity_point(target)
         dx, dy = u.x - px, u.y - py
         d = hypot(dx, dy) or 1e-6
-        return self._steer(u, self._clamp((u.x + dx / d, u.y + dy / d)), dt)
+        return self._steer(u, self.navigation.clamp((u.x + dx / d, u.y + dy / d)), dt)
 
     def _ranged_retreat(self, u: Unit, target: Entity, dt: float) -> bool:
         """An automatic archer recovering its shot steps away from visible melee, keeping the target in range."""
@@ -3364,8 +3344,8 @@ class World:
         for offset in (0, math.pi / 4, -math.pi / 4, math.pi / 2, -math.pi / 2):
             point = (u.x + math.cos(angle + offset) * .85, u.y + math.sin(angle + offset) * .85)
             if (not self.is_visible(u.player, (int(point[0]), int(point[1])))
-                    or not self._line_clear(u.pos, point, navigation=known)
-                    or not self._line_clear(u.pos, point, navigation=movement)):
+                    or not self.navigation.line_clear(u.pos, point, navigation=known)
+                    or not self.navigation.line_clear(u.pos, point, navigation=movement)):
                 continue
             if u.home is not None and dist(point, u.home) > LEASH:
                 continue
@@ -3411,7 +3391,7 @@ class World:
         the map, and a tile lookup truncates x=-0.04 to tile 0, so nothing on the way would notice."""
         dx, dy = towards[0] - point[0], towards[1] - point[1]
         distance = hypot(dx, dy) or 1e-6
-        return self._clamp((point[0] + dx / distance * reach, point[1] + dy / distance * reach))
+        return self.navigation.clamp((point[0] + dx / distance * reach, point[1] + dy / distance * reach))
 
     def _siege_spot(self, u: Unit, target: Building) -> Point | None:
         """The centre of the open tile round *target* nearest *u*, one nobody else stands on first; None when the
@@ -3422,7 +3402,7 @@ class World:
         in a clearing stood so, ten of them idle, and it lost a point a second where they could take twelve
         (WB-037). A melee blow reaches from any tile of the ring, diagonals included."""
         x, y, w, h = target.rect
-        width, height, blocked = self.width, self.height, self._blocked
+        width, height, blocked = self.width, self.height, self.navigation.ground
         occupied = {(int(other.x), int(other.y)) for other in self.units_near(target.center, max(w, h) / 2 + 1.5)
                     if other is not u and not other.hidden and not other.flying}
         best: Point | None = None
@@ -3446,7 +3426,7 @@ class World:
                      and self.is_visible(u.player, enemy.tile) and self._in_range(u, enemy) and self._camp_target(enemy, u)]
         if opponents:
             return min(opponents, key=lambda enemy: (self._threat(enemy), enemy.hp, dist(u.pos, enemy.pos), enemy.id))
-        return self._nearest_enemy(u.player, u.pos, self.range_of(u) + u.radius + .05, air=u.info.strikes_air, striker=u)
+        return self.nearest_enemy(u.player, u.pos, self.range_of(u) + u.radius + .05, air=u.info.strikes_air, striker=u)
 
     def _do_harvest(self, u: Unit, order: Harvest, dt: float) -> None:
         if u.carrying is not None:
@@ -3524,9 +3504,7 @@ class World:
             u.timer += dt
             if u.timer >= CHOP_TIME:
                 u.timer = 0.0
-                self.terrain[tile[1]][tile[0]] = Terrain.GRASS
-                self._blocked[tile[1] * self.width + tile[0]] = 0
-                self._note_grid_changed()
+                self.navigation.set_terrain(tile, Terrain.GRASS)
                 u.carrying, u.carry = Resource.LUMBER, LUMBER_PER_TRIP
                 if self._has(u.player, Upgrade.REGROWTH):
                     self.regrowth.append((tile, self.time + REGROWTH_SECONDS))
@@ -3619,7 +3597,7 @@ class World:
         a tower by the hall killed every carrier holding gold beside it, one by one (WB-037)."""
         width = self.width
         tx, ty = u.tile
-        if navigation is self._blocked or not navigation[ty * width + tx]:
+        if navigation is self.navigation.ground or not navigation[ty * width + tx]:
             return False
         goal = u.path_goal
         if goal is None or navigation[goal[1] * width + goal[0]] or self._next_waypoint(u, precise=True) is None:
@@ -3636,7 +3614,6 @@ class World:
         if isinstance(order, (Harvest, Deposit, Salvage)) and order.auto:
             return worker_ai.safe_navigation(self, u.player)
         return self._movement_ground(u)
-
 
     def _plan_work_route(self, u: Unit, targets: dict[int, tuple[int, int, int, int]],
                          navigation: bytearray) -> int | None:
@@ -3687,7 +3664,6 @@ class World:
         u.path, u.path_goal, u.exact = route, goal, tile_center(goal)
         return owners[goal]
 
-
     def _holds_mouth(self, u: Unit, rect: tuple[int, int, int, int], navigation: bytearray) -> bool:
         """Whether *u* holds a claimed work tile at *rect*'s mouth: a path goal on open ground within reach of it."""
         goal = u.path_goal
@@ -3709,7 +3685,6 @@ class World:
                 return True
         self._follow(u, dt, navigation=navigation, precise=True)
         return False
-
 
     def _do_build(self, u: Unit, order: Build, dt: float) -> None:
         if order.building is not None:
@@ -3879,7 +3854,7 @@ class World:
                 target = nearest
         # A goal beyond water or a tree wall: aim at the nearest tile on this side of it, where a search
         # would end anyway after flooding everything it can reach.
-        target = self._regions_of(u).reachable_goal(start, target)
+        target = self.navigation.regions(forest=u.forest).reachable_goal(start, target)
         u.replan_at = self.time + REPLAN_EVERY + (u.id % REPLAN_STAGGER) * SIM_DT
         if around_units:
             blocked = bytearray(grid)
@@ -3935,7 +3910,7 @@ class World:
             # exact point, while a trunk would march the unit out to the shared target and back.
             return False
         shared: Pos = (int(order.target[0]), int(order.target[1]))
-        regions = self._regions()
+        regions = self.navigation.regions()
         region = regions.label(start)
         for side in (1, -1):
             cached = self._route_cache.get((shared, region, side))
@@ -3953,7 +3928,7 @@ class World:
         if any((shared, region, side) in self._route_cache for side in (1, -1)):
             # Another corridor already serves this ground: probe which side this unit's own takes,
             # and join it, rather than planning the whole way there to find out.
-            probe = pathing.find_path_grid(start, end, self._blocked, self.width, self.height,
+            probe = pathing.find_path_grid(start, end, self.navigation.ground, self.width, self.height,
                                            max_expansions=LOCAL_EXPANSIONS)
             if probe and probe[-1] == end:
                 stations = [start] + probe
@@ -3967,7 +3942,7 @@ class World:
                 existing = self._route_cache.get(key)
                 if existing is not None:
                     return self._walk_trunk(u, start, goal, exact, target, existing[0], existing[1])
-        trunk = pathing.find_path_grid(start, end, self._blocked, self.width, self.height,
+        trunk = pathing.find_path_grid(start, end, self.navigation.ground, self.width, self.height,
                                        max_expansions=self.path_budget)
         stations = [start] + trunk
         key = (shared, region, _corridor_side(stations, end))
@@ -3997,13 +3972,13 @@ class World:
                 best, best_h = index, h
         head: list[Pos] = []
         if stations[best] != start:
-            head = pathing.find_path_grid(start, stations[best], self._blocked, self.width, self.height,
+            head = pathing.find_path_grid(start, stations[best], self.navigation.ground, self.width, self.height,
                                           max_expansions=LOCAL_EXPANSIONS)
             if not head or head[-1] != stations[best]:
                 return False
         tail: list[Pos] = []
         if end != target:
-            tail = pathing.find_path_grid(end, target, self._blocked, self.width, self.height,
+            tail = pathing.find_path_grid(end, target, self.navigation.ground, self.width, self.height,
                                           max_expansions=LOCAL_EXPANSIONS)
             if not tail or tail[-1] != target:
                 return False
@@ -4019,19 +3994,9 @@ class World:
                 u.exact = exact
         return True
 
-    def _regions(self) -> pathing.Regions:
-        """The walkable regions of the static grid, rebuilt after a building or a tree changed it."""
-        if self._region_map is None or self._region_map.grid != self._blocked:
-            self._region_map = pathing.Regions(self._blocked, self.width, self.height)
-        return self._region_map
-
     def ground_of(self, u: Unit) -> bytearray:
-        """The static grid *u* walks: the map's, or for a forest walker (:attr:`UnitInfo.forest`) the map's with its
-        trees open, water, rock and buildings still shut.  That grid is built the first time a forest walker asks, so a
-        match without one never pays for it, and :meth:`_set_blocked` keeps it in step with the buildings from then on.
-        Felling a tree and regrowing one change the map's grid and never this one: a tree is open ground to it either
-        way, and a building never stands on one."""
-        return self.forest_ground() if u.forest else self._blocked
+        """The static walking grid for this unit; navigation owns both kinds and their connectivity."""
+        return self.navigation.grid(forest=u.forest)
 
     def _movement_ground(self, u: Unit) -> bytearray:
         """Route playing units around remembered encounters while keeping deliberate attacks and escape usable."""
@@ -4110,25 +4075,8 @@ class World:
         return grid
 
     def forest_ground(self) -> bytearray:
-        """The forest walkers' static grid (:meth:`ground_of`), built on the first ask."""
-        grid = self._forest
-        if grid is None:
-            grid = self._forest = bytearray(self._blocked)
-            width, trees = self.width, Terrain.TREES
-            for y, row in enumerate(self.terrain):
-                for x in range(width):
-                    if row[x] is trees:
-                        grid[y * width + x] = 0
-        return grid
-
-    def _regions_of(self, u: Unit) -> pathing.Regions:
-        """The walkable regions of the grid *u* walks (:meth:`ground_of`)."""
-        if not u.forest:
-            return self._regions()
-        grid = self.ground_of(u)
-        if self._forest_regions is None or self._forest_regions.grid != grid:
-            self._forest_regions = pathing.Regions(grid, self.width, self.height)
-        return self._forest_regions
+        """The forest walkers' static grid, borrowed for reading by path searches."""
+        return self.navigation.grid(forest=True)
 
     def among_trees(self, tile: Pos) -> bool:
         """Whether *tile* is a tree tile or beside one, diagonals included: where a treant mends (:attr:`UnitInfo.regen_in_trees`)."""
@@ -4294,7 +4242,7 @@ class World:
         after it again at another, twice a second, taking no further part in the match (fuzz
         seed 92: a footman a tile and a bit from a muster a knight was standing on).
         """
-        if u.flying or self._line_clear(u.pos, point, navigation=self.ground_of(u)):  # a flyer's way in is always the straight line
+        if u.flying or self.navigation.line_clear(u.pos, point, navigation=self.ground_of(u)):  # a flyer's way in is always the straight line
             way = [u.pos, point]
         elif u.path and u.path_goal == (int(point[0]), int(point[1])):
             # Across a wall the way in is the unit's own route round it, not the line through the rock: the
@@ -4417,7 +4365,7 @@ class World:
                     # (a diagonal step past a blocked corner is off course by the rule above: skipping to it would be
                     # undone by the next plan, and the unit would alternate between the two for good)
                     far = u.exact if len(u.path) == 2 and u.exact is not None else tile_center(u.path[1])
-                    if self._line_clear(u.pos, far, navigation=grid):
+                    if self.navigation.line_clear(u.pos, far, navigation=grid):
                         # The waypoint after next is a step away in a clear line: this one is passed.  A crowd sharing
                         # one path otherwise circles its first tile centre, each walking at the middle the others hold
                         # and sidestepping round them, for as long as the order lasts (sixteen knights, open field).
@@ -4431,7 +4379,7 @@ class World:
         # Only the end of the walk counts as reached within ARRIVE: snapping onto a waypoint on the way from further
         # than the tick's travel sped every unit slower than ARRIVE a tick up at each one (WB-050's footmen showed it).
         if d <= step or (d <= ARRIVE and len(u.path) <= 1):
-            if navigation is not None and not self._line_clear(u.pos, waypoint, navigation=navigation):
+            if navigation is not None and not self.navigation.line_clear(u.pos, waypoint, navigation=navigation):
                 u.path_goal = None
                 return False
             if (d < 1e-9 or self._keep_clear(u, waypoint) == waypoint) and self._camp_step_allowed(u, waypoint):
@@ -4448,7 +4396,7 @@ class World:
             step = min(step, d)  # somebody stands on the waypoint: walk up to them as far as their body allows
         self._turn_toward(u, waypoint, step / speed if speed else dt)
         nx, ny = u.x + dx / d * step, u.y + dy / d * step
-        if ((grid[int(ny) * width + int(nx)] or (navigation is not None and not self._line_clear(u.pos, (nx, ny), navigation=navigation)))
+        if ((grid[int(ny) * width + int(nx)] or (navigation is not None and not self.navigation.line_clear(u.pos, (nx, ny), navigation=navigation)))
                 and 0 <= tx < width and 0 <= ty < self.height and not ground[ty * width + tx]):
             if u.path and u.path[0] != tile:
                 # Pushed off course so that the straight line to the next tile crosses a blocked
@@ -4461,7 +4409,7 @@ class World:
                 self._plan(u, u.path_goal, u.exact, navigation=navigation)
             return False
         nx, ny = self._keep_clear(u, (nx, ny))
-        if not self._line_clear(u.pos, (nx, ny), navigation=grid) or not self._camp_step_allowed(u, (nx, ny)):
+        if not self.navigation.line_clear(u.pos, (nx, ny), navigation=grid) or not self._camp_step_allowed(u, (nx, ny)):
             nx, ny = u.x, u.y  # the way round the body in front would cross blocked ground: wait behind it
         u.x, u.y = nx, ny
         # Progress watchdog: closing on the goal resets it; a stretch without progress paths
@@ -4488,52 +4436,6 @@ class World:
                     u.last_distance = remaining
         return False
 
-    def _line_clear(self, a: Point, b: Point, *, navigation: bytearray | None = None) -> bool:
-        """No blocked tile on the straight line from *a* to *b*.
-
-        Every tile the segment crosses is visited (a grid walk, not sampling: a
-        sample every quarter tile can skip the corner tile a unit standing at a
-        building's corner would step into).  Passing exactly through a corner
-        needs both tiles beside it free, as a diagonal step in the pathfinder does.
-        """
-        # Check continuous coordinates before int() can turn -0.1 into tile zero.
-        width, height = self.width, self.height
-        if not (0 <= a[0] < width and 0 <= a[1] < height
-                and 0 <= b[0] < width and 0 <= b[1] < height):
-            return False
-        grid = self._blocked if navigation is None else navigation
-        x, y = int(a[0]), int(a[1])
-        end_x, end_y = int(b[0]), int(b[1])
-        dx, dy = b[0] - a[0], b[1] - a[1]
-        step_x, step_y = (1 if dx > 0 else -1), (1 if dy > 0 else -1)
-        # Fraction of the segment at which the next vertical / horizontal grid line is crossed.
-        next_x = ((x + (step_x > 0)) - a[0]) / dx if dx else math.inf
-        next_y = ((y + (step_y > 0)) - a[1]) / dy if dy else math.inf
-        per_x, per_y = (abs(1 / dx) if dx else math.inf), (abs(1 / dy) if dy else math.inf)
-        # The walk never leaves the box spanned by the two endpoints' tiles: once it stands in the end tile's
-        # column (or row), the only way on is along it.  A segment ending exactly on a tile's corner otherwise stepped
-        # across the corner at its very end, out of the box and off the map (a crowd skipping ahead along its path,
-        # race report seed 27).  So only the two tiles beside an inner corner need their own bounds test.
-        row = y * width
-        for _ in range(abs(end_x - x) + abs(end_y - y) + 1):
-            if grid[row + x]:
-                return False
-            if x == end_x and y == end_y:
-                return True
-            if abs(next_x - next_y) < 1e-9 and x != end_x and y != end_y:
-                beside_x, beside_y = x + step_x, y + step_y
-                if not 0 <= beside_x < width or grid[row + beside_x]:
-                    return False
-                if not 0 <= beside_y < height or grid[beside_y * width + x]:
-                    return False
-                x, y, row = beside_x, beside_y, beside_y * width
-                next_x, next_y = next_x + per_x, next_y + per_y
-            elif y == end_y or (x != end_x and next_x < next_y):
-                x, next_x = x + step_x, next_x + per_x
-            else:
-                y, next_y, row = y + step_y, next_y + per_y, row + step_y * width
-        return not grid[row + x]
-
     def _steer(self, u: Unit, target: Point, dt: float, *, dressing: bool = False, keep_path: bool = False) -> bool:
         """Walk straight at *target* when it is near and the line is clear; True if that was possible.  With
         *keep_path* the unit's route stays planned, for a walk that leaves it only while it heads the same way.  A flyer
@@ -4547,7 +4449,7 @@ class World:
                 u.path_goal = None
             return True
         ground = self._movement_ground(u)
-        if dist(u.pos, target) > STEER_RANGE or not self._line_clear(u.pos, target, navigation=ground):
+        if dist(u.pos, target) > STEER_RANGE or not self.navigation.line_clear(u.pos, target, navigation=ground):
             return False
         dx, dy = target[0] - u.x, target[1] - u.y
         d = hypot(dx, dy)
@@ -4555,7 +4457,7 @@ class World:
             step = min(d, self._effective_speed(u, dressing=dressing) * dt)
             self._turn_toward(u, target, dt)
             nx, ny = self._keep_clear(u, (u.x + dx / d * step, u.y + dy / d * step))
-            if self._line_clear(u.pos, (nx, ny), navigation=ground) and self._camp_step_allowed(u, (nx, ny)):
+            if self.navigation.line_clear(u.pos, (nx, ny), navigation=ground) and self._camp_step_allowed(u, (nx, ny)):
                 u.x, u.y = nx, ny
         if not keep_path:
             u.path = []
@@ -4568,7 +4470,7 @@ class World:
         """A flyer's walk: straight at *target* over whatever lies below, kept on the map; True once there, or, with
         *settle*, as near as the flyers already hovering there let it come (:meth:`stands_at`, asked when the same
         progress watchdog a walk keeps says it is getting no nearer).  No route, no grid, no body on the ground."""
-        target = self._clamp(target)
+        target = self.navigation.clamp(target)
         tile = (int(target[0]), int(target[1]))
         if u.path_goal != tile:  # a new flight: the watchdog starts again (an order clears the goal it had)
             u.path_goal, u.last_distance, u.progress = tile, math.inf, 0.0
@@ -4598,7 +4500,7 @@ class World:
             return
         self._turn_toward(u, target, dt)
         step = travel if travel < d else d
-        u.x, u.y = self._clamp((u.x + dx / d * step, u.y + dy / d * step))
+        u.x, u.y = self.navigation.clamp((u.x + dx / d * step, u.y + dy / d * step))
 
     def _separate(self) -> None:
         """Push overlapping units apart, never into blocked tiles."""
@@ -4731,7 +4633,7 @@ class World:
         if length > MAX_PUSH:
             px, py = px / length * MAX_PUSH, py / length * MAX_PUSH
         if u.flying:  # nothing below blocks a flyer's drift, and it has no core to keep
-            u.x, u.y = self._clamp((u.x + px, u.y + py))
+            u.x, u.y = self.navigation.clamp((u.x + px, u.y + py))
             return
         ground = self.ground_of(u)
         own_tile_open = not ground[int(u.y) * self.width + int(u.x)]
@@ -4741,20 +4643,17 @@ class World:
 
     def _shove(self, u: Unit, dx: float, dy: float, own_tile_open: bool, ground: bytearray) -> bool:
         """Move *u* by (dx, dy), kept on the map, if nothing on the grid it walks (*ground*) blocks the way; whether it moved."""
-        nx, ny = self._keep_clear(u, (min(max(u.x + dx, 0.05), self.width - 0.05), min(max(u.y + dy, 0.05), self.height - 0.05)))  # _clamp's
+        nx, ny = self._keep_clear(u, (min(max(u.x + dx, 0.05), self.width - 0.05), min(max(u.y + dy, 0.05), self.height - 0.05)))  # navigation.clamp's
         if (nx, ny) == (u.x, u.y):
             return False  # the bodies round it leave the shove nowhere to go: its x or y part alone may
         if not self._camp_step_allowed(u, (nx, ny)):
             return False
-        if self._line_clear((u.x, u.y), (nx, ny), navigation=ground) if own_tile_open else not ground[int(ny) * self.width + int(nx)]:
+        if self.navigation.line_clear((u.x, u.y), (nx, ny), navigation=ground) if own_tile_open else not ground[int(ny) * self.width + int(nx)]:
             u.x, u.y = nx, ny
             return True
         return False
 
     # -- Combat ----------------------------------------------------------------------
-
-    def _target_point(self, target: Entity) -> Point:
-        return target.pos if isinstance(target, Unit) else target.center
 
     def _turn_toward(self, u: Unit, point: Point, dt: float) -> bool:
         """Pivot *u* toward *point* at its turn rate; True once it faces it."""
@@ -4868,7 +4767,7 @@ class World:
         u.path = []
         u.path_goal = None
 
-    def _nearest_enemy(self, player: int, point: Point, radius: float, *, air: bool, units_only: bool = False,
+    def nearest_enemy(self, player: int, point: Point, radius: float, *, air: bool, units_only: bool = False,
                        min_radius: float = 0.0, buildings_only: bool = False, striker: Unit | None = None) -> Entity | None:
         """The visible enemy within *radius* (and beyond *min_radius*) to fight first: by :meth:`_threat`, then the nearest.
         A flyer counts only with *air*: whoever asks on behalf of a striker passes whether its blow reaches one
@@ -4929,7 +4828,7 @@ class World:
         swung would clear itself, and the lesson the slam teaches -- do not walk a melee ball into it --
         lands either way.  The share beyond the mark is a stone's :data:`SPLASH_FRACTION`.
         """
-        spot = self._target_point(target)
+        spot = entity_point(target)
         reach = self.splash_of(u)
         splash = damage * SPLASH_FRACTION
         for other in self.units_near(spot, reach + MAX_UNIT_RADIUS):
@@ -4940,8 +4839,8 @@ class World:
             self._hit(other, int(round(splash)), player=u.player, source=u.id, source_type=u.type.value, attack=u.info.attack)
 
     def _launch_arrow(self, shooter: Entity, target: Entity, damage: int) -> Projectile:
-        start = self._target_point(shooter)
-        aim = self._target_point(target)
+        start = entity_point(shooter)
+        aim = entity_point(target)
         attack = shooter.info.attack if isinstance(shooter, Unit) else AttackType.NORMAL  # a tower's arrow strikes a normal blow
         inflicts = shooter.info.inflicts if isinstance(shooter, Unit) else None  # a tower's arrow opens no wound
         return self._launch(shooter, "arrow", start, aim, target.id, damage, max(SIM_DT, dist(start, aim) / ARROW_SPEED), attack=attack,
@@ -4987,7 +4886,7 @@ class World:
             spots = [here]
             if target.vx or target.vy:
                 flight = self._stone_flight(u.pos, here)
-                lead = self._clamp((here[0] + target.vx * flight, here[1] + target.vy * flight))
+                lead = self.navigation.clamp((here[0] + target.vx * flight, here[1] + target.vy * flight))
                 reach, far = self.range_of(u) + u.radius, dist(u.pos, lead)
                 if far > reach:  # never beyond where the engine can throw
                     lead = (u.x + (lead[0] - u.x) / far * reach, u.y + (lead[1] - u.y) / far * reach)
@@ -4997,7 +4896,7 @@ class World:
                 # The stone lands this far past the unit and still catches it, but never beyond where the engine can throw.
                 beyond = min(self.splash_of(u) - target.radius, self.range_of(u) + u.radius - off)
                 if beyond > 0.0:
-                    spots.append(self._clamp((here[0] + (here[0] - u.x) / off * beyond, here[1] + (here[1] - u.y) / off * beyond)))
+                    spots.append(self.navigation.clamp((here[0] + (here[0] - u.x) / off * beyond, here[1] + (here[1] - u.y) / off * beyond)))
         spots = [spot for spot in spots if dist(u.pos, spot) - u.radius >= u.info.min_range]
         if not spots:
             return None, 0.0
@@ -5192,7 +5091,7 @@ class World:
         abandoned = isinstance(target, Building) and target.abandoned
         if target.hp <= 0 and target.player is not None and not own and not abandoned:
             self._tally_kill(target, player)
-        self.events.append(Event("hit", self._target_point(target), player=target.player, entity=source, other=target.id,
+        self.events.append(Event("hit", entity_point(target), player=target.player, entity=source, other=target.id,
                                  amount=dealt, text="ranged" if ranged else "melee", source_type=source_type,
                                  target_type=target.type.value, target_armor=armor,
                                  target_complete=not isinstance(target, Building) or target.done))
@@ -5231,7 +5130,7 @@ class World:
         victim.last_hit = self.time
         if self.time - victim.last_alert >= UNDER_ATTACK_COOLDOWN:
             victim.last_alert = self.time
-            self.events.append(Event("under_attack", self._target_point(target), player=target.player, entity=target.id))
+            self.events.append(Event("under_attack", entity_point(target), player=target.player, entity=target.id))
 
     def _plunder(self, building: Building, player: int, source: int) -> None:
         """An orc's Plunder on a building *player*'s *source* has just razed: a share of its gold, torn down or torn apart."""
@@ -5336,7 +5235,6 @@ class World:
             self._spill(b.player, b.center)
 
     # -- Helpers for orders ----------------------------------------------------------
-
 
     def _nearest_mine(self, point: Point, max_distance: float = 14.0) -> Building | None:
         mines = [m for m in self.mines() if m.has_gold and dist(m.center, point) <= max_distance]

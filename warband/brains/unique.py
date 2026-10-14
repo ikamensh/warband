@@ -115,7 +115,7 @@ def forest_route_pays(world: World, start: Point, goal: Point) -> bool:
     walker's on the map's and the forest walker's with its trees open."""
     width, height = world.width, world.height
     a, b = (int(start[0]), int(start[1])), (int(goal[0]), int(goal[1]))
-    walker = pathing.find_path_grid(a, b, world._blocked, width, height, max_expansions=world.path_budget)
+    walker = pathing.find_path_grid(a, b, world.navigation.ground, width, height, max_expansions=world.path_budget)
     through = pathing.find_path_grid(a, b, world.forest_ground(), width, height, max_expansions=world.path_budget)
     if not through or through[-1] != b:
         return False

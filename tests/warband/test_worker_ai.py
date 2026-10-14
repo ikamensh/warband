@@ -351,8 +351,7 @@ def test_a_worker_walled_in_with_the_danger_waits_instead_of_crashing():
     del world.units[archer.id]
     # The danger gone and a gate opened, the trip completes. Nothing a player does turns rock to grass, so the
     # test opens the gate as map generation carves a road: the terrain and the grid the model paths on.
-    world.terrain[11][8] = Terrain.GRASS
-    world._blocked[11 * world.width + 8] = 0
+    world.navigation.set_terrain((8, 11), Terrain.GRASS)
     run(world, 30.0)
     assert worker.carrying is None and world.players[0].gold == 1000 + GOLD_PER_TRIP
 
