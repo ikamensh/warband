@@ -46,22 +46,43 @@ def test_early_tech_goes_up_before_the_bank_overflows():
     assert tally.started["stables"] >= 1
 
 
-@pytest.mark.slow
 def test_a_brain_raises_the_keep_to_reach_the_tier_behind_it():
-    """A research order that names a second tier but not the Keep in front of it still reaches that tier: every
-    posture in bred.py is such an order, bred before the gate existed and never edited by hand, so a brain that
-    stopped at the gate would silently lose the whole upper half of the tree.
+    """A funded research order reaches its requested tier through every unnamed prerequisite.
 
-    Eight minutes of play, long enough to bank the gate and the tier under it: the slow tier.  The seed
-    has to leave the brain standing that long -- this posture buys nothing but the tier it is named for,
-    so it can be overrun first, and a brain whose smith was razed at minute seven proves nothing."""
-    from warband.sim.rules import BuildingType, Upgrade
+    A completed hall and smith, with no recruiting workers or rival attack,
+    isolate prerequisite scheduling from spending and match survival. A battle
+    can end before its nominal time cap, so winning it proves no research path.
+    """
+    import random
 
-    profile = replace(PRO, name="test-keep", early_tech=(BuildingType.BLACKSMITH,),
-                      research_order=(Upgrade.BLADES_2,))  # the tier alone: the Keep and Blades I are the rules' business
-    tally = _play("test-keep", profile, seed=3, minutes=8)
-    # Neither is in the order; each is bought only because Tempered Blades cannot be had without it.
-    assert tally.researched["keep"] == 1 and tally.researched["blades_1"] == 1
+    from warband.brains.pro_ai import ProBrain
+    from warband.sim.model import World
+    from warband.sim.rules import UPGRADES, BuildingType, Race, SIM_DT, Terrain, Upgrade
+
+    profile = replace(PRO, name="test-keep", max_workers=0,
+                      early_tech=(BuildingType.BLACKSMITH,), research_order=(Upgrade.BLADES_2,))
+    world = World(40, 30, [[Terrain.GRASS] * 40 for _ in range(30)], 2,
+                  scripted=True, races=[Race.DWARF, Race.ORC])
+    world.place_building(0, BuildingType.TOWN_HALL, (4, 4))
+    world.place_building(0, BuildingType.BLACKSMITH, (8, 4))
+    world.spawn_unit(0, UnitType.FOOTMAN, (10.5, 10.5))  # A live army keeps the brain out of worker recovery.
+    required = (Upgrade.BLADES_1, Upgrade.KEEP, Upgrade.BLADES_2)
+    player = world.players[0]
+    player.gold = sum(UPGRADES[upgrade].cost.gold for upgrade in required)
+    player.lumber = sum(UPGRADES[upgrade].cost.lumber for upgrade in required)
+    deadline = sum(UPGRADES[upgrade].time for upgrade in required) + len(required) * (profile.think_every + SIM_DT)
+    brain, rng = ProBrain(0, profile), random.Random(3)
+    completed = []
+    while world.time < deadline and Upgrade.BLADES_2 not in player.upgrades:
+        brain.think(world, rng)
+        world.step()
+        completed.extend(event.target_type for event in world.take_events() if event.kind == "researched")
+    # Neither prerequisite is named by the posture. The requested tier must
+    # finish too: buying its gate alone would still leave the upper tree closed.
+    assert player.upgrades == set(required)
+    assert set(completed) == {upgrade.value for upgrade in required}
+    assert completed[-1] == Upgrade.BLADES_2.value
+    assert player.gold == player.lumber == 0
 
 
 @pytest.mark.slow
