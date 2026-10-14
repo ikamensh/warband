@@ -326,7 +326,7 @@ def test_a_committed_ending_at_the_maw_cannot_be_overwritten_by_another_work() -
                       act=lambda r: solver.fight(r, tuple(r.get("keystone_center")), sides=(1, 2)))
     assert not run.won and not run.get("maw_resolved")
     assert run.remembered() == {"undertow_ending_sealed": False, "undertow_ending_open": False,
-                                 "undertow_ending_ground": False}
+                                 "undertow_ending_ground": False, "undertow_sella_tower_spared": False}
     solver.solve_maw(run, ending="sealed")
     assert run.won and run.remembered()["undertow_ending_sealed"] is True
     assert run.remembered()["undertow_ending_ground"] is False

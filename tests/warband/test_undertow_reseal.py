@@ -59,4 +59,5 @@ def test_reseal_requires_the_keystone_to_stand_and_a_rebuilt_one_can_finish() ->
         "undertow_ending_sealed": True,
         "undertow_ending_open": False,
         "undertow_ending_ground": False,
+        "undertow_sella_tower_spared": True,
     }

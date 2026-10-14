@@ -23,6 +23,7 @@ from warband.story.campaign import (
     Campaign, Choice, Line, Mission, Objective, Option, Run, Side, Speaker, Trigger,
     after, all_of, any_of, at, objective_done, var,
 )
+from warband.story import undertow_dialogue as dialogue
 from warband.sim.model import Building, Point, Pos, World, dist, tile_center
 from warband.sim.rules import (
     BuildingType as B, Layout, MapTheme, Race, Terrain, UnitType as U, Upgrade,
@@ -907,9 +908,22 @@ def _maw_commit(path: str, *lines: Line):
     def do(run: Run) -> None:
         run.set("ending_path", path)
         run.say(*lines)
-        run.toast("The ending is chosen", "The other works will wait for another valley")
+        run.toast(f"{path.upper()} is chosen", "The objective panel now shows the committed works")
 
     return do
+
+
+def _maw_ending_phase(run: Run) -> None:
+    """Retire impossible objectives, including a committed save from an earlier version."""
+    for alternative in ("sealed", "open", "ground"):
+        if alternative != run.get("ending_path"):
+            run.state[alternative] = "hidden"
+
+
+def _maw_final_ground(run: Run) -> None:
+    band = run.spawn(2, [U.AETHER_ELEMENTAL] * 3 + [U.SPIDER] * 3, (40.5, 40.5),
+                     attack=tuple(run.get("keystone_center")))
+    run.set("final_band", [u.id for u in band])
 
 
 def _maw_muster(run: Run) -> None:
@@ -946,7 +960,7 @@ def _maw_final_sealed(run: Run) -> None:
     band = run.spawn(1, [U.FOOTMAN] * 6 + [U.ARCHER] * 3 + [U.KNIGHT] * 2, (39.5, 50.5),
                      attack=tuple(run.get("keystone_center")))
     run.set("final_band", [u.id for u in band])
-    run.say(Line("Sella", "Then mend your dam, Issa, and be damned to the arithmetic. Everything I have, at the Keystone. Now."))
+    run.say(*dialogue.MAW_FINAL_SEALED)
 
 
 def _maw_opened(run: Run) -> None:
@@ -957,23 +971,25 @@ def _maw_opened(run: Run) -> None:
     band = run.spawn(2, [U.AETHER_ELEMENTAL] * 4 + [U.WOLF] * 3, (40.5, 32.5),
                      attack=tuple(run.get("camp_center")))
     run.set("final_band", [u.id for u in band])
-    run.say(
-        Line("Sella", "Stand down. Everyone, stand down. …You did it in the right order, Issa. Weight and all. "
-                      "That's my own plan, finished by a steadier hand."),
-        Line("Issa", "Then help me ride out what comes through, Sella. Towers silent, all hands to the camp."),
-    )
+    run.say(*dialogue.MAW_OPENED)
 
 
 def _maw_relief_opened(run: Run) -> None:
     """Issa operates Dagna's measured bypass before the demolished pylons release the Maw."""
     run.set("maw_relief_open", True)
     _landmark_state(run, "relief_sluice", "open")
-    run.say(Line("Dagna", "The surveyed bypass is open. Tarnlock drains clear of the release. Now take down the remaining pylons."))
+    run.say(*dialogue.MAW_RELIEF_OPENED)
+
+
+def _maw_pressure_cleared(run: Run) -> bool:
+    """Every seam-pressure band that has actually arrived is defeated before resolution."""
+    return not any(uid in run.world.units for index in range(5) for uid in run.get(f"bloom_hazard_{index}", []))
 
 
 def _maw_resolve(path: str):
     def do(run: Run) -> None:
         run.set(f"undertow_ending_{path}", True)
+        run.set("undertow_sella_tower_spared", run.get("sella_tower") in run.world.buildings)
         run.set("maw_resolved", path)
         _landmark_state(run, "keystone", "open" if path == "sealed" else "ruined" if path == "open" else "open")
 
@@ -990,62 +1006,49 @@ MAW = Mission(
     id="undertow_maw", title="The Maw", act=ACT_3,
     sides=(Side("Keepers", Race.HUMAN), Side("The Open Hand", Race.HUMAN), Side("The Bloom", Race.ORC)),
     size="Large", theme=MapTheme.WASTELAND, layout=Layout.KLONDIKE, seed=2505,
-    briefing=(
-        Line("", "The Maw: three great rifts in a ring of broken rock, the Keystone at their heart, and every keeper of the Hollow camped on its rim."),
-        Line("Sella", "My terms, delivered plainly as I always dealt with you: open the locks in sequence, nine days, the valley warned and moved. "
-                      "Count my dead when I'm done. Then count the Compact's, and take your time — they're better filed."),
-        Line("Dagna", "Her sequence bursts Tarnlock, Captain. She never had the seam's measure. Proven, witnessed, in writing now."),
-        Line("Wrenna", "The grove stands whole behind us. Give the breath somewhere to go that is not up — root, stone and vault — and it will go there.",
-             unless="undertow_grove_cut"),
-        Line("Wrenna", "We cut the grove's throat to save its heart. It cannot drink for the Maw now. The grounding needs the Guardian, living or as stone.",
-             when="undertow_grove_cut"),
-        Line("Issa", "Three works, one crater. Mend the Keystone and reseal the Chain. Fell her seal-pylons and open the Hollow — properly, Weight and all. "
-                     "Or ring the Maw with vaults and ground the breath where it rises. Hands on the works, everyone."),
-    ),
-    debrief=(
-        Line("Sella", "Count them, then. All of them, mine and the Compact's. …You finished it more honestly than I told it, Issa. "
-                      "That has to be enough, because it's more than the vote ever offered."),
-        Line("Brakk", "The Saltmarches are uphill and staying. The receipt stays in my pouch, Captain. Some papers you keep to remember the price, not to spend."),
-        Line("Dagna", "Whatever the valley breathes next, it breathes it in the open. The survey is public. All of it. Forever."),
-        Line("Wrenna", "The roots already know. Listen — the whole Hollow, breathing slower."),
-    ),
+    briefing=dialogue.MAW_BRIEFING,
+    debrief=dialogue.MAW_DEBRIEF,
     setup=_setup_maw,
     objectives=(
-        Objective("sealed", "RESEAL: mend Keystone; defeat the assault",
+        Objective("sealed", "RESEAL: peasants repair Keystone; beat assault",
                   lambda run: run.get("maw_resolved") == "sealed", optional=True),
-        Objective("open", "OPEN: fell three pylons; beat the bloom",
+        Objective("open", "OPEN: Issa opens sluice; fell pylons; beat bloom",
                   lambda run: run.get("maw_resolved") == "open", optional=True),
-        Objective("ground", f"GROUND: three vaults, {GROUND_AETHER} aether",
+        Objective("ground", f"GROUND: three vaults, {GROUND_AETHER} aether; beat surge",
                   lambda run: run.get("maw_resolved") == "ground", optional=True),
         Objective("tower_spared", "Spare Sella's mage tower", lambda run: bool(run.get("maw_resolved"))
                   and run.get("sella_tower") in run.world.buildings, optional=True),
-        Objective("ending", "Choose one ending", lambda run: bool(run.get("maw_resolved"))),
-        Objective("issa", "Issa must survive", lambda run: False,
+        Objective("relief_sluice", "Issa operates the Relief Sluice", lambda run: bool(run.get("maw_relief_open")),
+                  shown=lambda run: run.get("ending_path") == "open", optional=True),
+        Objective("ending", "Complete the chosen works", lambda run: bool(run.get("maw_resolved"))),
+        Objective("issa", "Issa must survive", lambda run: bool(run.get("maw_resolved")),
                   failed=lambda run: run.unit("issa") is None, optional=True),
-        Objective("hall", "Your Town Hall must stand", lambda run: False,
+        Objective("hall", "Your Town Hall must stand", lambda run: bool(run.get("maw_resolved")),
                   failed=lambda run: run.hall(0) is None, optional=True),
     ),
     triggers=(
         Trigger("muster", at(1), _maw_muster),
-        Trigger("assault_1", at(90), _wave(1, [U.FOOTMAN] * 4 + [U.ARCHER] * 2, (39.5, 50.5),
+        Trigger("assault_1", all_of(at(90), lambda run: "pylons_down" not in run.fired),
+                _wave(1, [U.FOOTMAN] * 4 + [U.ARCHER] * 2, (39.5, 50.5),
                                             "keystone_center", "assault_1_band")),
-        Trigger("assault_2", any_of(lambda run: bool(run.get("ending_path")) and after("assault_1", 60)(run), at(360)),
+        Trigger("assault_2", all_of(lambda run: "pylons_down" not in run.fired,
+                                    any_of(lambda run: bool(run.get("ending_path")) and after("assault_1", 60)(run), at(360))),
                 _wave(1, [U.FOOTMAN] * 5 + [U.ARCHER] * 3 + [U.KNIGHT], (39.5, 50.5),
                       "keystone_center", "assault_2_band")),
         Trigger("commit_sealed", all_of(lambda run: not run.get("ending_path"),
                                         lambda run: (k := _keystone(run)) is not None and k.hp > int(run.get("keystone_hp")) + 5),
-                _maw_commit("sealed",
-                            Line("Issa", "Scaffolds up. We mend the Keystone and reseal the Chain — with the survey public this time, and the seam's name spoken aloud."),
-                            Line("Sella", "A dam again, Issa. At least mend it honestly. You'll have to hold the ring to do it."))),
+                _maw_commit("sealed", *dialogue.MAW_COMMIT_SEALED)),
         Trigger("commit_open", all_of(lambda run: not run.get("ending_path"), lambda run: _pylons_standing(run) < 3),
-                _maw_commit("open",
-                            Line("Issa", "First pylon's down. We open the Hollow — in the right order, Weight accounted for, people moved. Her plan, finished honestly."),
-                            Line("Sella", "Careful, Captain. Even opened gently, it breathes out through everything standing on it."))),
+                _maw_commit("open", *dialogue.MAW_COMMIT_OPEN)),
         Trigger("commit_ground", all_of(lambda run: not run.get("ending_path"), lambda run: _maw_vaults(run) >= 1,
                                         lambda run: _ground_eligible(run)),
-                _maw_commit("ground",
-                            Line("Wrenna", "First vault drinking. Two more, and hold them all until the store stands at 450. Every spell we cast delays it — spend breath like misers."),
-                            Line("Sella", "Plumbing instead of a dam. …I never had the parts for that. You kept them. Noted, Captain."))),
+                _maw_commit("ground", *dialogue.MAW_COMMIT_GROUND)),
+        Trigger("ending_phase", lambda run: bool(run.get("ending_path")), _maw_ending_phase),
+        Trigger("ground_surge", all_of(lambda run: run.get("ending_path") == "ground",
+                                       lambda run: not run.get("final_band")), _maw_final_ground),
+        Trigger("bloom_hazard_0", all_of(lambda run: bool(run.get("ending_path")),
+                                        lambda run: bool(run.get("undertow_seam_mined"))
+                                        and not run.get("undertow_seam_capped")), _maw_bloom_hazard(0)),
         Trigger("ground_warned", all_of(lambda run: _maw_vaults(run) >= 1, lambda run: not _ground_eligible(run)),
                 lambda run: run.say(Line("Wrenna", "Those vaults will draw, but they cannot ground the Maw alone — the grove was cut and no Guardian "
                                                    "stands with us, living or as stone. Reseal or open it instead."))),
@@ -1059,23 +1062,25 @@ MAW = Mission(
                                       lambda run: _pylons_standing(run) == 0), _maw_opened),
         Trigger("resolve_sealed", all_of(lambda run: run.get("ending_path") == "sealed",
                                          lambda run: "keystone_full" in run.fired, _band_cleared("final_band"),
-                                         lambda run: (k := _keystone(run)) is not None and k.hp >= k.max_hp),
+                                         lambda run: (k := _keystone(run)) is not None and k.hp >= k.max_hp,
+                                         _maw_pressure_cleared),
                 _maw_resolve("sealed")),
         Trigger("resolve_open", all_of(lambda run: run.get("ending_path") == "open",
-                                       lambda run: "pylons_down" in run.fired, _band_cleared("final_band")),
+                                       lambda run: "pylons_down" in run.fired, _band_cleared("final_band"), _maw_pressure_cleared),
                 _maw_resolve("open")),
         Trigger("resolve_ground", all_of(lambda run: run.get("ending_path") == "ground",
                                          lambda run: _ground_eligible(run), lambda run: _maw_vaults(run) == 3,
-                                         lambda run: run.world.players[0].aether >= GROUND_AETHER),
+                                         lambda run: run.world.players[0].aether >= GROUND_AETHER,
+                                         _band_cleared("final_band"), _maw_pressure_cleared),
                 _maw_resolve("ground")),
         *(Trigger(f"bloom_hazard_{i}", all_of(at(100 + 100 * i), lambda run: bool(run.get("undertow_seam_mined"))
                                               and not run.get("undertow_seam_capped")), _maw_bloom_hazard(i))
-          for i in range(5)),
+          for i in range(1, 5)),
         Trigger("relief", all_of(at(60), lambda run: len(run.soldiers(0)) <= 1, lambda run: not run.get("maw_resolved")),
                 _maw_relief),
     ),
     win=lambda run: bool(run.get("maw_resolved")),
-    remember=("undertow_ending_sealed", "undertow_ending_open", "undertow_ending_ground"),
+    remember=("undertow_ending_sealed", "undertow_ending_open", "undertow_ending_ground", "undertow_sella_tower_spared"),
 )
 
 
@@ -1086,26 +1091,5 @@ CAMPAIGN = Campaign(
     speakers=SPEAKERS,
     missions=(MILL, CARAVAN, GROVE, WEIGHT, MAW),
     cover="campaign/undertow.png",
-    epilogue=(
-        Line("", "The Chain was resealed at the Maw, the Keystone whole under its scaffolds. The Compact survives, chastened: "
-                 "the surveys are public now, all of them, and the next First Lockwright reads the seam's true measure on her first morning.",
-             when="undertow_ending_sealed"),
-        Line("", "The Hollow was opened at the Maw, in the right order, the Weight accounted for. The lower Steps' works went under violet weather; "
-                 "the people, moved in time, did not. Magic is free now, and wild, and nobody's to meter.", when="undertow_ending_open"),
-        Line("", "The breath was grounded at the Maw — spent into root, stone and a ring of drinking vaults. The locks stay, "
-                 "but as plumbing rather than as a dam, and their keepers are a maintenance rota forever: a lesser priesthood, with wrenches.",
-             when="undertow_ending_ground"),
-        Line("", "Millfield's vault still draws beside the mill-race, and its crew walks tall: the Step that held.", when="undertow_mill_vault"),
-        Line("", "Millfield mills by daylight now, its shuttered vault a storehouse with a story. The farms stand.", unless="undertow_mill_vault"),
-        Line("", "The millpond never came back. Mother Hasp prices flour by the dry year to this day, and says why to anyone who asks.", when="undertow_dam"),
-        Line("", "The grove's firebreak is a stump-scar that closes a hand's breadth a year. Wrenna counts the rings and says nothing.", when="undertow_grove_cut"),
-        Line("", "The Deep Grove stands whole, drinking deep, its border held by treaty and by roots.", unless="undertow_grove_cut"),
-        Line("", "An Ancient walks the Maw's rim on no one's orders, and the blooms give it a wide, respectful berth.", when="undertow_guardian_ally"),
-        Line("", "A heart-stone turns slowly in its vault housing at the Maw, warm to the touch, spending its centuries a sip at a time.", when="undertow_guardian_core"),
-        Line("", "Over Tarnlock the capped seam sleeps under its vault, and Dagna's confession is read aloud to every new council, in full, before any other business.", when="undertow_seam_capped"),
-        Line("", "The seam's gold is in every wall and wage of the new works, and on wet springs the Maw still blooms a little for it. The valley budgets for both.", when="undertow_seam_mined"),
-        Line("", "Sella Voss keeps a workshop above the Saltmarches, unhanged, unrepentant, and — the keepers admit it through their teeth — consulted. "
-                 "Her answer to everything is the same: 'You should see my first draft.'"),
-        Line("", "And in Millfield, Mother Hasp raised the price of flour by a penny, 'for the excitement', and lowered it again by two, 'because we're all still here'."),
-    ),
+    epilogue=dialogue.EPILOGUE,
 )
