@@ -33,10 +33,11 @@ from saga2d import Game, fonts  # noqa: E402
 from saga2d.effects import Toast  # noqa: E402
 from saga2d.testing.native_frames import tick as native_tick  # noqa: E402
 from warband.art import visual_lint as lint  # noqa: E402
-from warband.story.campaign import LEGACY_CAMPAIGN_ID, Campaign, Mission, Progress, ProgressStore  # noqa: E402
+from warband.story.campaign import LEGACY_CAMPAIGN_ID, Campaign, Choice, Mission, Progress, ProgressStore  # noqa: E402
 from warband.story.catalog import CAMPAIGNS  # noqa: E402
 from warband.story.campaign_scene import CampaignScene  # noqa: E402
 from warband.story.dialog import DialogScene  # noqa: E402
+from warband.story.journal import JournalScene  # noqa: E402
 from warband.story.mission_scene import MissionResultScene, MissionScene, build_world  # noqa: E402
 from warband.story.missions import CAMPAIGN  # noqa: E402
 from warband.sim.model import World, tile_center  # noqa: E402
@@ -1373,6 +1374,78 @@ def _catalog_result(game: Game, *, campaign: Campaign, mission: Mission) -> None
     ticks(game)
 
 
+def _undertow_choice(game: Game, *, campaign: Campaign) -> None:
+    """Queue the authored three-answer seam conversation as a presentation fixture."""
+    mission = campaign.mission("undertow_weight")
+    scene = _catalog_mission(game, campaign=campaign, mission=mission)
+    next(trigger for trigger in mission.triggers if trigger.id == "confession").do(scene.run)
+    game.push(DialogScene(scene.run.pending.pop(), campaign.speakers, scene.run.vars, record=True))
+    while not isinstance(game.scene.current, Choice):
+        game.scene.advance()
+    ticks(game)
+
+
+def _undertow_journal(game: Game, *, campaign: Campaign) -> None:
+    """The saved history names the chosen seam answer and presents its real portrait."""
+    _undertow_choice(game, campaign=campaign)
+    game.scene.choose(game.scene.current.options[-1].value)
+    game.scene.skip()
+    scene = game.scene
+    game.push(JournalScene(scene.run, campaign.speakers))
+    game.scene.previous()  # the selected answer, before the following instruction
+    ticks(game)
+
+
+def _undertow_committed(game: Game, *, campaign: Campaign) -> None:
+    """A public peasant repair commits RESEAL; the fixture clears notices to inspect the lasting HUD."""
+    scene = _catalog_mission(game, campaign=campaign, mission=campaign.mission("undertow_maw"))
+    run = scene.run
+    keystone = run.world.building_at(tuple(run.get("keystone_pos")))
+    run.world.repair([unit.id for unit in run.units(0, UnitType.PEASANT)[:1]], keystone.id)
+    for _ in range(1200):
+        run.world.step()
+        run.tick()
+        if run.get("ending_path"):
+            break
+    assert run.get("ending_path") == "sealed"
+    run.pending.clear()
+    run.notes.clear()
+    run.completed.clear()
+    ticks(game)
+
+
+def _undertow_keeper_objectives(game: Game, *, campaign: Campaign) -> None:
+    """Keeper selection must leave all precommit objectives visible above the unit command card."""
+    scene = _catalog_mission(game, campaign=campaign, mission=campaign.mission("undertow_maw"))
+    scene.focus_keeper()
+    ticks(game)
+    assert scene.objectives_body.visible
+
+
+def _undertow_success(game: Game, *, campaign: Campaign) -> None:
+    """The Maw wins through ordinary orders; only earlier campaign completion is a phase fixture."""
+    from tools.play_undertow import solve_maw
+
+    progress = Progress(campaign.id, Difficulty.MEDIUM, completed=[mission.id for mission in campaign.missions[:-1]])
+    ProgressStore(game.data_dir, campaign.id).save(progress)
+    run = build_world(campaign.mission("undertow_maw"), flags=progress.flags)
+    solve_maw(run, ending="sealed")
+    run.pending.clear()
+    run.notes.clear()
+    game.push(MissionScene(campaign, run, difficulty=Difficulty.MEDIUM, settings=dict(QUIET)))
+    ticks(game)
+    assert isinstance(game.scene, MissionResultScene) and game.scene.won
+
+
+def _undertow_epilogue(game: Game, *, campaign: Campaign) -> None:
+    """The actual successful result proceeds through its debrief to the correct epilogue."""
+    _undertow_success(game, campaign=campaign)
+    game.scene.proceed()
+    game.scene.skip()
+    ticks(game)
+    assert isinstance(game.scene, DialogScene)
+
+
 def campaign_cases(campaign: Campaign) -> dict[str, Screen]:
     """The campaign pages, each mission's opening, briefing and full objective panel, and a result layout."""
     cases = {
@@ -1384,6 +1457,15 @@ def campaign_cases(campaign: Campaign) -> dict[str, Screen]:
         cases[f"mission_{campaign.id}_{mission.id}_briefing"] = partial(_catalog_briefing, campaign=campaign, mission=mission)
         cases[f"mission_{campaign.id}_{mission.id}_objectives"] = partial(_catalog_objectives, campaign=campaign, mission=mission)
     cases[f"mission_{campaign.id}_result"] = partial(_catalog_result, campaign=campaign, mission=campaign.missions[-1])
+    if campaign.id == "undertow":
+        cases.update({
+            "mission_undertow_choice": partial(_undertow_choice, campaign=campaign),
+            "mission_undertow_journal": partial(_undertow_journal, campaign=campaign),
+            "mission_undertow_committed": partial(_undertow_committed, campaign=campaign),
+            "mission_undertow_keeper_objectives": partial(_undertow_keeper_objectives, campaign=campaign),
+            "mission_undertow_result": partial(_undertow_success, campaign=campaign),
+            "mission_undertow_epilogue": partial(_undertow_epilogue, campaign=campaign),
+        })
     return cases
 
 

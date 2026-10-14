@@ -5,6 +5,8 @@ import json
 import pytest
 
 from saga2d import Game, Scene
+from saga2d.testing import assert_text_fits
+from warband.art.visual_lint import use_real_text_metrics
 from warband.sim.model import World
 from warband.story.campaign import Choice, Line, Option, Run
 from warband.story.catalog import UNDERTOW
@@ -86,3 +88,37 @@ def test_the_match_and_pause_menu_open_a_read_only_journal(game):
     press(game, "f1")
     assert isinstance(game.scene, HelpScene)
     assert any("journal" in item["text"].lower() for item in game.backend.texts)
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("size", [(1200, 680), (1280, 800)])
+def test_keeper_focus_keeps_every_current_maw_objective_visible(tmp_path, size):
+    """Slow: the real finale HUD and keeper command card must fit after banner and notices finish."""
+    from warband.sim.rules import Difficulty
+    from warband.story.mission_scene import MissionScene
+
+    game = Game("Maw objectives", backend="mock", resolution=size,
+                theme=build_theme(), save_dir=tmp_path / "saves")
+    use_real_text_metrics(game)
+    run = build_world(UNDERTOW.mission("undertow_maw"), flags={})
+    scene = MissionScene(UNDERTOW, run, difficulty=Difficulty.MEDIUM)
+    try:
+        game.push(scene)
+        for _ in range(12):
+            game.tick(.1)
+        scene.paused = True
+        for _ in range(120):
+            game.tick(.1)
+        press(game, "f3")
+        assert scene.selection == [run.unit("issa").id]
+        assert scene.objectives_body.visible
+        rendered = " ".join(item["text"] for item in game.backend.texts)
+        for objective in scene.mission.objectives:
+            if run.state[objective.id] != "hidden":
+                assert " ".join(objective.text.split()) in rendered
+        assert_text_fits(game)
+        _, objective_y, _, objective_height = scene.objectives.bounds
+        _, card_y, _, _ = scene.card_panel.bounds
+        assert objective_y + objective_height <= card_y
+    finally:
+        game.close()
