@@ -4077,8 +4077,44 @@ class SettingsScene(_Overlay):
         self._adjust(self.row_keys[self.ui.focused], 1)
 
 
+@dataclass(frozen=True)
+class SaveSlot:
+    """A player-facing slot and its current saved-game summary."""
+
+    slot: int | str
+    name: str
+    key: str
+    entry: dict[str, Any] | None
+    automatic: bool = False
+
+
+def save_slots(game: Any) -> list[SaveSlot]:
+    """Discover ordinary slots and existing campaign autosaves in one place.
+
+    Campaign identities come from the playable catalogue and keep their own files. Empty
+    campaign slots are omitted; only the ordinary manual slots can be written by the browser.
+    """
+    from warband.story.catalog import CAMPAIGNS
+    from warband.story.mission_scene import campaign_save_slot
+
+    names = {"quick": "Quick", "autosave": "Autosave",
+             **{campaign_save_slot(campaign): campaign.title for campaign in CAMPAIGNS}}
+    entries = game.save_manager.list_slots(SAVE_SLOTS, names=tuple(names))
+    slots: list[SaveSlot] = []
+    campaign_key = SAVE_SLOTS + 1
+    for slot, entry in zip([*range(1, SAVE_SLOTS + 1), *names], entries):
+        if isinstance(slot, int):
+            slots.append(SaveSlot(slot, f"Slot {slot}", str(slot), entry))
+        elif slot in ("quick", "autosave"):
+            slots.append(SaveSlot(slot, names[slot], "Q" if slot == "quick" else "A", entry, slot == "autosave"))
+        elif entry is not None:
+            slots.append(SaveSlot(slot, names[slot], str(campaign_key), entry, True))
+            campaign_key += 1
+    return slots
+
+
 class SaveBrowserScene(_Overlay):
-    """Three manual slots, the quicksave and the autosave with what they hold; a key or a click picks one."""
+    """Manual saves and every available autosave; a key or click picks one without overwriting campaign slots."""
 
     pause_below = True
     controls = {"1": "pick_1", "2": "pick_2", "3": "pick_3", "q": "pick_quick", "a": "pick_auto"}
@@ -4086,12 +4122,12 @@ class SaveBrowserScene(_Overlay):
     def __init__(self, game: Any, mode: str, *, on_pick: Callable[[int | str], None]) -> None:
         self.mode = mode
         self.on_pick = on_pick
-        self.listing = game.save_manager.list_slots(SAVE_SLOTS, names=("quick", "autosave"))
+        self.listing = save_slots(game)
 
     def on_enter(self) -> None:
         panel = self.panel("Save game" if self.mode == "save" else "Load game")
-        for entry, slot, key in zip(self.listing, [*range(1, SAVE_SLOTS + 1), "quick", "autosave"], ("1", "2", "3", "Q", "A")):
-            name = f"Slot {slot}" if isinstance(slot, int) else slot.title()
+        for saved in self.listing:
+            entry, slot = saved.entry, saved.slot
             if entry is None:
                 detail, ok = "empty", self.mode == "save"
             elif "error" in entry:
@@ -4101,10 +4137,11 @@ class SaveBrowserScene(_Overlay):
                 head = f"Campaign · {s['mission']}" if "mission" in s else s.get("player", "")
                 detail = f"{head} · {s.get('map', '')} · {s.get('players', '?')} players · {s.get('difficulty', '')} · {s.get('clock', '')} · {entry['timestamp'][:16].replace('T', ' ')}"
                 ok = True
-            button = Button(name, hotkey=key, on_click=lambda sl=slot: self.pick(sl), style=ACTION_BUTTON if ok else GHOST_BUTTON, width=150)
-            button.enabled = ok and not (self.mode == "save" and slot == "autosave")
-            panel.add(Row(button, Label(detail, text_style="body", width=560, wrap=True), spacing=12))
-        panel.add(KeyHints([("1 2 3 Q A", "pick"), ("Esc", "back")]))
+            button = Button(saved.name, shortcut=saved.key, on_click=lambda sl=slot: self.pick(sl),
+                            style=ACTION_BUTTON if ok else GHOST_BUTTON, width=220)
+            button.enabled = ok and not (self.mode == "save" and saved.automatic)
+            panel.add(Row(button, Label(detail, text_style="body", width=490, wrap=True), spacing=12))
+        panel.add(KeyHints([(" ".join(saved.key for saved in self.listing), "pick"), ("Esc", "back")]))
 
     def pick(self, slot: int | str) -> None:
         self.game.pop()
