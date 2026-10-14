@@ -199,12 +199,7 @@ class Narrator:
                 self._blows.append((world.time, event.pos[0], event.pos[1], victim, event.amount, 0, False, False))
             elif event.kind in ("death", "destroyed"):
                 victim = event.player if event.player is not None and event.player < self.seats else -1
-                price = 0
-                if victim >= 0:
-                    try:
-                        price = _price(world.players[victim].race, event.text)
-                    except (KeyError, ValueError):
-                        price = 0
+                price = _price(world.players[victim].race, event.text) if victim >= 0 else 0
                 self._blows.append((world.time, event.pos[0], event.pos[1], victim, 0, price,
                                     event.text == UnitType.PEASANT.value, True))
             elif event.kind == "deposit" and event.player is not None and event.player < self.seats:

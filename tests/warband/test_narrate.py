@@ -61,7 +61,9 @@ def test_a_story_renders_and_survives_json():
     assert record["agents"] == ["a", "b"] and record["battles"] and record["factors"]
 
 
+@pytest.mark.slow
 def test_a_short_match_narrates_openings_and_a_verdict():
+    """Three minutes of a real AI match: opening narration and aggregation belong to the slow tier."""
     story = narrate(MatchSpec(seed=7, agents=("master", "medium"), minutes=3))
     assert {e.kind for e in story.episodes} >= {"opening"}
     assert all(not math.isnan(story.factors[s]["gathered"]) for s in range(2))

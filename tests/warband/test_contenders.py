@@ -1,17 +1,31 @@
 """The contenders for the rung above Grandmaster play under their names and seed the search."""
 
-
-def test_the_policy_brain_with_zero_weights_plays_as_bred_and_reads_its_features():
-    from warband.brains.policy import FEATURE_NAMES, LEARNED, STANCES, PolicyBrain
-
-    assert "policy" in AGENTS
-    brain = make_agent("policy", 0, seed=1)
-    assert isinstance(brain, PolicyBrain)
-    assert len(LEARNED) == len(STANCES) and all(len(row) == len(FEATURE_NAMES) for row in LEARNED)
+import random
 
 from warband.brains.contenders import BY_NAME, CONTENDERS
+from warband.brains.policy import FEATURE_NAMES, LEARNED, STANCES, PolicyBrain
 from warband.league import evolve
 from warband.league.arena import AGENTS, make_agent
+from warband.sim import mapgen
+from warband.sim.model import World
+
+
+def test_the_policy_brain_with_zero_weights_plays_as_bred_and_reads_its_features():
+    """Zero weights preserve the bred opening through real stance decisions and world orders."""
+    brain = make_agent("policy", 0, seed=1)
+    baseline = make_agent("apex3", 0, seed=1)
+    assert isinstance(brain, PolicyBrain)
+    assert len(LEARNED) == len(STANCES) and all(len(row) == len(FEATURE_NAMES) for row in LEARNED)
+    world = mapgen.generate(seed=7, human=None)
+    reference = World.from_dict(world.to_dict())
+    rng, reference_rng = random.Random(1), random.Random(1)
+    for _ in range(120):
+        brain.think(world, rng)
+        baseline.think(reference, reference_rng)
+        world.step()
+        reference.step()
+    assert brain.stance == 0
+    assert world.to_dict() == reference.to_dict()
 
 
 def test_every_contender_is_a_registered_agent_with_a_unique_name():
