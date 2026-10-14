@@ -15,6 +15,7 @@ from PIL import Image as PILImage
 
 from saga2d import Anchor, Button, Column, Component, Image, InputEvent, KeyHints, Label, Row, Scene
 from warband.story.campaign import Choice, Dialog, Item, Line, Speaker
+from warband.story.journal import remember
 from warband.art.production import ProductionIcon
 from warband.audio.sound import play_sound
 from warband.ui.style import ACTION_BUTTON, GHOST_BUTTON, MUTED, OVERLAY_STYLE
@@ -41,13 +42,15 @@ class DialogScene(Scene):
     controls = {("space", "return"): "advance", "escape": "skip"}
 
     def __init__(self, dialog: Dialog, speakers: dict[str, Speaker], vars: dict[str, Any], *,
-                 on_done: Callable[[], None] | None = None) -> None:
+                 on_done: Callable[[], None] | None = None, record: bool = False) -> None:
         self.items: list[Item] = list(dialog)
         self.speakers = speakers
         self.vars = vars
         self.on_done = on_done
         self.index = 0
         self.finished = False
+        self.record = record
+        self._remembered: set[int] = set()
 
     @property
     def current(self) -> Item | None:
@@ -68,6 +71,9 @@ class DialogScene(Scene):
         if item is None:
             self._finish()
             return
+        if self.record and isinstance(item, Line) and self.index not in self._remembered:
+            remember(self.vars, item.speaker, item.text)
+            self._remembered.add(self.index)
         width = min(PANEL_WIDTH, self.game.width - 40)
         speaker = self.speakers.get(item.speaker) if item.speaker else None
         if item.speaker and speaker is None:
@@ -115,6 +121,9 @@ class DialogScene(Scene):
         item = self.current
         if not isinstance(item, Choice):
             return
+        if self.record:
+            answer = next(option.label for option in item.options if option.value == value)
+            remember(self.vars, item.speaker, f"{item.prompt}\nAnswer: {answer}")
         self.vars[item.key] = value
         play_sound("button")
         self.index += 1

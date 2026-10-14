@@ -19,6 +19,7 @@ from warband.sim import mapgen
 from warband.brains.ai import make_brain
 from warband.story.campaign import LEGACY_CAMPAIGN_ID, Campaign, Mission, Progress, ProgressStore, Run, Speaker, shifted
 from warband.story.dialog import DialogScene, speaker_portrait
+from warband.story.journal import JournalScene
 from warband.story.landmarks import LandmarkView
 from warband.sim.model import Event, Unit, World
 from warband.art import textures
@@ -92,7 +93,8 @@ def start_mission(game, campaign: Campaign, mission: Mission, progress: Progress
     run = build_world(mission, flags=progress.flags)
     scene = MissionScene(campaign, run, difficulty=progress.difficulty, settings=settings)
     if briefing:
-        game.push(DialogScene(mission.briefing, campaign.speakers, run.vars, on_done=lambda: game.clear_and_push(scene)))
+        game.push(DialogScene(mission.briefing, campaign.speakers, run.vars,
+                              on_done=lambda: game.clear_and_push(scene), record=True))
     else:
         game.clear_and_push(scene)
 
@@ -139,7 +141,7 @@ class MissionScene(GameScene):
     """The match with the mission's script on top.  Not ranked: the leaderboard is for skirmishes."""
 
     AUTOSAVE_SLOT = CAMPAIGN_SLOT
-    controls = {**GameScene.controls, "f3": "focus_keeper"}
+    controls = {**GameScene.controls, "f3": "focus_keeper", "j": "open_journal"}
 
     def __init__(self, campaign: Campaign, run: Run, *, difficulty: Difficulty, settings=None) -> None:
         super().__init__(run.world, run.mission.seed, difficulty=difficulty, settings=settings, ranked=False)
@@ -210,7 +212,11 @@ class MissionScene(GameScene):
 
     def open_help(self) -> None:
         self.game.push(HelpScene(self.scheme, magic=self.world.magic,
-                                 f3_action="focus keeper" if self._keeper_links() else "pause"))
+                                 f3_action="focus keeper" if self._keeper_links() else "pause", mission=True))
+
+    def open_journal(self) -> None:
+        """Read the briefing and witnessed choices without changing the current mission."""
+        self.game.push(JournalScene(self.run, self.campaign.speakers))
 
     def _draw_keeper_labels(self) -> None:
         if self.clock < self._banner_until:
@@ -301,7 +307,7 @@ class MissionScene(GameScene):
             self.last_alert = point
         run.looks.clear()
         if run.pending:
-            self.game.push(DialogScene(run.pending.pop(0), self.campaign.speakers, run.vars))
+            self.game.push(DialogScene(run.pending.pop(0), self.campaign.speakers, run.vars, record=True))
 
     def _check_game_over(self) -> None:
         if self._game_over:
@@ -368,7 +374,7 @@ def load_mission(state: dict[str, Any], *, settings=None) -> MissionScene:
 
 
 class MissionPauseScene(PauseScene):
-    controls = {"q": "quit", "f5": "save", "f9": "load", "s": "settings", "f1": "help", "r": "restart", "c": "campaign"}
+    controls = {"q": "quit", "f5": "save", "f9": "load", "s": "settings", "f1": "help", "r": "restart", "c": "campaign", "j": "journal"}
 
     def on_enter(self) -> None:
         scene: MissionScene = self.game_scene  # type: ignore[assignment]
@@ -379,6 +385,7 @@ class MissionPauseScene(PauseScene):
         panel.add(Button("Load game…", hotkey="F9", on_click=self.load, style=GHOST_BUTTON, width=260))
         panel.add(Button("Settings", hotkey="S", on_click=self.settings, style=GHOST_BUTTON, width=260))
         panel.add(Button("How to play", hotkey="F1", on_click=self.help, style=GHOST_BUTTON, width=260))
+        panel.add(Button("Mission journal", hotkey="J", on_click=self.journal, style=GHOST_BUTTON, width=260))
         panel.add(Button("Restart mission", hotkey="R", on_click=self.restart, style=GHOST_BUTTON, width=260))
         panel.add(Button("Campaign", hotkey="C", on_click=self.campaign, style=GHOST_BUTTON, width=260))
         panel.add(Button("Quit", hotkey="Q", on_click=self.quit, style=GHOST_BUTTON, width=260))
@@ -387,6 +394,9 @@ class MissionPauseScene(PauseScene):
 
     def restart(self) -> None:
         self.notice.text = restart_mission(self.game, self.game_scene) or ""  # type: ignore[arg-type]
+
+    def journal(self) -> None:
+        self.game_scene.open_journal()  # type: ignore[attr-defined]
 
     def campaign(self) -> None:
         """Back to the campaign screen; the mission is saved first so Continue picks it up where it was."""
@@ -447,7 +457,8 @@ class MissionResultScene(_Overlay):
         if not self.won:
             return
         scene = self.scene
-        self.game.push(DialogScene(scene.mission.debrief, scene.campaign.speakers, scene.run.vars, on_done=self._after_debrief))
+        self.game.push(DialogScene(scene.mission.debrief, scene.campaign.speakers, scene.run.vars,
+                                   on_done=self._after_debrief, record=True))
 
     def _after_debrief(self) -> None:
         scene = self.scene

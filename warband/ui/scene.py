@@ -4228,14 +4228,16 @@ class HelpScene(_Overlay):
 
     pause_below = True
 
-    def __init__(self, scheme: Scheme, *, magic: bool = False, f3_action: str = "pause") -> None:
+    def __init__(self, scheme: Scheme, *, magic: bool = False, f3_action: str = "pause", mission: bool = False) -> None:
         self.scheme = scheme
         self.magic = magic
         self.f3_action = f3_action
+        self.mission = mission
 
     def on_enter(self) -> None:
         panel = self.panel(f"How to play · {self.scheme.name} controls")
-        intro = " ".join(HELP_INTRO)
+        intro = (HELP_INTRO[0] + " starts. The mission objectives decide victory. J in the match opens the mission journal for its briefing and decisions; "
+                 "hover minimap diamonds for charted objective names." if self.mission else " ".join(HELP_INTRO))
         if self.magic:
             intro += " A vault on a violet ley rift draws aether for the spells a Mage Tower researches (Alt+1-3)."
         panel.add(Label(intro, text_style="body", width=HELP_KEY_WIDTH + 14 + HELP_TEXT_WIDTH, wrap=True))
