@@ -17,7 +17,7 @@ def settlement(tmp_path, request):
     game = Game("settlement", backend="mock", resolution=request.param,
                 theme=build_theme(), save_dir=tmp_path / "saves")
     scene = new_game(seed=3, magic=True, settings={"controls": "classic"})
-    scene.paused = True
+    scene.execution.paused = True
     scene.world.reveal_all(scene.human)
     game.push(scene)
     game.tick(1 / 30)
@@ -100,10 +100,10 @@ def test_empty_selection_can_plan_wait_cancel_and_set_assembly(settlement):
     assert [p.type for p in plans] == [BuildingType.BARRACKS, BuildingType.BLACKSMITH, UnitType.FOOTMAN, Upgrade.BLADES_1]
     assert plans[0].pos == site
     assert player.gold == player.lumber == 0 and scene.selection == []
-    scene.paused = False
+    scene.execution.paused = False
     for _ in range(32):
         game.tick(1 / 30)
-    scene.paused = True
+    scene.execution.paused = True
     click(game, "Plans (4)")
     assert isinstance(game.scene, SettlementPlansScene)
     text = "\n".join(item["text"] for item in game.backend.texts)
@@ -134,10 +134,10 @@ def test_global_unit_request_starts_when_funded_and_active_queue_can_be_cancelle
     click(game, "Peasant")
     assert len(world.player_plans(scene.human)) == 1 and player.gold == 0
     player.gold = UNITS[UnitType.PEASANT].cost.gold
-    scene.paused = False
+    scene.execution.paused = False
     for _ in range(32):
         game.tick(1 / 30)
-    scene.paused = True
+    scene.execution.paused = True
     hall = world.player_buildings(scene.human, BuildingType.TOWN_HALL)[0]
     assert hall.queue == [UnitType.PEASANT] and not world.player_plans(scene.human)
     click(game, "Plans (1)")
@@ -338,10 +338,10 @@ def test_cards_count_what_is_already_ordered(settlement):
     texts = [item["text"] for item in game.backend.texts]
     assert "Footman ×2" in texts and "Peasant ×1" in texts and "Archer" in texts
     player.gold = UNITS[UnitType.PEASANT].cost.gold
-    scene.paused = False
+    scene.execution.paused = False
     for _ in range(32):
         game.tick(1 / 30)
-    scene.paused = True
+    scene.execution.paused = True
     hall = world.player_buildings(scene.human, BuildingType.TOWN_HALL)[0]
     assert hall.queue == [UnitType.PEASANT] and not any(p.type is UnitType.PEASANT for p in world.player_plans(scene.human))
     assert "Peasant ×1" in [item["text"] for item in game.backend.texts]
@@ -364,10 +364,10 @@ def test_selection_panel_overviews_production_and_manages_it(settlement):
     place_blueprint(game, scene, BuildingType.FARM)
     key(game, "escape")
     assert scene.catalogue is None and scene.selection == []
-    scene.paused = False
+    scene.execution.paused = False
     for _ in range(32):
         game.tick(1 / 30)
-    scene.paused = True
+    scene.execution.paused = True
     hall = world.player_buildings(scene.human, BuildingType.TOWN_HALL)[0]
     assert hall.queue == [UnitType.PEASANT, UnitType.PEASANT]
     farm = next(p for p in world.player_plans(scene.human) if p.type is BuildingType.FARM)

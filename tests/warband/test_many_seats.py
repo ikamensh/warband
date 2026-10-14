@@ -70,7 +70,7 @@ def test_a_sixteen_seat_match_opens_and_ticks_in_a_window(tmp_path) -> None:
             game.tick(0.1)
         assert isinstance(game.scene, GameScene) and scene.world.seats == 16
         assert scene.view.minimap_image().size[0] > 0
-        assert len(scene.brains) == 15
+        assert len(scene.execution.brains) == 15
     finally:
         game.close()
 

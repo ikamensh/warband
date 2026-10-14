@@ -173,10 +173,10 @@ def capture_settlement(game: Game, output: Path) -> None:
     scene, workers, targets = settlement()
     game.clear_and_push(scene)
     # Let the match banner finish before issuing harvest orders.
-    scene.paused = True
+    scene.execution.paused = True
     for _ in range(20):
         tick(game, 0.2)
-    scene.paused = False
+    scene.execution.paused = False
     for worker, target in zip(workers, targets):
         scene.world.harvest([worker.id], target)
     scene.camera.zoom = 1.0

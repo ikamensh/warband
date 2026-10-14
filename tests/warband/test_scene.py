@@ -501,7 +501,7 @@ def test_a_kill_leaves_a_body_lying_that_fades_and_is_removed(play) -> None:
     hall = hall_of(scene)
     victim = world.spawn_unit(1, UnitType.PEASANT, tile_center((hall.x + 4, hall.y + 4)))
     victim.hp = 1
-    scene.brains = []  # or its side sends it off to work while the knight turns and winds up
+    scene.execution.brains = []  # or its side sends it off to work while the knight turns and winds up
     knight = world.spawn_unit(scene.human, UnitType.KNIGHT, tile_center((hall.x + 3, hall.y + 4)))
     world.attack([knight.id], victim.id)
     tick(game, 1.5, 0.1)
@@ -573,7 +573,7 @@ def test_title_new_game_flow_clicks_the_settings_and_keys_start(game) -> None:
     press(game, "return")
     scene = game.scene
     assert isinstance(scene, GameScene)
-    assert (scene.world.width, scene.world.height) == (48, 40) and scene.world.seats == 3 and len(scene.brains) == 2
+    assert (scene.world.width, scene.world.height) == (48, 40) and scene.world.seats == 3 and len(scene.execution.brains) == 2
 
 
 def test_title_continue_loads_the_saved_match(game) -> None:
@@ -658,7 +658,7 @@ def test_the_title_offers_every_difficulty_and_saves_keep_it(game) -> None:
     assert isinstance(scene, GameScene) and scene.difficulty is Difficulty.MASTER
     # Master is a ProBrain, not a Brain with a profile.
     assert Difficulty.MASTER not in PROFILES
-    assert all(isinstance(b, ProBrain) for b in scene.brains)
+    assert all(isinstance(b, ProBrain) for b in scene.execution.brains)
     press(game, "f5")
     game.clear_and_push(TitleScene())
     game.tick(1 / 60)

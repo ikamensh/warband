@@ -192,7 +192,7 @@ def a_match(tmp_path, width: int = 32, height: int = 24, halls=((4, 4), (25, 18)
         world.place_building(player, BuildingType.TOWN_HALL, at)
     game = Game("Warband bodies", backend="mock", save_dir=tmp_path / "saves")
     scene = GameScene(world, seed=1, settings={"tutorial": False})
-    scene.brains = []
+    scene.execution.brains = []
     game.push(scene)
     return game, scene, world
 
@@ -303,7 +303,7 @@ def test_a_spent_sapper_is_heard_going_up_by_a_bystander_who_sees_it_over_a_batt
     game = Game("Warband blast", backend="mock", save_dir=tmp_path / "saves")
     try:
         scene = GameScene(world, seed=1, settings={"tutorial": False})
-        scene.brains = []
+        scene.execution.brains = []
         game.push(scene)
         farm = world.place_building(2, BuildingType.FARM, (18, 12))
         if seen:

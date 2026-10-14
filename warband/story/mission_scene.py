@@ -17,6 +17,7 @@ from saga2d import Anchor, Button, Column, Component, KeyHints, Label, Row, Save
 from saga2d.effects import Banner, Toast
 from warband.sim import mapgen
 from warband.brains.ai import make_brain
+from warband.ui.match import LocalMatch
 from warband.story.campaign import Campaign, Mission, Progress, ProgressStore, Run, shifted
 from warband.story.dialog import DialogScene
 from warband.sim.model import World
@@ -122,12 +123,14 @@ class MissionScene(GameScene):
     AUTOSAVE_SLOT = CAMPAIGN_SLOT
 
     def __init__(self, campaign: Campaign, run: Run, *, difficulty: Difficulty, settings=None) -> None:
-        super().__init__(run.world, run.mission.seed, difficulty=difficulty, settings=settings, ranked=False)
+        execution = LocalMatch(run.world, run.mission.seed, difficulty=difficulty, player=run.human,
+                               brains=[make_brain(side, shifted(level, difficulty), run.mission.seed)
+                                       for side, level in run.ai.items() if run.world.players[side].alive])
+        super().__init__(run.world, run.mission.seed, difficulty=difficulty, settings=settings, ranked=False, execution=execution)
         self.campaign = campaign
         self.run = run
         self.mission = run.mission
         self.tutorial = None
-        self.brains = [make_brain(side, shifted(level, difficulty), run.mission.seed) for side, level in run.ai.items() if run.world.players[side].alive]
         self.progress: Progress | None = None
         self.progress_error = ""
         self._rows: dict[str, tuple[Row, _Mark, Label]] = {}

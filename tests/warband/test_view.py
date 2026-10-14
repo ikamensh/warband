@@ -77,11 +77,11 @@ def test_harvesting_worker_swings_axe_then_carries_wood(play) -> None:
             poses.add(sprite.image.rsplit(".", 1)[-1])
             if not checked_pause:
                 before = sprite.image
-                scene.paused = True
+                scene.execution.paused = True
                 for _ in range(20):
                     game.tick(1 / 60)
                 assert sprite.image == before
-                scene.paused = False
+                scene.execution.paused = False
                 checked_pause = True
         if worker.carrying is Resource.LUMBER:
             assert ".lumber." in sprite.image
@@ -288,7 +288,7 @@ def test_a_new_map_of_the_same_size_reuses_the_ground_fog_and_minimap_images(pla
     before = len(game.backend._image_sizes)  # the mock backend does not count the images it holds publicly (Saga2D 0.3.8)
     keys = [sprite.image for sprite in scene.view.ground_sprites] + [scene.view.fog_key, scene.view.minimap_key]
     handles = [game.assets.image(key) for key in keys]
-    scene.world = scene.world.from_dict(scene.world.to_dict())
+    scene.execution.world = scene.world.from_dict(scene.world.to_dict())
     scene.view.reset(scene.world)
     assert len(game.backend._image_sizes) == before  # the mock's count, as above
     game.tick(1 / 60)  # the unit warmer may now add animation frames

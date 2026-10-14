@@ -9,20 +9,20 @@ def test_background_pauses_and_foreground_resumes(game) -> None:
     scene = GameScene(field(), 0, ranked=False, settings=dict(SETTINGS))
     game.push(scene)
     game.tick(0.1)
-    assert not scene.paused
+    assert not scene.execution.paused
     before = scene.world.time
     game.tick(0.1)
     assert scene.world.time > before
     game.backend.inject_focus(False)
     game.tick(0.1)
-    assert scene.paused
+    assert scene.execution.paused
     frozen = scene.world.time
     for _ in range(5):
         game.tick(0.1)
     assert scene.world.time == frozen
     game.backend.inject_focus(True)
     game.tick(0.1)
-    assert not scene.paused
+    assert not scene.execution.paused
     game.tick(0.1)
     assert scene.world.time > frozen
 
@@ -32,12 +32,12 @@ def test_manual_pause_survives_a_background_cycle(game) -> None:
     game.push(scene)
     game.tick(0.1)
     scene.toggle_pause()
-    assert scene.paused
+    assert scene.execution.paused
     game.backend.inject_focus(False)
     game.tick(0.1)
     game.backend.inject_focus(True)
     game.tick(0.1)
-    assert scene.paused, "a manual pause is the player's, the return must not undo it"
+    assert scene.execution.paused, "a manual pause is the player's, the return must not undo it"
 
 
 def test_decided_match_is_left_alone(game) -> None:
@@ -47,7 +47,7 @@ def test_decided_match_is_left_alone(game) -> None:
     scene._game_over = True  # staged state, as the suite's rules allow
     game.backend.inject_focus(False)
     game.tick(0.1)
-    assert not scene.paused
+    assert not scene.execution.paused
 
 
 class _StubSession:
@@ -76,4 +76,4 @@ def test_network_match_keeps_playing_elsewhere(game) -> None:
     game.tick(0.1)
     game.backend.inject_focus(False)
     game.tick(0.1)
-    assert not scene.paused
+    assert not scene.execution.paused

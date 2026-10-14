@@ -59,8 +59,8 @@ def main() -> None:
     while time.time() - started < args.minutes * 60:
         scene = new_game(seed, players=2 + seed % 2, difficulty=list(Difficulty)[seed % 3], settings=settings)
         game.clear_and_push(scene)
-        scene.brains.append(make_brain(scene.human, Difficulty.MEDIUM))  # the human side plays itself
-        scene.speed = 1.0
+        scene.execution.brains.append(make_brain(scene.human, Difficulty.MEDIUM))  # the human side plays itself
+        scene.execution.speed = 1.0
         frames: list[float] = []
         while not isinstance(game.scene, GameOverScene) and time.time() - started < args.minutes * 60 and scene.world.time < MATCH_MINUTES * 60:
             t0 = time.perf_counter()

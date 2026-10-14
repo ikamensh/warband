@@ -32,7 +32,7 @@ def main(output: Path) -> None:
                 scene, workers, targets = settlement()
                 scene.world.theme = theme
                 scene.selection = []
-                scene.paused = True
+                scene.execution.paused = True
                 game.clear_and_push(scene)
                 scene.camera.zoom = 2.0
                 scene.camera.center_on(32 * textures.TILE, 11.5 * textures.TILE)
@@ -43,7 +43,7 @@ def main(output: Path) -> None:
                     continue
                 for worker, target in zip(workers, targets):
                     scene.world.harvest([worker.id], target)
-                scene.paused = False
+                scene.execution.paused = False
                 for _ in range(3):
                     tick(game, 1 / 30)
                 poses: dict[str, Image.Image] = {}

@@ -237,7 +237,7 @@ def test_granting_the_truce_at_the_ford_ends_the_mission_and_is_remembered(game)
     """The ford's waves and its emissary come on the mission's clock, ten minutes of it: the slow tier."""
     scene = start(game, "greywater")
     run, world = scene.run, scene.world
-    assert [type(b).__name__ for b in scene.brains] == ["Brain"] and scene.brains[0].difficulty is Difficulty.EASY
+    assert [type(b).__name__ for b in scene.execution.brains] == ["Brain"] and scene.execution.brains[0].difficulty is Difficulty.EASY
     run_for(run, 160)
     assert "probe_1" in run.fired and len(world.player_units(1)) == 6  # three peons at home, three grunts at the ford
     slay(world, 1)  # the levy holds the ford
@@ -556,7 +556,7 @@ def test_karst_hold_is_won_by_burning_the_camp_and_the_powder_goes_south_into_a_
     ProgressStore(game.data_dir).save(Progress(CAMPAIGN.id, Difficulty.HARD, completed=["hollowmere", "greywater", "silent_hold"], flags={"truce": True}))
     scene = start(game, "karst_hold", flags={"truce": True}, difficulty=Difficulty.HARD)
     run, world = scene.run, scene.world
-    assert world.players[0].race is Race.DWARF and [type(b).__name__ for b in scene.brains] == ["ProBrain"]  # Medium, one step harder
+    assert world.players[0].race is Race.DWARF and [type(b).__name__ for b in scene.execution.brains] == ["ProBrain"]  # Medium, one step harder
     run_for(run, 5)
     assert "assault" in run.fired and run.state["break"] == "open"
     raze(world, 1)

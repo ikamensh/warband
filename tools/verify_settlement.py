@@ -35,8 +35,8 @@ def verify(out: Path, save_dir: Path) -> None:
     window = backend.window
     fonts.load(game)
     scene = new_game(seed=3)
-    scene.brains = []
-    scene.paused = True
+    scene.execution.brains = []
+    scene.execution.paused = True
     world, player = scene.world, scene.player
     player.gold = player.lumber = 0
     game.push(scene)
@@ -122,9 +122,9 @@ def verify(out: Path, save_dir: Path) -> None:
             BuildingType.FARM, UnitType.FOOTMAN, UnitType.PEASANT, Upgrade.BLADES_1,
         }
         assert player.gold == player.lumber == 0 and scene.selection == []
-        scene.paused = False
+        scene.execution.paused = False
         frames(33)
-        scene.paused = True
+        scene.execution.paused = True
         click("Plans (4)")
         assert isinstance(game.scene, SettlementPlansScene)
         waiting = plans_snapshot()
@@ -144,7 +144,7 @@ def verify(out: Path, save_dir: Path) -> None:
         # Fixture resource grant: the UI has already submitted ordinary unpaid
         # orders; the real fixed-step model now assigns the worker and producer.
         player.gold = player.lumber = 5000
-        scene.paused = False
+        scene.execution.paused = False
         for _ in range(240):
             frames(1)
             foundations = [b for b in world.player_buildings(scene.human, BuildingType.FARM) if not b.done]
@@ -154,7 +154,7 @@ def verify(out: Path, save_dir: Path) -> None:
                 break
         else:
             raise AssertionError(f"Construction and training did not start: {plans_snapshot()}, {hall.queue}")
-        scene.paused = True
+        scene.execution.paused = True
         assert scene.selection == []
         shot("08-automatic-construction")
         click(f"Plans ({scene._plan_count()})")

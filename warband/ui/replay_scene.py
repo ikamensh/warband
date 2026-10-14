@@ -3,19 +3,16 @@
 from __future__ import annotations
 
 import math
-import time
 from typing import Any
 
 from saga2d import Button, Label, Row
 from warband.sim.model import RuleError
 from warband.records.replay import Playback, Replay
 from warband.sim.rules import SIM_DT
-from warband.ui.scene import MAX_STEPS_PER_FRAME, GameScene, HelpScene, SettingsScene, _Overlay, _clock
+from warband.ui.match import ReplayMatch
+from warband.ui.scene import GameScene, HelpScene, SettingsScene, _Overlay, _clock
 from warband.ui.style import ACTION_BUTTON, BAD, GHOST_BUTTON, GOLD, GOOD, MUTED
 from warband.ui.view import MapView
-
-SPEEDS = (1, 2, 4, 8, 16)
-SKIP_BUDGET = 0.4  # seconds of stepping per frame while skipping to the end, so the window keeps answering
 
 
 class ReplayScene(GameScene):
@@ -26,64 +23,38 @@ class ReplayScene(GameScene):
     could not see (F4).
     """
 
+    execution: ReplayMatch
+
     controls = {**{key: method for key, method in GameScene.controls.items() if method not in ("quick_save", "quick_load", "hide_tutorial")},
                 "pageup": "faster", "pagedown": "slower", "f4": "toggle_reveal", "end": "skip_to_end"}
 
     def __init__(self, replay: Replay, *, settings: dict[str, Any] | None = None) -> None:
-        self.playback = Playback(replay)
-        super().__init__(self.playback.world, replay.seed, difficulty=replay.difficulty, settings=settings, player=replay.human, ranked=False)
-        self.brains = []
+        execution = ReplayMatch(replay)
+        super().__init__(execution.world, replay.seed, difficulty=replay.difficulty, settings=settings, player=replay.human, ranked=False,
+                         execution=execution)
         self.tutorial = None
         self._autosave_at = math.inf
         self.reveal = True
-        self.speed_index = 0
-        self.skipping = False
         self.over = False
 
     def _make_view(self) -> MapView:
         return MapView(self, self.world, self.human, reveal=self.reveal)
 
+    @property
+    def playback(self) -> Playback:
+        """The recording being watched, including its verification result."""
+        return self.execution.playback
+
     # -- The clock ---------------------------------------------------------------------
 
     @property
     def speed_factor(self) -> int:
-        return SPEEDS[self.speed_index]
+        return int(self.execution.speed)
 
     @property
     def length(self) -> float:
         """Seconds of match the recording holds."""
         return self.playback.replay.end_tick * SIM_DT
-
-    def _motion_fraction(self) -> float:
-        return 1.0 if self.playback.done else self._acc / SIM_DT
-
-    def _advance(self, dt: float) -> None:
-        if self.paused or self.playback.done:
-            return
-        if self.skipping:
-            deadline = time.monotonic() + SKIP_BUDGET
-            while not self.playback.done and time.monotonic() < deadline:
-                self._step()
-            self._acc = 0.0
-            if self.playback.done:
-                self.skipping = False
-            return
-        self._acc += min(dt, 0.25) * self.speed_factor
-        steps = 0
-        while self._acc >= SIM_DT and steps < MAX_STEPS_PER_FRAME and not self.playback.done:
-            self._step()
-            self._acc -= SIM_DT
-            steps += 1
-        if steps == MAX_STEPS_PER_FRAME:
-            self._acc = 0.0
-
-    def _step(self) -> None:
-        self.view.before_step()
-        self.playback.step()
-        if self.playback.world is not self.world:  # the match went on from a save here, and so does the playback
-            self.world = self.playback.world
-            self.view.reset(self.world, self.view.memory())  # the same match goes on: what the player had seen stays seen
-            self.select([], quiet=True)  # and the card with it: what was selected belonged to the world before
 
     def _check_game_over(self) -> None:
         if self.over or not self.playback.done:
@@ -101,11 +72,11 @@ class ReplayScene(GameScene):
         self.game.push(ReplayMenuScene(self))
 
     def faster(self) -> None:
-        self.speed_index = min(self.speed_index + 1, len(SPEEDS) - 1)
+        self.execution.change_speed(1)
         self.say(f"{self.speed_factor}× speed")
 
     def slower(self) -> None:
-        self.speed_index = max(self.speed_index - 1, 0)
+        self.execution.change_speed(-1)
         self.say(f"{self.speed_factor}× speed")
 
     def toggle_reveal(self) -> None:
@@ -114,8 +85,7 @@ class ReplayScene(GameScene):
         self.say("Whole map shown" if self.reveal else f"The map as {self.player.name} saw it")
 
     def skip_to_end(self) -> None:
-        self.skipping = True
-        self.paused = False
+        self.execution.skip_to_end()
         self.say("Skipping to the end…")
 
     def hint(self) -> list[tuple[str, str]]:
@@ -125,7 +95,7 @@ class ReplayScene(GameScene):
         super().draw()
         w, _ = self.game.resolution
         fog = "whole map" if self.reveal else f"as {self.player.name} saw it"
-        pace = "paused" if self.paused else "skipping" if self.skipping else f"{self.speed_factor}×"
+        pace = "paused" if self.execution.paused else "skipping" if self.execution.skipping else f"{self.speed_factor}×"
         self.draw_text(f"REPLAY · {_clock(self.world.time)} of {_clock(self.length)} · {pace} · {fog}", w - 16, 12, style="hud", color=GOLD,
                        anchor_x="right", anchor_y="top")
 

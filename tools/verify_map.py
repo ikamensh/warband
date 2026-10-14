@@ -117,7 +117,7 @@ def main(output: Path) -> None:
             fonts.load(game)
             for theme in MapTheme:
                 scene = GameScene(mapgen.generate(3, theme=theme), 3)
-                scene.paused = True
+                scene.execution.paused = True
                 game.clear_and_push(scene)
                 for _ in range(20):
                     tick(game, 0.2)

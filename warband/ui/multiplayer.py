@@ -12,6 +12,7 @@ from warband.sim.model import Event, RuleError, World
 from warband.sim.races import RACES
 from warband.sim.rules import SIM_DT, Layout, MapTheme, Race
 from warband.ui.observer import WatchScene
+from warband.ui.match import RemoteMatch
 from warband.ui.scene import GameScene, HelpScene, SettingsScene, _Overlay, _clock
 from warband.ui.style import ACTION_BUTTON, GHOST_BUTTON, GOLD, GOOD, MENU_BUTTON, MUTED, OVERLAY_STYLE, PANEL_STYLE, PICKED_BUTTON
 from warband.ui.view import check_memory
@@ -840,8 +841,8 @@ class NetworkGameScene(GameScene):
         self._quiet_said = False  # the status line says the server has gone quiet
         self._interval = SNAPSHOT_INTERVAL  # measured time between snapshots, smoothed
         data = session.state
-        super().__init__(World.from_dict(data['world']), data['seed'], settings=settings, player=session.player, ranked=False)
-        self.brains = []
+        world = World.from_dict(data['world'])
+        super().__init__(world, data['seed'], settings=settings, player=session.player, ranked=False, execution=RemoteMatch(world))
         self.tutorial = None
         self._autosave_at = math.inf
         self._identity_saved: object = None  # last persisted (player_id, profile, result): saved again on change
@@ -875,9 +876,6 @@ class NetworkGameScene(GameScene):
             self._network_steps += 1
             if self._network_steps % 2 == 0:
                 self.session.publish()
-
-    def _advance(self, dt):
-        pass  # The host match advances through its scene-owned timer, including under menus.
 
     def _save_identity(self) -> None:
         """Persist the latest own server token, id, profile and result, so the setup rating
@@ -978,8 +976,8 @@ class NetworkObserverScene(WatchScene):
         self._quiet_said = False  # the status line says the room has gone quiet
         self._interval = SNAPSHOT_INTERVAL  # measured time between snapshots, smoothed
         data = session.state
-        super().__init__(World.from_dict(data['world']), data['seed'], viewed=0, settings=settings)
-        self.brains = []
+        world = World.from_dict(data['world'])
+        super().__init__(world, data['seed'], viewed=0, settings=settings, execution=RemoteMatch(world))
 
     def on_enter(self):
         super().on_enter()
@@ -987,9 +985,6 @@ class NetworkObserverScene(WatchScene):
 
     def on_close(self):
         self.session.close()
-
-    def _advance(self, dt):
-        pass  # The room advances elsewhere; freezing snapshots locally would desync it.
 
     def _poll_network(self):
         """Poll the room and carry its snapshots in: never a seat's writes."""

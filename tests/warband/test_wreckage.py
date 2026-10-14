@@ -41,7 +41,7 @@ def battle(tmp_path, monkeypatch):
     bank = SoundBank(game, tmp_path / "audio")
     monkeypatch.setattr(sound, "sound_hook", bank.play)
     scene = GameScene(world, seed=1, settings={"tutorial": False})
-    scene.brains = []
+    scene.execution.brains = []
     game.push(scene)
     yield game, scene, world
     game.close()

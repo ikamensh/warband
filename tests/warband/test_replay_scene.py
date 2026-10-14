@@ -56,7 +56,7 @@ def test_a_replay_plays_the_match_back_to_its_recorded_end(game, recorded):
     game.clear_and_push(ReplayScene(recorded, settings={"music": 0, "sfx": 0}))
     scene = game.scene
     tick(game, 0.1)
-    assert scene.player.name == "Watcher" and scene.reveal and not scene.brains
+    assert scene.player.name == "Watcher" and scene.reveal
     assert any(t.startswith("REPLAY") for t in texts(game))
     press(game, "pageup")
     press(game, "pageup")

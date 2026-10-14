@@ -57,10 +57,10 @@ class Capture:
         scene.view.set_reveal(True)
         scene.camera.zoom = self.zoom
         scene.camera.center_on(center[0] * textures.TILE, center[1] * textures.TILE)
-        scene.paused = True
+        scene.execution.paused = True
         for _ in range(8):  # retire the intro banner without advancing the field
             self.game.tick(1.0)
-        scene.paused = False
+        scene.execution.paused = False
         return scene
 
     def frame(self) -> Image.Image:

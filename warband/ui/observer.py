@@ -23,8 +23,9 @@ from warband.brains.ai import make_brain
 from warband.sim import mapgen
 from warband.sim.model import RuleError, Unit, World
 from warband.sim.races import RACES
-from warband.sim.rules import SIM_DT, BUILDINGS, BuildingType, Difficulty, MapTheme, Race
+from warband.sim.rules import BUILDINGS, BuildingType, Difficulty, MapTheme, Race
 from warband.sim.rules import Layout as MapLayout
+from warband.ui.match import LocalMatch, MatchExecution
 from warband.ui.scene import (
     SELECT_GAP,
     GameScene,
@@ -80,14 +81,15 @@ class WatchScene(GameScene):
 
     def __init__(self, world: World, seed: int, *, viewed: int = 0,
                  difficulty: Difficulty = Difficulty.MEDIUM,
-                 settings: dict[str, Any] | None = None) -> None:
+                 settings: dict[str, Any] | None = None, execution: MatchExecution | None = None) -> None:
         """*viewed* is the seat watched first; every seat stays computer-led.
 
         The world needs no human seat (and gains none): ``player=viewed``
         only points the inherited machinery at the inspected side.
         """
         super().__init__(world, seed, difficulty=difficulty, settings=settings,
-                         player=viewed, ranked=False)
+                         player=viewed, ranked=False,
+                         execution=execution if execution is not None else LocalMatch(world, seed, difficulty=difficulty, player=None))
         self.viewed = viewed
         self.adjutant: Any = _NoAdjutant()
         self.tutorial = None
@@ -307,11 +309,6 @@ class WatchScene(GameScene):
 
     # -- The match ends only at a winner ------------------------------------------
 
-    def _motion_fraction(self) -> float:
-        if self._game_over or self.world.winner is not None:
-            return 1.0
-        return self._acc / SIM_DT
-
     def _check_game_over(self) -> None:
         if self._game_over or self.world.winner is None:
             return
@@ -319,10 +316,10 @@ class WatchScene(GameScene):
         self.game.push(ObserverEndScene(self))
 
     def on_background(self) -> None:
-        if (self.auto_pause_on_background and not self.paused and not self._auto_paused
+        if (self.auto_pause_on_background and not self.execution.paused and not self._auto_paused
                 and not self._game_over and self.world.winner is None):
             self._auto_paused = True
-            self.paused = True
+            self.execution.paused = True
 
     def pause_menu(self) -> Scene:
         return ObserverPauseScene(self)
@@ -405,10 +402,11 @@ class ObserverScene(WatchScene):
     def __init__(self, world: World, seed: int, *, viewed: int = 0,
                  difficulty: Difficulty = Difficulty.MEDIUM,
                  settings: dict[str, Any] | None = None) -> None:
-        super().__init__(world, seed, viewed=viewed, difficulty=difficulty, settings=settings)
-        self.brains = [make_brain(p.id, difficulty, seed) for p in world.players[:world.seats]]
+        execution = LocalMatch(world, seed, difficulty=difficulty, player=None,
+                               brains=[make_brain(p.id, difficulty, seed) for p in world.players[:world.seats]])
+        super().__init__(world, seed, viewed=viewed, difficulty=difficulty, settings=settings, execution=execution)
         self.speed_index = 0
-        self.speed = OBSERVER_SPEEDS[0]
+        self.execution.speed = OBSERVER_SPEEDS[0]
 
     @property
     def pace(self) -> float:
@@ -425,22 +423,18 @@ class ObserverScene(WatchScene):
 
     def cycle_pace(self) -> None:
         self.speed_index = (self.speed_index + 1) % len(OBSERVER_SPEEDS)
-        self.speed = OBSERVER_SPEEDS[self.speed_index]
+        self.execution.speed = OBSERVER_SPEEDS[self.speed_index]
         self.say(f"{self.pace:g}× pace")
 
     def faster(self) -> None:
         self.speed_index = min(self.speed_index + 1, len(OBSERVER_SPEEDS) - 1)
-        self.speed = OBSERVER_SPEEDS[self.speed_index]
+        self.execution.speed = OBSERVER_SPEEDS[self.speed_index]
         self.say(f"{self.pace:g}× pace")
 
     def slower(self) -> None:
         self.speed_index = max(self.speed_index - 1, 0)
-        self.speed = OBSERVER_SPEEDS[self.speed_index]
+        self.execution.speed = OBSERVER_SPEEDS[self.speed_index]
         self.say(f"{self.pace:g}× pace")
-
-    def _steps_running(self) -> bool:
-        """Steps keep coming whatever became of the viewed seat; only a winner stops them."""
-        return not self.paused and not self._game_over and self.world.winner is None
 
 
 class ObserverPauseScene(PauseScene):

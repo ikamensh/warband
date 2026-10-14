@@ -42,7 +42,7 @@ def battle(tmp_path, audio_files, monkeypatch):
     bank = sound.SoundBank(game, audio_files)
     monkeypatch.setattr(sound, "sound_hook", bank.play)
     scene = GameScene(world, seed=1, settings={"tutorial": False})
-    scene.brains = []
+    scene.execution.brains = []
     game.push(scene)
     yield game, scene, world
     game.close()
@@ -123,7 +123,7 @@ def test_a_lone_sapper_s_owner_sees_and_hears_its_blast_on_every_tick_of_the_fog
         try:
             monkeypatch.setattr(sound, "sound_hook", sound.SoundBank(game, audio_files).play)
             scene = GameScene(world, seed=1, settings={"tutorial": False})
-            scene.brains = []
+            scene.execution.brains = []
             game.push(scene)
             scene.camera.center_on(*to_world(farm.center))
             shakes = []

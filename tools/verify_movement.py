@@ -147,10 +147,10 @@ def main():
             center = (15, 10.5) if args.scenario == "turns" else (17, 13.5)
             scene.camera.center_on(*(coordinate * textures.TILE for coordinate in center))
             scene.select([unit.id for unit in units])
-            scene.paused = True
+            scene.execution.paused = True
             for _ in range(8):  # Retire the intro banner without advancing the field.
                 game.tick(1.0)
-            scene.paused = False
+            scene.execution.paused = False
             if native:
                 encoder = subprocess.Popen([
                     "ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pixel_format", "rgb24",

@@ -74,7 +74,7 @@ def main(out: Path) -> None:
         world.place_building(0, BuildingType.TOWN_HALL, (4, 4))
         world.place_building(1, BuildingType.TOWN_HALL, (25, 18))
         scene = GameScene(world, seed=1, settings={"tutorial": False, "music": 0.6, "sfx": 0.0})
-        scene.brains = []
+        scene.execution.brains = []
         game.clear_and_push(scene)
         match_started = time.monotonic()
         until(lambda: bank.music_playing == "deepforge", 90, "the dwarves' opener")

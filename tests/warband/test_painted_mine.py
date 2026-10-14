@@ -74,7 +74,7 @@ def test_a_worked_mine_is_lit_while_seen_and_out_of_sight_keeps_the_look_last_se
         world.place_building(1, BuildingType.TOWN_HALL, (26, 18))
         mine = world.place_building(None, BuildingType.GOLD_MINE, (24, 12))
         scene = GameScene(world, seed=1, settings={"tutorial": False})
-        scene.brains = []
+        scene.execution.brains = []
         game.push(scene)
         world.reveal_all(scene.human)  # the player has seen the mine once; now only its own forces see
         for _ in range(3):

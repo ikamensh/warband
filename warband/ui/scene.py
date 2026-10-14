@@ -23,7 +23,7 @@ from warband.art import ambience, textures
 from warband.audio import bodies, deaths, presence, wreckage
 from warband.sim import mapgen
 from warband.brains.adjutant import COMMANDS, MAX_LEVEL, NAMES as COMMAND_NAMES, TAGS, Adjutant
-from warband.brains.ai import DIFFICULTY_ELO, auto_site, make_brain
+from warband.brains.ai import DIFFICULTY_ELO, auto_site
 from warband.art.effects import Flare, GroundFire, Roots, Scorch, Spray, Stain, UnitDeath, death_outcome
 from warband.ui.icons import Icon, Pair, Price, ResourceFloat, draw_icon, draw_price, hourglass_parts, lock_parts, loop_parts, price_pairs, price_width
 from warband.sim.model import (RIFT, Attack, AttackMove, Build, Building, Deposit, Entity, Event, Harvest, Heal, Hold, Move, Patrol, Pos, Repair, Salvage,
@@ -48,6 +48,7 @@ from warband.ui.style import (
     PANEL_STYLE, RESULTS_STYLE,
 )
 from warband.ui import tech
+from warband.ui.match import LocalMatch, MatchExecution
 from warband.ui.tech import Need, Prerequisite, TechTree
 from warband.ui.version import running_build
 from warband.art.textures import TILE
@@ -105,7 +106,6 @@ UNIT_PARAMETERS = {name: parameter for name in ORDERS
                    if (parameter := list(inspect.signature(getattr(World, name)).parameters)[1]) in ("unit_ids", "unit_id")}
 HINT_BAR = 28
 PANEL_MARGIN = (12, HINT_BAR + 10)
-MAX_STEPS_PER_FRAME = 6
 ZOOM_PER_LINE = 1.06
 ZOOM_PER_KEY = 1.25
 MAX_LINES_PER_EVENT = 4.0
@@ -539,7 +539,7 @@ class _SelectionPanel(Component):
 
 
 class GameScene(Scene):
-    """The whole match: map, selection, orders, HUD, the AI's turns and the game clock."""
+    """The displayed match: map, selection, player input, HUD and presentation."""
 
     background_color = (8, 10, 14, 255)
     AUTOSAVE_SLOT = "autosave"
@@ -571,24 +571,24 @@ class GameScene(Scene):
     }
 
     def __init__(self, world: World, seed: int, *, difficulty: Difficulty = Difficulty.MEDIUM, settings: dict[str, Any] | None = None,
-                 player: int | None = None, run_id: str | None = None, ranked: bool = True, replay: Replay | None = None) -> None:
+                 player: int | None = None, run_id: str | None = None, ranked: bool = True, replay: Replay | None = None,
+                 execution: MatchExecution | None = None) -> None:
         """A *ranked* match is recorded from here on (or *replay* goes on recording it, after a load) and rated when it ends."""
-        self.world = world
+        human = next(p.id for p in world.players if p.human) if player is None else player
+        self.execution = execution if execution is not None else LocalMatch(world, seed, difficulty=difficulty, player=human)
         self.view: MapView | None = None  # made on entry: it needs the game
         self._seen: dict | None = None  # what a save's view remembered of ground out of sight, until this scene's view takes it over
         self.run_id = run_id if run_id is not None else str(uuid4())  # one leaderboard row per match, however often it is reloaded
         self.ranked = ranked
         self.seed = seed
         self.difficulty = difficulty
-        self.human = next(p.id for p in world.players if p.human) if player is None else player
+        self.human = human
         self.replay: Replay | None = None  # recording from entry on, when ranked
         self._saved_replay = replay
         self.profile: Profile | None = None  # loaded on entry: the scene needs the data directory
         self.profile_error = ""
         self.rating_change: RatingChange | None = None  # what the finished or abandoned match did to the rating
         self._resignation: Standing | None = None  # where the player stood when they resigned
-        self.brains = [make_brain(p.id, difficulty, seed) for p in world.players[:world.seats] if not p.human]
-        self.rng = random.Random(seed)  # the computer players' stream, and nothing else's: what is drawn must not move the match
         self.fx_rng = random.Random(seed)  # sparks, blood and dust
         self.settings = settings if settings is not None else dict(DEFAULT_SETTINGS)  # a saga2d Settings when the game runs
         for key, value in DEFAULT_SETTINGS.items():
@@ -609,9 +609,7 @@ class GameScene(Scene):
         self._site_rng = random.Random(f"sites:{seed}")  # where the planner puts what the player lets it place: not the brains' stream
         self.settlement_row: Row | None = None  # made with the HUD
         self.command_buttons: dict[str, CommandButton] = {}  # the Commands row's, made with the HUD
-        self.paused = False
         self._auto_paused = False  # this pause came from the window going to the background: the return undoes it
-        self.speed = 1.0
         self.clock = 0.0
         self.effects = Effects()
         self.bodies: list[UnitDeath] = []  # lying where they fell, oldest first
@@ -630,8 +628,6 @@ class GameScene(Scene):
         self.mouse = (0, 0)
         self.hover: tuple[float, float] = (0.0, 0.0)  # in tiles
         self.last_alert: tuple[float, float] | None = None
-        self._acc = 0.0
-        self._behind = 0.0  # match seconds the clock let go of because frames came too slowly to step them all
         self._drag_start: tuple[int, int] | None = None
         self._drag_end: tuple[int, int] | None = None
         self._game_over = False
@@ -653,6 +649,11 @@ class GameScene(Scene):
         self._warm = None  # renders the unit images over the first frames
         self._spells_shown: tuple[Upgrade, ...] = ()  # the spell bar's, as last laid out
         self._cooldown_spans: dict[Upgrade, tuple[int, int]] = {}  # a spell's cooldown as it started: (ready tick, steps)
+
+    @property
+    def world(self) -> World:
+        """The model currently displayed, including a replay's world after a reload."""
+        return self.execution.world
 
     # -- Lifecycle -------------------------------------------------------------
 
@@ -854,7 +855,7 @@ class GameScene(Scene):
             self.side_race,
             *(row for row, _hint in self._resource_rows),
             Label(lambda: _clock(self.world.time), text_style="sub"),
-            Label(lambda: "Paused" if self.paused else f"×{self.speed:g}" if self.speed != 1 else "", text_style="hud", text_color=BAD),
+            Label(lambda: "Paused" if self.execution.paused else f"×{self.execution.speed:g}" if self.execution.speed != 1 else "", text_style="hud", text_color=BAD),
             self._idle_button(),
             self._army_button(),
             Button("Menu", hotkey="F10", on_click=self.open_menu, style=GHOST_BUTTON),
@@ -2573,7 +2574,7 @@ class GameScene(Scene):
         self.camera.zoom_toward(self.camera.zoom_target * factor, *at)
 
     def toggle_pause(self) -> None:
-        self.paused = not self.paused
+        self.execution.paused = not self.execution.paused
         self.sfx("button")
 
     def on_background(self) -> None:
@@ -2583,15 +2584,15 @@ class GameScene(Scene):
         stack under modal confirmations. A manual pause, a decided match and
         a network match are left alone.
         """
-        if (self.auto_pause_on_background and not self.paused and not self._auto_paused
+        if (self.auto_pause_on_background and not self.execution.paused and not self._auto_paused
                 and not self._game_over and self.world.winner is None and self.player.alive):
             self._auto_paused = True
-            self.paused = True
+            self.execution.paused = True
 
     def on_foreground(self) -> None:
         if self._auto_paused:
             self._auto_paused = False
-            self.paused = False
+            self.execution.paused = False
 
     def open_menu(self) -> None:
         self.game.push(self.pause_menu())
@@ -2801,7 +2802,8 @@ class GameScene(Scene):
                     gc.collect()
                     gc.freeze()
                     break
-        self._advance(dt)
+        self.execution.advance(dt, before_step=self._before_step, phase=self.game.telemetry.phase)
+        self._sync_world(self.world)
         self._handle_events(self.world.take_events())
         self._hear_camps()
         self._hear_slams()
@@ -2815,7 +2817,7 @@ class GameScene(Scene):
         self.bodies = [b for b in self.bodies if not b.done]
         self.stains = [s for s in self.stains if not s.done]
         with self.game.telemetry.phase("view"):
-            self.view.sync(0.0 if self.paused else dt, fraction=self._motion_fraction())
+            self.view.sync(0.0 if self.execution.paused else dt, fraction=self._motion_fraction())
         self._update_card()
         self._update_resources()
         if tuple(self.world.spells_of(self.human)) != self._spells_shown:
@@ -2845,36 +2847,17 @@ class GameScene(Scene):
             label.style = ALERT_STYLES[ink] if ink is not None else plain
 
     def _motion_fraction(self) -> float:
-        if self._game_over or self.world.winner is not None or not self.player.alive:
-            return 1.0
-        return self._acc / SIM_DT
+        return self.execution.fraction
 
-    def _steps_running(self) -> bool:
-        """Whether the fixed-step clock may run: undecided, unpaused, and the player's side still in it."""
-        return not self.paused and not self._game_over and self.world.winner is None and self.player.alive
+    def _sync_world(self, world: World) -> None:
+        """A replay reload replaces the model; its remembered view follows that same match."""
+        if self.view.world is not world:
+            self.view.reset(world, self.view.memory())
+            self.select([], quiet=True)
 
-    def _think_and_step(self) -> None:
-        """One fixed step: every brain's turn, then the world's."""
-        telemetry = self.game.telemetry
-        with telemetry.phase("ai"):
-            for brain in self.brains:
-                brain.think(self.world, self.rng)
+    def _before_step(self, world: World) -> None:
+        self._sync_world(world)
         self.view.before_step()
-        with telemetry.phase("sim"):
-            self.world.step()
-
-    def _advance(self, dt: float) -> None:
-        if self._steps_running():  # a decided match stays frozen
-            self._acc += min(dt, 0.25) * self.speed
-            self._behind += max(0.0, dt - 0.25) * self.speed
-            steps = 0
-            while self._acc >= SIM_DT and steps < MAX_STEPS_PER_FRAME:
-                self._think_and_step()
-                self._acc -= SIM_DT
-                steps += 1
-            if steps == MAX_STEPS_PER_FRAME:
-                self._behind += self._acc
-                self._acc = 0.0
 
     def telemetry_context(self) -> dict[str, Any]:
         """The match beside its frame times (saga2d's telemetry): which run (its replay), how big, how far on,
@@ -2882,8 +2865,8 @@ class GameScene(Scene):
         simulation ran compiled."""
         world = self.world
         return {"run": self.run_id, "map": f"{world.width}x{world.height}", "seats": world.seats, "tick": world.tick,
-                "units": len(world.units), "buildings": len(world.buildings), "speed": self.speed, "paused": self.paused,
-                "zoom": round(self.camera.zoom, 2), "behind_s": round(self._behind, 1),
+                "units": len(world.units), "buildings": len(world.buildings), "speed": self.execution.speed, "paused": self.execution.paused,
+                "zoom": round(self.camera.zoom, 2), "behind_s": round(self.execution.behind, 1),
                 "simulation": "compiled" if fastsim.compiled() else "source"}
 
     @property
@@ -3287,6 +3270,7 @@ class GameScene(Scene):
 
     def _finish(self, won: bool) -> None:
         self._game_over = True
+        self.execution.stopped = True
         self.sfx("victory" if won else "defeat")
         play_music("victory" if won else "defeat")
         if self._resignation is not None:

@@ -192,7 +192,7 @@ def test_pause_freezes_the_visible_hit_reaction(game, race, unit_type):
         game.tick(1 / 60)
     game.backend.inject_key("f3")
     game.tick(1 / 60)
-    assert scene.paused
+    assert scene.execution.paused
     sprite = scene.view.unit_sprite(victim.id)
     held = (scene.world.tick, sprite.position, sprite.rotation, sprite.image)
     trails = world_marks(game)
@@ -306,7 +306,7 @@ def test_fog_reveal_does_not_restore_a_hidden_hit_reaction(game):
     scene.world.hold([attacker.id, victim.id])
     sprite = scene.view.unit_sprite(victim.id)
     assert sprite.visible and abs(sprite.rotation) > 0
-    scene.paused = True  # Keep the same combat instant across both visibility changes.
+    scene.execution.paused = True  # Keep the same combat instant across both visibility changes.
     scene.view.set_reveal(False)
     scene.world.visible[scene.human][:] = bytes(len(scene.world.visible[scene.human]))
     game.tick(1 / 60)
@@ -324,7 +324,7 @@ def test_loading_a_save_during_contact_discards_the_old_drawn_offset(game):
     first_hit(game, victim)
     scene.world.hold([attacker.id, victim.id])
     assert abs(scene.view.unit_sprite(victim.id).rotation) > 0
-    scene.paused = True
+    scene.execution.paused = True
     scene.save_to("contact")
     saved = scene.world.to_dict()
     scene.load_from("contact")

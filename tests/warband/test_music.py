@@ -121,7 +121,7 @@ def test_a_match_asks_for_battle_music_while_its_forces_fight_and_peace_when_the
     world.place_building(0, BuildingType.TOWN_HALL, (4, 4))
     world.place_building(1, BuildingType.TOWN_HALL, (25, 18))
     scene = GameScene(world, seed=1, settings={"tutorial": False})
-    scene.brains = []
+    scene.execution.brains = []
     game.push(scene)
     game.tick(0.1)
     assert asked[-1] == ("peace", Race.ORC) and scene.mood == "peace"

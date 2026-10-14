@@ -137,9 +137,9 @@ def town(game: Game, *, race: Race = Race.HUMAN, zoom: float = 1.0, controls: st
     world.players[0].race = race
     scene = GameScene(world, 17, settings=dict(QUIET, controls=controls))
     game.push(scene)
-    scene.paused = True
+    scene.execution.paused = True
     ticks(game, 20, 0.2)
-    scene.paused = False
+    scene.execution.paused = False
     scene.camera.zoom = zoom
     scene.camera.center_on(16 * TILE, 12 * TILE)
     ticks(game)
@@ -168,7 +168,7 @@ def neutral_encounter(game: Game, kind: str = "ancient_sanctum") -> tuple[GameSc
     world.reveal_all(0)
     scene = GameScene(world, 9, settings=dict(QUIET))
     game.push(scene)
-    scene.paused = True
+    scene.execution.paused = True
     ticks(game, 20, 0.2)
     scene.camera.center_on(19.5 * TILE, 13.5 * TILE)
     scene.select([camp.lair], quiet=True)
@@ -253,7 +253,7 @@ def neutral_results(game: Game) -> None:
     world = World(40, 30, [[Terrain.GRASS] * 40 for _ in range(30)], 16)
     scene = GameScene(world, 9, ranked=False, settings=dict(QUIET))
     game.push(scene)
-    scene.paused = True
+    scene.execution.paused = True
     scene.player.stats.update(camps_cleared=3, bounty_gold=10700, bounty_lumber=1550)
     world.winner = 0
     ticks(game)

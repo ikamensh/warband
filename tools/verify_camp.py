@@ -166,7 +166,7 @@ def main(out: Path, theme: MapTheme = MapTheme.SUMMER, resolution: tuple[int, in
         shot(f"card-lair-{kind}")
     ancient = next(den for kind, den in dens if kind == "ancient_sanctum")
     guardian = next(world.units[uid] for uid in ancient.guards if world.units[uid].type is UnitType.ANCIENT_GUARDIAN)
-    scene.paused = True
+    scene.execution.paused = True
     guardian.state = "attack"
     guardian.windup = guardian.info.windup * 0.6
     guardian.slam_point = (guardian.x + 2, guardian.y)

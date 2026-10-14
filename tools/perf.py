@@ -240,7 +240,7 @@ def main() -> None:
     timer.wrap(scene, "update", "scene.update")
     timer.wrap(game.backend, "poll_events", "backend.poll_events")
     timer.wrap(game, "save", "game.save")
-    for brain in scene.brains:
+    for brain in scene.execution.brains:
         timer.wrap(brain, "think", f"brain.think[{brain.player}]")
     timer.wrap(scene._ui, "_update_tree", "ui.update_tree")
     timer.wrap(game._timer_manager, "update", "timers.update")

@@ -19,7 +19,7 @@ def scene_with_camp(game, encounter="ancient_sanctum"):
     world.reveal_all(0)
     scene = GameScene(world, 9, ranked=False, settings=dict(SETTINGS))
     game.push(scene)
-    scene.paused = True
+    scene.execution.paused = True
     for _ in range(3):
         game.tick(0.1)
     scene.select([camp.lair], quiet=True)
@@ -124,7 +124,7 @@ def test_a_remembered_camp_keeps_its_scouted_reward_when_out_of_sight(game):
     for _ in range(100):
         world.step()
     world.update_vision()
-    scene.paused = True
+    scene.execution.paused = True
     assert not world.is_visible(0, (19, 13))
     # Staged unseen change: the view must keep the prior sighting rather than reading a live camp.
     camp.gold += 1000

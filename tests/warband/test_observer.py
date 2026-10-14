@@ -78,7 +78,7 @@ def test_played_match_ignores_pace_keys(game) -> None:
     game.tick(1 / 60)
     press(game, "pageup")
     press(game, "pageup")
-    assert scene.speed == 1.0
+    assert scene.execution.speed == 1.0
     start = scene.world.time
     tick(game, 1.0)
     assert abs(scene.world.time - start - 1.0) < 0.15
@@ -93,7 +93,7 @@ def test_observer_pace_keeps_match_time(game, steps_up: int) -> None:
     for _ in range(steps_up):
         press(game, "pageup")
     pace = OBSERVER_SPEEDS[steps_up]
-    assert scene.speed == pace
+    assert scene.execution.speed == pace
     start = scene.world.time
     tick(game, 2.0)
     assert abs(scene.world.time - start - 2.0 * pace) < 0.15
@@ -103,8 +103,8 @@ def test_observe_gives_every_seat_a_brain_and_no_human() -> None:
     """One real brain per playing seat; the watcher is not a seat."""
     scene = observe_game(seed=3, players=3, width=64, height=64)
     assert isinstance(scene, WatchScene)
-    assert len(scene.brains) == 3
-    assert sorted(b.player for b in scene.brains) == [0, 1, 2]
+    assert len(scene.execution.brains) == 3
+    assert sorted(b.player for b in scene.execution.brains) == [0, 1, 2]
     assert not any(p.human for p in scene.world.players[:scene.world.seats])
     # No watcher seat added: the seats, plus the neutral wilds past them.
     assert len([p for p in scene.world.players if not p.neutral]) == scene.world.seats
@@ -142,7 +142,7 @@ def test_new_game_observe_flow_keeps_settings(game) -> None:
     assert scene.world.seats == 2
     assert scene.world.players[0].race is Race.ORC
     press(game, "pageup")
-    assert scene.speed == 1.2  # the match that opened is a watched one
+    assert scene.execution.speed == 1.2  # the match that opened is a watched one
 
 
 def test_new_game_starts_played_by_default(game) -> None:
@@ -154,7 +154,7 @@ def test_new_game_starts_played_by_default(game) -> None:
     scene = game.scene
     assert isinstance(scene, GameScene)
     press(game, "pageup")
-    assert scene.speed == 1.0
+    assert scene.execution.speed == 1.0
 
 
 def test_observer_inspects_every_side_through_clicks(game) -> None:
@@ -227,7 +227,7 @@ def test_observer_end_names_the_winner_and_watches_again(game) -> None:
     assert again is not scene
     assert again.world.seats == 3
     assert not any(p.human for p in again.world.players[:again.world.seats])
-    assert len(again.brains) == 3
+    assert len(again.execution.brains) == 3
 
 
 def test_observer_menu_leaves_profile_replays_scores_untouched(game, tmp_path) -> None:
@@ -440,26 +440,26 @@ def test_observer_hud_watches_without_order_controls(watch) -> None:
 def test_observer_strip_clicks_change_pace(watch) -> None:
     """The speed button cycles every pace and wraps to 1x; PgUp/PgDn step bounded."""
     game, scene = watch
-    assert scene.speed == 1.0
+    assert scene.execution.speed == 1.0
     assert pace_button(game).text == "1×"
     for label, speed in (("1×", 1.2), ("1.2×", 1.5), ("1.5×", 2.0), ("2×", 3.0)):
         click_label(game, label)
-        assert scene.speed == speed
+        assert scene.execution.speed == speed
         assert pace_button(game).text == f"{speed:g}×"
     click_label(game, "3×")  # button wraps; keys never do
-    assert scene.speed == 1.0
+    assert scene.execution.speed == 1.0
     assert pace_button(game).text == "1×"
     press(game, "pageup")
-    assert scene.speed == 1.2
+    assert scene.execution.speed == 1.2
     assert pace_button(game).text == "1.2×"
     press(game, "pagedown")
-    assert scene.speed == 1.0
+    assert scene.execution.speed == 1.0
     assert pace_button(game).text == "1×"
     press(game, "pagedown")  # bounded below
-    assert scene.speed == 1.0
+    assert scene.execution.speed == 1.0
     for _ in range(5):
         press(game, "pageup")
-    assert scene.speed == 3.0  # bounded above
+    assert scene.execution.speed == 3.0  # bounded above
     assert pace_button(game).text == "3×"
 
 
@@ -471,7 +471,7 @@ def test_watch_again_stays_computer_led() -> None:
     assert not any(p.human for p in again.world.players[:again.world.seats])
     assert [p.race for p in again.world.players[:again.world.seats]] == [
         p.race for p in scene.world.players[:scene.world.seats]]
-    assert len(again.brains) == 3
+    assert len(again.execution.brains) == 3
 
 
 def test_observe_notes_name_watching_not_playing(game) -> None:
@@ -520,10 +520,10 @@ def test_observe_controls_fit_the_smallest_window(tmp_path) -> None:
         x, y, w, h = pace.bounds
         assert x >= 0 and x + w <= 1200 and y >= 0 and y + h <= 680
         press(small, "pageup")
-        assert small.scene.speed == 1.2
+        assert small.scene.execution.speed == 1.2
         assert pace.text == "1.2×"
         click_label(small, "1.2×")  # the button answers in the small window too
-        assert small.scene.speed == 1.5
+        assert small.scene.execution.speed == 1.5
         assert pace.text == "1.5×"
         watched = small.scene.viewed
         click_label(small, ">")

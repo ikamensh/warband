@@ -24,7 +24,7 @@ def play(tmp_path):
     game = Game("Warband Fog", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / "saves")
     scene = new_game(seed=5)
     game.push(scene)
-    scene.brains = []  # the rival only does what the test has it do
+    scene.execution.brains = []  # the rival only does what the test has it do
     game.tick(FRAME)
     yield game, scene
     game.close()

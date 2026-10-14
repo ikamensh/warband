@@ -69,7 +69,7 @@ def test_a_match_speaks_and_marches_in_the_players_race(game, monkeypatch) -> No
     world.place_building(0, BuildingType.TOWN_HALL, (4, 4))
     world.place_building(1, BuildingType.TOWN_HALL, (25, 18))
     scene = GameScene(world, seed=1, settings={"tutorial": False})
-    scene.brains = []
+    scene.execution.brains = []
     game.push(scene)
     game.tick(1 / 60)
     assert set(played) == {("peace", Race.DWARF)}  # asked on entry and again every frame, so a fight can change it

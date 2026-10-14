@@ -155,7 +155,7 @@ def verify_native(output: Path) -> dict:
         deadline = time.monotonic() + 0.85
         while time.monotonic() < deadline:
             tick(game, dt=None)
-        scene.paused = True
+        scene.execution.paused = True
         heard = list(scene.recent_sounds)
         assert len(set(heard) & sound.IMPACTS) >= 3, f"Representative battle lacked impact variety: {heard}"
         damage = {ident: hp - (entity.hp if (entity := scene.world.entity(ident)) is not None else 0)

@@ -130,7 +130,7 @@ def watched_scene(game, watcher):
     """A live observer scene on *game*: the session holds the seat, never the scene."""
     from warband.ui.multiplayer import NetworkObserverScene
     scene = NetworkObserverScene(watcher)
-    assert scene.session.player is None and scene.brains == []
+    assert scene.session.player is None
     game.push(scene)
     return scene
 
@@ -228,17 +228,17 @@ def test_background_never_pauses_the_watched_room(tmp_path):
         game.tick(1 / 30)
         scene.on_background()
         game.tick(1 / 30)
-        assert not scene.paused
+        assert not scene.execution.paused
         for _ in range(4):
             match.step()
         host.publish()
         converge(host, guest, watcher,
                  until=lambda: watcher.state['world']['tick'] == match.world.tick)
         game.tick(1 / 30)
-        assert not scene.paused and scene.world.tick == match.world.tick
+        assert not scene.execution.paused and scene.world.tick == match.world.tick
         scene.on_foreground()
         game.tick(1 / 30)
-        assert not scene.paused
+        assert not scene.execution.paused
     finally:
         game.close()
         watcher.close()
