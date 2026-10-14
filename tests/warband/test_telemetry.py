@@ -67,7 +67,11 @@ def test_a_frame_razed_the_step_it_starts_or_stands_is_still_counted():
     x, y = hall.pos
     builder = world.spawn_unit(0, UnitType.PEASANT, tile_center((x + 5, y + 5)))
     world.reveal_all(0)
-    world.build(builder.id, BuildingType.FARM, (x + 6, y + 7))  # clear of the ley rift kept for a vault at (x + 6, y + 4)
+    # The first farm ground the rules accept near the hall, rather than tiles named under an
+    # earlier generator: the redrawn landscape (2026-10-13) put trees where this farm stood.
+    site = next((sx, sy) for ring in range(4, 14) for sy in range(y - ring, y + ring + 1) for sx in range(x - ring, x + ring + 1)
+                if max(abs(sx - x), abs(sy - y)) == ring and world.can_place(BuildingType.FARM, (sx, sy), 0) is None)
+    world.build(builder.id, BuildingType.FARM, site)
     telemetry, events, frame = Telemetry(world), [], None
     while not any(e.kind == "built" for e in events):
         world.step()

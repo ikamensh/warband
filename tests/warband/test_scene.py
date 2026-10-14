@@ -200,14 +200,25 @@ def test_build_menu_places_a_farm_where_the_mouse_is(play) -> None:
     ]
     press(game, "f")
     assert scene.placing is BuildingType.FARM and scene.catalogue == "build"
-    site = (hall_of(scene).x + 4, hall_of(scene).y + 5)  # beside the ley rift south-east of the hall, which is kept for a vault
+    # The first farm ground the rules accept south-east of the hall: the home ley rift kept
+    # for a vault moved onto the tiles this named under the earlier generator (2026-10-13).
+    wanted = (hall_of(scene).x + 4, hall_of(scene).y + 5)
+    # South of the wanted row as well: the nearer accepted ground is in the peasants' spawn
+    # cluster, where a fellow gatherer stands in the footprint when the builder arrives.
+    site = next((sx, sy) for ring in range(9) for sy in range(wanted[1] - ring, wanted[1] + ring + 1)
+                for sx in range(wanted[0] - ring, wanted[0] + ring + 1)
+                if max(abs(sx - wanted[0]), abs(sy - wanted[1])) == ring and sy > wanted[1]
+                and scene.world.can_place(BuildingType.FARM, (sx, sy), scene.human) is None)
     game.backend.inject_mouse_move(*screen_of(scene, (site[0] + 1, site[1] + 1)))
     game.tick(1 / 60)
     assert scene.ghost() is not None and scene.ghost()[2]
     click(game, scene, (site[0] + 1, site[1] + 1))
     assert isinstance(peasant.order, Build) and peasant.order.type is BuildingType.FARM and peasant.order.pos == site
     assert scene.pending is None and scene.catalogue == "build"  # one site placed; the catalogue stays until Esc
-    tick(game, 3.0, 0.1)
+    for _ in range(100):  # walk and raise the frame, however far the accepted ground lies
+        if any(b.type is BuildingType.FARM for b in world.player_buildings(scene.human)):
+            break
+        game.tick(0.1)
     assert any(b.type is BuildingType.FARM for b in world.player_buildings(scene.human))
 
 
@@ -221,7 +232,13 @@ def test_every_building_is_on_the_build_menu_with_its_hotkey_and_a_locked_one_wa
     assert hotkeys == {RACES[Race.HUMAN].cards[bt]: BUILDINGS[bt].hotkey.upper() for bt in BUILT if scene.world.building_enabled(bt)}
     press(game, "k")  # a blacksmith needs a barracks, and none is coming
     assert scene.placing is None and scene.status == "Requires a Barracks"
-    site = (hall_of(scene).x + 3, hall_of(scene).y + 5)  # the blacksmith's, clear of the ley rift south-east of the hall
+    # The blacksmith's ground: the first the rules accept south-east of the hall (the home
+    # ley rift moved onto the tiles this named under the earlier generator, 2026-10-13).
+    wanted = (hall_of(scene).x + 3, hall_of(scene).y + 5)
+    site = next((sx, sy) for ring in range(10) for sy in range(wanted[1] - ring, wanted[1] + ring + 1)
+                for sx in range(wanted[0] - ring, wanted[0] + ring + 1)
+                if max(abs(sx - wanted[0]), abs(sy - wanted[1])) == ring
+                and scene.world.can_plan_building(BuildingType.BLACKSMITH, (sx, sy), scene.human) is None)
     barracks = next((x, y) for y in range(scene.world.height) for x in range(scene.world.width)
                     if scene.world.can_plan_building(BuildingType.BARRACKS, (x, y), scene.human) is None and max(abs(x - site[0]), abs(y - site[1])) > 4)
     assert scene.attempt("plan_building", scene.human, BuildingType.BARRACKS, barracks)

@@ -210,7 +210,9 @@ def test_unit_images_are_rendered_on_demand_per_facing_and_frame(play) -> None:
 def test_ground_chunks_cover_the_map_with_a_margin_and_sand_meets_water() -> None:
     from warband.sim import mapgen
 
-    world = mapgen.generate(seed=3)
+    # A river map, so a water-grass shore exists by construction: seed 3's own draw is a
+    # Klondike the redrawn landscape can leave dry (2026-10-13).
+    world = mapgen.generate(seed=3, layout=Layout.CROSSINGS)
     chunk = textures.ground_chunk(world.terrain_at, world.in_bounds, 0, 0, 1.0)
     assert chunk.size == (textures.CHUNK_PX, textures.CHUNK_PX)
     water = [(x, y) for y in range(world.height) for x in range(world.width) if world.terrain[y][x] is Terrain.WATER

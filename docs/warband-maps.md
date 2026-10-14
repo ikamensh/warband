@@ -39,6 +39,40 @@ keep their layout's job.
 per-seat roster symmetry, the ordinary Large Forest Ancient, and unchanged strategic geometry
 when wilds are disabled. The ordinary whole-map fairness matrix remains the generation gate.
 
+## Ground you can read (2026-10-13)
+
+The five layouts kept their promises and their gold, but the ground between the bases was
+three noise fields thresholded into blobs: every seed was the same camouflage of groves,
+ponds and outcrops, mines floated on anonymous grass, and a screenshot supported no plan
+in words. The terrain pass (`mapgen._landscape`) now composes the ground out of named,
+seed-drawn parts, all placed in relation to the hall and the centre and copied by the same
+symmetry as everything else:
+
+- **One place at the centre** — a *lake* to pass on either side, a rock *mesa* to go around,
+  a *great wood* to chop through or walk around, *marsh* ponds breaking the approach, or an
+  open *field* between two groves. Crossings, Klondike and Forest keep the centre they
+  already had (river, pit, middle clearing). The draw is the report's `motif`.
+- **A ridge with a pass** across the way from hall to centre (trees, sometimes with a rock
+  spine; a second on roomy cells) and **a tree belt** lengthwise on one flank, so approaches
+  are lanes with a choke a tower can hold, and there is always a way round the end.
+- **Mines sit in the terrain, not on it**: each natural is backed by an arc of trees on the
+  side away from home, its mouth cleared toward its hall, and each contested mine gets a
+  small landmark grove on one flank. Where a mine sits now says how safe it is.
+- Crossings' river is a ribbon three to four tiles wide, drawn in short steps; the wide
+  discs it used swelled into a chain of lakes and the fords drowned in it. Decoration is
+  deliberately sparse — a few small groves, ponds on the flanks — so the composed shapes
+  stay the story. Noise survives only in the edge fringe and the ragged shore of a blob.
+
+`mapgen.describe(world)` reads the finished ground back into two plain sentences — the
+place at the centre, where the second base lies and what shelters it, what the middle game
+is fought over — phrased by relation rather than compass points, so it is true from every
+seat at once. The New game caption shows it under the layout's promise, the build report
+carries it as `story`, and `tests/warband/test_mapgen.py` pins the correspondence: the
+motif drawn is the place measured at the centre, water is a few bodies rather than
+speckle, the natural's far side is walled and its mouth open. One audit number moved with
+the ground: a natural must now stand nine tiles out on either axis as well as on the
+circle, so a diagonal mine cannot pass as an expansion while standing in the home clearing.
+
 ## The proposal in short
 
 Replace "one kind of map with three palettes" by **five named layouts** the

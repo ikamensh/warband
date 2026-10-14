@@ -128,6 +128,92 @@ def test_every_route_is_found_within_the_pathfinders_budget(layout: Layout) -> N
         assert route and route[-1] == goal, (layout, goal)
 
 
+def _bodies(world: World, kind: Terrain) -> list[int]:
+    """Sizes of the connected bodies of one terrain kind, biggest first."""
+    seen: set[tuple[int, int]] = set()
+    sizes: list[int] = []
+    for y in range(world.height):
+        for x in range(world.width):
+            if world.terrain[y][x] is not kind or (x, y) in seen:
+                continue
+            stack, size = [(x, y)], 0
+            seen.add((x, y))
+            while stack:
+                cx, cy = stack.pop()
+                size += 1
+                for nxt in ((cx + 1, cy), (cx - 1, cy), (cx, cy + 1), (cx, cy - 1)):
+                    if nxt not in seen and 0 <= nxt[0] < world.width and 0 <= nxt[1] < world.height \
+                            and world.terrain[nxt[1]][nxt[0]] is kind:
+                        seen.add(nxt)
+                        stack.append(nxt)
+            sizes.append(size)
+    return sorted(sizes, reverse=True)
+
+
+@pytest.mark.parametrize("seed", range(1, 13))
+def test_the_centre_is_one_place_you_can_name(seed: int) -> None:
+    """The motif the seed drew is the place a reader finds at the middle of the finished
+    ground: the description and the screenshot claim the same centre."""
+    world, report = mapgen.build(seed=seed, width=64, height=48, players=2, layout=Layout.PLAINS)
+    assert report["motif"] in ("lake", "mesa", "greatwood", "marsh", "field")
+    assert mapgen._centre_place(world) == report["motif"]
+
+
+def test_water_is_a_few_places_not_speckle() -> None:
+    """Bodies of water you can point at: a lake is one body holding most of the map's water,
+    and no Plains map dissolves into a dozen puddles."""
+    for seed in (1, 3, 5, 7, 11):
+        world, report = mapgen.build(seed=seed, width=64, height=48, players=2, layout=Layout.PLAINS)
+        bodies = [size for size in _bodies(world, Terrain.WATER) if size >= 4]
+        assert len(bodies) <= 8, (seed, bodies)
+        if report["motif"] == "lake":
+            assert bodies and bodies[0] >= 0.5 * sum(bodies), (seed, bodies)
+
+
+def test_crossings_water_is_one_river() -> None:
+    """The only water on a Crossings map is the river: one ribbon edge to edge, cut only where
+    the fords cross it, with no ponds pretending to be it and no chain of lakes to wade between."""
+    for seed in (1, 3, 5):
+        world, report = mapgen.build(seed=seed, width=64, height=48, players=2, layout=Layout.CROSSINGS)
+        bodies = _bodies(world, Terrain.WATER)
+        reaches = [size for size in bodies if size >= 10]
+        assert 2 <= len(reaches) <= 4, (seed, bodies)  # the reaches between the three fords
+        assert sum(reaches) >= 0.95 * sum(bodies), (seed, bodies)
+        assert report["water"] < 0.09, (seed, report["water"])
+
+
+@pytest.mark.parametrize("layout", (Layout.PLAINS, Layout.BASTION, Layout.CROSSINGS))
+def test_the_natural_sits_in_a_pocket_with_its_mouth_to_home(layout: Layout) -> None:
+    """The second base reads as defensible: blocked ground behind it, open ground toward home."""
+    world = mapgen.generate(seed=3, width=64, height=48, players=2, layout=layout)
+    hall, other = halls(world)
+    natural = min((m for m in world.mines() if m.gold == EXPANSION_GOLD
+                   and _dist(m.center, hall.center) < _dist(m.center, other.center)),
+                  key=lambda m: _dist(m.center, hall.center))
+    out = (natural.center[0] - hall.center[0], natural.center[1] - hall.center[1])
+
+    def walled(away: bool) -> float:
+        tiles = [(x, y) for y in range(int(natural.center[1]) - 7, int(natural.center[1]) + 8)
+                 for x in range(int(natural.center[0]) - 7, int(natural.center[0]) + 8)
+                 if 0 <= x < world.width and 0 <= y < world.height
+                 and 4.5 <= _dist((x, y), natural.center) <= 7.0
+                 and ((x - natural.center[0]) * out[0] + (y - natural.center[1]) * out[1] > 0) == away]
+        return sum(world.terrain[y][x] is not Terrain.GRASS for x, y in tiles) / max(1, len(tiles))
+
+    assert walled(True) > walled(False) + 0.15, (layout, walled(True), walled(False))
+
+
+@pytest.mark.parametrize(("layout", "word"),
+                         ((Layout.PLAINS, "centre"), (Layout.FOREST, "road"), (Layout.CROSSINGS, "ford"),
+                          (Layout.KLONDIKE, "pit"), (Layout.BASTION, "gate")))
+def test_every_map_describes_itself(layout: Layout, word: str) -> None:
+    """Two plain sentences naming the layout's decisive ground, the same from the build
+    report as read off the finished world, short enough for the New game caption."""
+    world, report = mapgen.build(seed=3, width=64, height=48, players=2, layout=layout)
+    assert report["story"] == mapgen.describe(world)
+    assert word in report["story"].lower() and len(report["story"]) < 170  # it captions the preview on a 680-pixel screen
+
+
 def test_forest_is_woods_joined_by_winding_roads() -> None:
     world, report = mapgen.build(seed=3, layout=Layout.FOREST)
     assert report["trees"] >= 0.4
@@ -196,50 +282,51 @@ def test_bastion_walls_every_base_behind_one_gate() -> None:
 
 @pytest.mark.slow
 def test_bastion_gate_cannot_be_sealed_by_buildings() -> None:
-    """Fuzz seed 82, Huge: a farm at (8, 16) left one lane, then a barracks at
-    (7, 19) sealed it; soldiers gathered at (26, 3) with no route out.
+    """Fuzz seed 82, Huge: a farm left one lane into the gate, then a second building
+    sealed it and the army gathered inside the ring with no route out.
 
-    Generating this exact Huge board takes over a second on the Mac; retaining
-    the captured gate geometry puts this regression in the slow tier.
+    Recaptured 2026-10-13 from the same seed and board after the landscape redraw moved
+    the ground: the gate still runs through (8, 16), the farm stands at (7, 14) inside it,
+    and a tower at (9, 14) would close the last lane.  Generating this exact Huge board
+    takes over a second on the Mac; retaining the captured gate geometry puts this
+    regression in the slow tier.
     """
     world, report = mapgen.build(seed=82, width=108, height=84, players=2, human=None)
     assert world.layout is Layout.BASTION
     assert (8, 16) in map(tuple, report["gates"])
-    # These four trees were chopped before the barracks was founded in the match.
-    for x, y in ((7, 20), (8, 20), (7, 21), (8, 21)):
-        world.terrain[y][x] = Terrain.GRASS
-        world._blocked[y * world.width + x] = 0
     world.reveal_all(0)
-    assert world._placement_reason(BuildingType.FARM, (7, 17), 0, ignore_units=True) is None
-    world.place_building(0, BuildingType.FARM, (8, 16))
-    assert world._placement_reason(BuildingType.BARRACKS, (7, 19), 0, ignore_units=True) == "Keep the gate open"
-    assert (7, 19) not in world.placeable(BuildingType.BARRACKS, 0, [(7, 19)])
+    assert world._placement_reason(BuildingType.FARM, (7, 14), 0, ignore_units=True) is None
+    world.place_building(0, BuildingType.FARM, (7, 14))
+    assert world._placement_reason(BuildingType.TOWER, (9, 14), 0, ignore_units=True) == "Keep the gate open"
+    assert (9, 14) not in world.placeable(BuildingType.TOWER, 0, [(9, 14)])
     restored = World.from_dict(world.to_dict())
     assert restored.gates == world.gates
     assert restored.gate_links == world.gate_links
-    assert restored._placement_reason(BuildingType.BARRACKS, (7, 19), 0, ignore_units=True) == "Keep the gate open"
+    assert restored._placement_reason(BuildingType.TOWER, (9, 14), 0, ignore_units=True) == "Keep the gate open"
 
 
 @pytest.mark.slow
-def test_bastion_gate_cannot_be_sealed_from_just_outside_it() -> None:
-    """Fuzz seed 82, Huge (WB-063's run): with a farm on the gate's corner, a tower on the two tiles just outside it
-    sealed an elven base in, the forest on the gate's other side doing the rest; its army stood at the ring for good.
-    The tower did not touch a gate tile, so nothing asked.
+def test_bastion_gate_cannot_be_sealed_from_beside_it() -> None:
+    """Fuzz seed 82, Huge (WB-063's run): a building that touched no gate tile sealed a base
+    in from just beside the gate, the ring's trees doing the rest; nothing asked because
+    the footprint stood off the gate itself.
 
-    Generating this exact Huge board takes over a second on the Mac; retaining
+    Recaptured 2026-10-13 from the same seed and board after the landscape redraw: a
+    barracks at (7, 13) stands across the gate's mouth without touching a gate tile, and
+    the same barracks deeper inside at (7, 10), where the way out goes round it, stands
+    freely.  Generating this exact Huge board takes over a second on the Mac; retaining
     the captured gate geometry puts this regression in the slow tier.
     """
     world, report = mapgen.build(seed=82, width=108, height=84, players=2, human=None)
-    assert world.layout is Layout.BASTION and (9, 19) in map(tuple, report["gates"])
-    assert all(world.terrain_at(tile) is Terrain.TREES for tile in ((7, 20), (8, 20)))
-    for x, y in ((5, 15), (6, 15), (7, 15), (6, 16)):  # chopped by the elves' gatherers before the farm went up
-        world.terrain[y][x] = Terrain.GRASS
-        world._blocked[y * world.width + x] = 0
+    gates = set(map(tuple, report["gates"]))
+    assert world.layout is Layout.BASTION and (9, 19) in gates
     world.reveal_all(0)
-    world.place_building(0, BuildingType.FARM, (8, 16))
-    assert world._placement_reason(BuildingType.TOWER, (9, 20), 0, ignore_units=True) == "Keep the gate open"
-    assert (9, 20) not in world.placeable(BuildingType.TOWER, 0, [(9, 20)])
-    assert world._placement_reason(BuildingType.TOWER, (11, 20), 0, ignore_units=True) is None  # beside the way out, not across it
+    footprint = {(7 + dx, 13 + dy) for dx in range(3) for dy in range(3)}
+    assert not footprint & gates  # beside the gate, not on it: the reach is what asks
+    assert world._placement_reason(BuildingType.BARRACKS, (7, 13), 0, ignore_units=True) == "Keep the gate open"
+    assert (7, 13) not in world.placeable(BuildingType.BARRACKS, 0, [(7, 13)])
+    assert world._placement_reason(BuildingType.BARRACKS, (7, 10), 0, ignore_units=True) is None  # deeper in, the way out goes round
+    assert world._placement_reason(BuildingType.FARM, (7, 17), 0, ignore_units=True) is None  # on the gate's corner, lanes remain
 
 
 def test_a_seed_always_draws_the_same_layout() -> None:

@@ -146,7 +146,14 @@ def _stamp_structures(world: World, player: int, footprints: frozenset[tuple[int
         if building.player != player:
             for index in _tower_ground(building, width, height):
                 blocked[index] = 1
-    return camps.navigation(world, player, blocked, set(), 1.0)
+    # Remembered guard warnings are stamped here as :meth:`World._movement_ground` stamps
+    # them: the visible-unit pass in _navigation alone forgets a guard the moment its
+    # observer retreats out of sight, so a gatherer's route reopened through the watch it
+    # had just fled, closed again on approach, and the gatherer paced the sight boundary
+    # forever (fuzz seed 81, an Ancient beside a contested mine's road).
+    warnings = tuple((x, y, camps.CAMP_WATCH + camps.CAMP_POST + 1.0)
+                     for x, y in knowledge.guard_warnings.values())
+    return camps.navigation(world, player, blocked, set(), 1.0, warnings)
 
 
 _TOWER_GROUND: Final[dict[tuple[KnownBuilding, int, int], tuple[int, ...]]] = {}

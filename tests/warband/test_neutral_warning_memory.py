@@ -49,6 +49,26 @@ def test_an_unseen_guard_keeps_its_last_observed_warning_in_private_saved_and_on
         assert not client.worker_knowledge[1].guard_warnings
 
 
+def test_a_remembered_warning_stays_avoided_ground_for_gatherers_after_the_guard_leaves_sight():
+    """Fuzz seed 81: a miner paced an Ancient guardian's sight boundary forever, because its
+    route reopened through the watch each time the guardian left sight and closed again on
+    approach.  A remembered warning is avoided ground until it is retired, exactly as it
+    already was for marching units."""
+    from warband.sim.worker_ai import safe_navigation
+
+    world, guard, observer = warning_world()
+    world.move([observer.id], (44.5, 30.5))
+    advance(world, 15)
+    assert not world.is_visible(0, guard.tile)
+    assert guard.id in world.worker_knowledge[0].guard_warnings
+    watched = safe_navigation(world, 0)
+    known = world.worker_knowledge[0].blocked
+    # Explored, remembered-open ground inside the warning's radius is forbidden to gatherers…
+    assert known[19 * world.width + 28] == 0 and watched[19 * world.width + 28] == 1
+    # …while explored ground beyond it, on the observer's own road away, is untouched.
+    assert known[25 * world.width + 36] == 0 and watched[25 * world.width + 36] == 0
+
+
 def test_revisiting_an_empty_last_seen_guard_tile_clears_its_warning():
     """A scout can dismiss stale danger by seeing the old position empty, without seeing the departed guard."""
     world, guard, observer = warning_world()

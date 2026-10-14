@@ -374,6 +374,7 @@ class NewGameScene(Scene):
         self.seed = mapgen.fresh_seed()
         self._preview_world: World | None = None
         self._preview_pil: PilImage.Image | None = None
+        self._story = ""  # the previewed map in plain words (mapgen.describe), read once per preview, not per frame
         self._theme_buttons: dict[MapTheme, Button] = {}
         self._size_buttons: dict[str, Button] = {}
         self._player_buttons: dict[int, Button] = {}
@@ -444,6 +445,7 @@ class NewGameScene(Scene):
         # The screen chose the seed, so a seed that makes no fair map of these settings gives way to the next (WB-046).
         self.seed, world = fair_map(self.seed, width, height, self.players, theme=self.theme, races=self._preview_races(), layout=self.layout, magic=self.magic)
         self._preview_world = world
+        self._story = mapgen.describe(world)
         image = preview_image(world)
         self._preview_pil = image
         # One image slot whatever the map size: the picture sits centred in its box, so the slot is redrawn in place.
@@ -516,10 +518,14 @@ class NewGameScene(Scene):
             self._mode_buttons[watching] = Button(
                 "Play" if not watching else "Observe", hotkey="O" if watching else None,
                 on_click=lambda w=watching: self.set_observe(w), style=GHOST_BUTTON, width=OPTION_WIDTH)
+        # The previewed map in plain words sits under its picture: in the options column its
+        # wrapped lines stood the panel off a 680-pixel screen, and beside the picture is
+        # where a caption belongs in any case.
         side = Column(Image(PREVIEW_KEY, width=PREVIEW_BOX[0], height=PREVIEW_BOX[1]),
+                      Label(lambda: self._story, text_style="sub", width=PREVIEW_BOX[0], wrap=True),
                       Label(lambda: self._opponents_text(), text_style="sub", width=PREVIEW_BOX[0], wrap=True),
                       Label(lambda: self._settings_note(), text_style="sub", width=PREVIEW_BOX[0], wrap=True),
-                      spacing=8, margin=0)
+                      spacing=6, margin=0)
         # The race's character runs under the whole row: beside the preview it would wrap, and the panel must fit a 680 px window.
         race_note = Label(lambda: f"{RACES[self.race].tagline} · {RACES[self.race].passive}", text_style="sub", width=NOTE_WIDTH + 24 + PREVIEW_BOX[0])
         panel = Column(Label("New game", text_style="title"), Row(options, side, spacing=24), race_note,
@@ -527,7 +533,7 @@ class NewGameScene(Scene):
                            Button(lambda: "Watch" if self.observe else "Start", hotkey="Enter", on_click=self.start,
                                           style=ACTION_BUTTON, width=2 * OPTION_WIDTH + 8),
                            Button("Back", hotkey="Esc", on_click=self.game.pop, style=GHOST_BUTTON, width=OPTION_WIDTH), spacing=8),
-                       spacing=8, anchor=Anchor.CENTER, style=OVERLAY_STYLE)
+                       spacing=6, anchor=Anchor.CENTER, style=OVERLAY_STYLE)
         self.ui.add(panel)
         self._restyle()
 

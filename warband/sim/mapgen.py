@@ -15,6 +15,14 @@ own walls and gold:
   Klondike   a small start mine; the rest of the gold in a rock-ringed pit
   Bastion    a tree ring with one gate around every base
 
+The ground between the bases is composed, not speckled: one nameable place
+at the centre (a lake, a mesa, a great wood, marsh ponds, an open field —
+or the layout's own river, pit or middle clearing), a ridge with a pass
+across the way to it, a tree belt on one flank, naturals backed into
+pockets and contested mines beside a landmark grove, so a screenshot of a
+map supports a plan in plain words.  :func:`describe` reads the finished
+ground back into those words for the New game screen.
+
 ``generate`` retries a seed a few times when the audit finds a fault and
 raises when the layout cannot make a fair map at that size.  The design and
 its reasons are in docs/warband-maps.md.
@@ -33,7 +41,7 @@ from typing import Final
 
 from warband.sim import camps as camping
 from warband.sim import path as pathing
-from warband.sim.model import MINE_CLEARANCE, RIFT, Pos, World, int_sum, plain_sum, rects_gap, tile_center
+from warband.sim.model import MINE_CLEARANCE, RIFT, Building, Pos, World, int_sum, plain_sum, rects_gap, tile_center
 from warband.sim.rules import (BUILDINGS, EXPANSION_GOLD, LODE_GOLD, MAX_PLAYERS, MINE_GOLD, BuildingType, Layout, MapTheme, Race,
                                CAMP_WATCH, Terrain, UnitType)
 
@@ -513,24 +521,158 @@ def _noise(rng: random.Random, width: int, height: int, cell: int) -> list[list[
     return out
 
 
-def _speckle(cv: _Canvas, rng: random.Random, *, trees: float = 0.70, water: float = 0.84, rock: float = 0.87) -> None:
-    """Open ground with groves, ponds and outcrops from three noise fields; the edge row is forest
-    with a ragged fringe.  Lower thresholds mean more of that kind."""
-    grove = _noise(rng, cv.w, cv.h, 4)
-    pond = _noise(rng, cv.w, cv.h, 5)
-    stone = _noise(rng, cv.w, cv.h, 4)
+#: The one place at a map's centre you can name from the preview, drawn per seed: ``lake`` (pass it
+#: on either side), ``mesa`` (rock armies go around), ``greatwood`` (chop through or go around),
+#: ``marsh`` (ponds breaking the approach) or ``field`` (open ground between two groves).  The three
+#: layouts whose centre is already a place keep theirs: Crossings' river, Klondike's pit, Forest's
+#: middle clearing.  :func:`describe` reads the finished ground back into these words.
+_MOTIFS: Final[dict[Layout, tuple[str, ...]]] = {
+    Layout.PLAINS: ("lake", "mesa", "greatwood", "marsh", "field"),
+    Layout.FOREST: ("deepwood",),
+    Layout.CROSSINGS: ("river",),
+    Layout.KLONDIKE: ("pit",),
+    Layout.BASTION: ("mesa", "marsh", "field", "greatwood"),
+}
+
+
+def _blob(cv: _Canvas, centre: Point, radius: float, kind: Terrain, rng: random.Random, *,
+          over: tuple[Terrain, ...] = (Terrain.GRASS,)) -> None:
+    """One coherent body of *kind* — a lake, a mesa, a grove — with a ragged shore: solid inside
+    *radius* − 0.8, thinning to nothing at *radius* + 0.8.  Noise decides only the edge of a
+    feature, never where the feature is, so a screenshot shows places rather than camouflage."""
+    for tile in cv.disc(centre, radius + 0.8):
+        x, y = tile
+        if not (0 <= x < cv.w and 0 <= y < cv.h) or cv.grid[y][x] not in over:
+            continue
+        d = _dist(tile, centre)
+        if d <= radius - 0.8 or rng.random() < (radius + 0.8 - d) / 1.6:
+            cv.grid[y][x] = kind
+
+
+def _ridge(cv: _Canvas, rng: random.Random, a: Point, b: Point, *, rock: bool, gap_at: float, width: float = 1.9) -> None:
+    """A wall of trees (with a rock spine when *rock*) along the line *a*→*b*, broken by one pass:
+    a gap of open ground a few tiles wide at *gap_at* of the way along.  A ridge across the line
+    between two halls turns an approach into a sentence — *through the pass or round the end* —
+    and its trees are lumber a determined player can cut a second pass through."""
+    length = _dist(a, b)
+    if length < 5:
+        return
+    ux, uy = (b[0] - a[0]) / length, (b[1] - a[1]) / length
+    gap = 2.2  # half the pass's width in tiles along the ridge
+    steps = int(length / 1.25)
+    for i in range(steps + 1):
+        along = i * 1.25
+        if abs(along - gap_at * length) <= gap:
+            continue
+        t = along / length
+        spot = (a[0] + (b[0] - a[0]) * t + rng.uniform(-0.35, 0.35) * uy,
+                a[1] + (b[1] - a[1]) * t - rng.uniform(-0.35, 0.35) * ux)
+        cv.paint(cv.within(spot, width), Terrain.TREES, over=(Terrain.GRASS,))
+        if rock:
+            cv.paint(cv.within(spot, width - 0.8), Terrain.ROCK, over=(Terrain.GRASS, Terrain.TREES))
+
+
+def _clamped(cv: _Canvas, point: Point) -> Point:
+    """*point* pulled inside the canonical cell, two tiles off its edges, so a composed feature
+    belongs to the cell the symmetry copies rather than straddling the next one by accident."""
+    return (min(max(point[0], 2.0), float(cv.cw - 3)), min(max(point[1], 2.0), float(cv.ch - 3)))
+
+
+def _landscape(cv: _Canvas, rng: random.Random, layout: Layout, hc: Pos) -> str:
+    """The ground a player can read, drawn for the first seat before any walls or mines: a forest
+    fringe, one named place at the centre (the motif, returned), a ridge with a pass across the
+    way to it, a tree belt along one flank, and a few small groves and ponds as local colour.
+
+    What this replaced (three noise fields thresholded into amoeba blobs) made every seed the
+    same camouflage: no lanes, no landmarks, mines floating on anonymous grass.  Here every
+    large shape is placed in relation to the hall and the centre, so the preview supports a
+    plan: which side of the lake, through which pass, behind which belt."""
     fringe = _noise(rng, cv.w, cv.h, 3)
     for y in range(cv.h):
         for x in range(cv.w):
             edge = min(x, y, cv.w - 1 - x, cv.h - 1 - y)
-            if edge == 0 or (edge < 3 and fringe[y][x] > 0.4):
+            if edge == 0 or (edge < 3 and fringe[y][x] > 0.45):
                 cv.grid[y][x] = Terrain.TREES
-            elif pond[y][x] > water and edge > 3:
-                cv.grid[y][x] = Terrain.WATER
-            elif stone[y][x] > rock:
-                cv.grid[y][x] = Terrain.ROCK
-            elif grove[y][x] > trees:
-                cv.grid[y][x] = Terrain.TREES
+    motif = rng.choice(_MOTIFS[layout])
+    home: Point = (float(hc[0]), float(hc[1]))
+    junction = cv.junction
+    span = _dist(home, junction) or 1.0
+    ux, uy = (junction[0] - home[0]) / span, (junction[1] - home[1]) / span
+    px, py = -uy, ux
+
+    def toward(t: float, side: float) -> Point:
+        return _clamped(cv, (home[0] + ux * span * t + px * side, home[1] + uy * span * t + py * side))
+
+    # The centre: one place, drawn on the junction so the copies assemble it whole (as the pit
+    # and the river are).  The river and the pit are drawn by their own passes later.
+    reach = max(4.0, min(8.5, min(cv.cw, cv.ch) * 0.24, span * 0.22))
+    if layout not in (Layout.CROSSINGS, Layout.KLONDIKE):
+        # Overlapping bodies stretched across the approach, never one stamped disc: a centre
+        # drawn as a perfect circle reads as a diagram, not a place.
+        if motif == "lake":
+            _blob(cv, junction, reach * 0.85, Terrain.WATER, rng)
+            _blob(cv, (junction[0] + px * reach * 0.55, junction[1] + py * reach * 0.55), reach * 0.6, Terrain.WATER, rng)
+            bay = (junction[0] - ux * reach * 0.95, junction[1] - uy * reach * 0.95)
+            _blob(cv, bay, reach * 0.45, Terrain.WATER, rng)
+        elif motif == "mesa":
+            _blob(cv, junction, reach * 0.72, Terrain.ROCK, rng)
+            _blob(cv, (junction[0] + px * reach * 0.5, junction[1] + py * reach * 0.5), reach * 0.52, Terrain.ROCK, rng)
+            for tile in cv.band(junction, reach * 0.65, reach * 0.95):
+                if cv.grid[tile[1]][tile[0]] is Terrain.GRASS and rng.random() < 0.55:
+                    cv.grid[tile[1]][tile[0]] = Terrain.TREES
+        elif motif == "greatwood":
+            for off in (-0.55, 0.0, 0.55):
+                _blob(cv, (junction[0] + px * off * reach, junction[1] + py * off * reach), reach * 0.78, Terrain.TREES, rng)
+        elif motif == "marsh":
+            for off in (-1.0, 0.0, 1.0):
+                pond = (junction[0] - ux * reach * 0.65 + px * off * reach * 1.1,
+                        junction[1] - uy * reach * 0.65 + py * off * reach * 1.1)
+                _blob(cv, pond, rng.uniform(1.9, 2.7), Terrain.WATER, rng)
+        else:  # field: open ground to meet on, two groves to fight from the edge of
+            for side in (-1.0, 1.0):
+                grove = (junction[0] - ux * reach * 0.4 + px * side * reach * 0.95,
+                         junction[1] - uy * reach * 0.4 + py * side * reach * 0.95)
+                _blob(cv, grove, reach * 0.5, Terrain.TREES, rng)
+
+    # A ridge across the way home→centre, with its pass: the choke every early army files
+    # through, and the line a defender towers.  The river does this job on Crossings.
+    if layout is not Layout.CROSSINGS:
+        ridges = 1 if cv.cw * cv.ch < 2200 else rng.choice((1, 2))
+        for _ in range(ridges):
+            t = rng.uniform(0.30, 0.40) if layout is Layout.KLONDIKE else rng.uniform(0.38, 0.54)
+            centre = toward(t, rng.choice((-1.0, 1.0)) * rng.uniform(0.06, 0.18) * span)
+            heading = math.atan2(py, px) + rng.uniform(-0.3, 0.3)
+            half = span * rng.uniform(0.28, 0.38)
+            a = _clamped(cv, (centre[0] - half * math.cos(heading), centre[1] - half * math.sin(heading)))
+            b = _clamped(cv, (centre[0] + half * math.cos(heading), centre[1] + half * math.sin(heading)))
+            stony = 0.65 if layout is Layout.BASTION else 0.45
+            _ridge(cv, rng, a, b, rock=rng.random() < stony, gap_at=rng.uniform(0.35, 0.65), width=1.5)
+
+    # One belt of trees lengthwise on a flank: lumber, cover, and a hidden lane behind it.
+    # A roomy cell earns the other flank one too — on a Giant cell the fringe is a shrinking
+    # share of the ground, and without a second belt the woods thin below what a long
+    # match's lumber economy (and the fairness audit's floor) needs.
+    side = rng.choice((-1.0, 1.0)) * span * rng.uniform(0.30, 0.42)
+    _ridge(cv, rng, toward(0.22, side), toward(0.78, side * 0.8), rock=False,
+           gap_at=rng.uniform(0.35, 0.65), width=1.6)
+    if cv.cw * cv.ch >= 2200:
+        other = -side * rng.uniform(0.75, 1.0)
+        _ridge(cv, rng, toward(0.30, other), toward(0.82, other * 0.85), rock=False,
+               gap_at=rng.uniform(0.35, 0.65), width=1.6)
+
+    # Local colour, kept small and few so the composed shapes stay the story.
+    for _ in range(max(2, cv.cw * cv.ch // 500)):
+        spot = (rng.uniform(3, cv.cw - 4), rng.uniform(3, cv.ch - 4))
+        if _dist(spot, home) >= 9:
+            _blob(cv, spot, rng.uniform(1.2, 2.6), Terrain.TREES, rng)
+    # Ponds belong on the flanks, where they name the side lanes, not sprinkled at random.
+    ponds = 0 if layout is Layout.CROSSINGS or motif in ("lake", "marsh") else 2 if motif == "field" else 1
+    for _ in range(ponds):
+        flank = rng.choice((-1.0, 1.0)) * span * rng.uniform(0.32, 0.45)
+        spot = toward(rng.uniform(0.25, 0.7), flank)
+        if _dist(spot, home) >= 10 and cv.grid[int(spot[1])][int(spot[0])] is Terrain.GRASS:
+            _blob(cv, spot, rng.uniform(1.7, 2.7), Terrain.WATER, rng)
+    return motif
 
 
 def _clump(cv: _Canvas, centre: Pos, radius: float, rng: random.Random) -> None:
@@ -642,7 +784,9 @@ def _river(cv: _Canvas, rng: random.Random, walls: _Walls) -> None:
     repeat at every crossing of cells, so each cell is moated on two sides.  A wide ford on the
     crossing, a narrow one near each end, rock outcrops on the banks beside the wide ford."""
     cx, cy = cv.junction
-    radius = 1.5 if min(cv.w, cv.h) < (48 if cv.wide else 64) else 2.0 if min(cv.w, cv.h) < 64 else 2.5
+    # A ribbon one can follow with a finger, three to four tiles wide: the wide discs this used
+    # swelled where they overlapped into a chain of lakes, and the fords drowned in it.
+    radius = 1.3 if min(cv.w, cv.h) < (48 if cv.wide else 64) else 1.5 if min(cv.w, cv.h) < 64 else 1.8
     headings = [-math.pi / 4] if cv.wide else [math.pi, -math.pi / 2]
     fords: set[Pos] = set()
     for base in headings:
@@ -651,8 +795,8 @@ def _river(cv: _Canvas, rng: random.Random, walls: _Walls) -> None:
         while cv.inside(round(x), round(y)):
             points.append((x, y))
             if cv.wide and travelled > 5:
-                heading = min(base + 0.7, max(base - 0.7, heading + rng.uniform(-0.4, 0.4)))
-            x, y, travelled = x + 3 * math.cos(heading), y + 3 * math.sin(heading), travelled + 3
+                heading = min(base + 0.7, max(base - 0.7, heading + rng.uniform(-0.22, 0.22)))
+            x, y, travelled = x + 1.5 * math.cos(heading), y + 1.5 * math.sin(heading), travelled + 1.5
         widths = [radius if cv.wide else radius + rng.uniform(0, 0.8) for _ in points]
         widths = [plain_sum(widths[max(0, i - 2):i + 3]) / len(widths[max(0, i - 2):i + 3]) for i in range(len(widths))]  # smoothed: the cross swells and narrows
         tiles: set[Pos] = set()
@@ -660,7 +804,7 @@ def _river(cv: _Canvas, rng: random.Random, walls: _Walls) -> None:
             tiles.update(cv.within(point, width))
         cv.paint(tiles, Terrain.WATER)
         centre_ford = _cut(tiles, (cx, cy), base, 3.0)
-        end = max(1, len(points) - 3)
+        end = max(1, len(points) - 6)
         edge_ford = _cut(tiles, points[end], math.atan2(points[end][1] - points[end - 1][1], points[end][0] - points[end - 1][0]), 1.5)
         cv.paint(centre_ford | edge_ford, Terrain.GRASS)
         fords |= centre_ford | edge_ford
@@ -881,6 +1025,49 @@ def _claim(cv: _Canvas, pos: Pos, gold: int, rects: list[tuple[Pos, int]], mines
     mines += [(image, kind, gold) for image in cv.rect_images(pos, size)]
 
 
+def _beside_a_site(tile: Pos, rects: list[tuple[Pos, int]]) -> bool:
+    """Whether *tile* falls in a claimed footprint's block, ring included: ground a pocket or a
+    landmark grove must never grow over."""
+    return any(rx - 1 <= tile[0] <= rx + size and ry - 1 <= tile[1] <= ry + size for (rx, ry), size in rects)
+
+
+def _paint_orbit(cv: _Canvas, tile: Pos, kind: Terrain, *, over: tuple[Terrain, ...]) -> None:
+    """Paint *tile* and every copy of it: a pocket arc commonly reaches across a cell border
+    toward the centre, where painting one tile alone would be undone by the next symmetrize."""
+    for x, y in cv.images(tile):
+        if cv.grid[y][x] in over:
+            cv.grid[y][x] = kind
+
+
+def _pocket(cv: _Canvas, rng: random.Random, pos: Pos, hall: Point, rects: list[tuple[Pos, int]], avoid: set[Pos]) -> None:
+    """Back the natural at *pos* with an arc of trees (a little rock among them) on the side away
+    from its *hall*, and clear the trees from the mouth toward home: the second base reads at a
+    glance as a place one entrance defends, and a raider must come round the mouth or through
+    the trees.  Never over a claimed site, a gate, a ford or a protected wall, so the pocket
+    closes no way the layout promised and seals no mine the audit must reach."""
+    middle = _mine_centre(pos)
+    away = math.atan2(middle[1] - hall[1], middle[0] - hall[0])
+    for tile in cv.band(middle, 4.0, 7.0):
+        if any(image in cv.protected or image in avoid or _beside_a_site(image, rects) for image in cv.images(tile)):
+            continue
+        turn = abs((math.atan2(tile[1] - middle[1], tile[0] - middle[0]) - away + math.pi) % (2 * math.pi) - math.pi)
+        if turn < 1.75 and _dist(tile, middle) >= 5.0 and rng.random() < 0.9:  # the far half, and a little round the sides
+            _paint_orbit(cv, tile, Terrain.ROCK if rng.random() < 0.12 else Terrain.TREES, over=(Terrain.GRASS,))
+        elif turn > math.pi - 1.0:  # the mouth: fell whatever the landscape left across the way home
+            _paint_orbit(cv, tile, Terrain.GRASS, over=(Terrain.TREES,))
+
+
+def _grove_beside(cv: _Canvas, rng: random.Random, pos: Pos, rects: list[tuple[Pos, int]], avoid: set[Pos]) -> None:
+    """A small grove on one flank of a contested mine: no shelter a pocket gives, but a landmark —
+    *the mine by the grove* is a place an order can name, and cover one side fights from."""
+    middle = _mine_centre(pos)
+    angle = rng.uniform(0, 2 * math.pi)
+    spot = (middle[0] + 5.5 * math.cos(angle), middle[1] + 5.5 * math.sin(angle))
+    for tile in cv.within(spot, 1.8):
+        if not any(image in cv.protected or image in avoid or _beside_a_site(image, rects) for image in cv.images(tile)):
+            _paint_orbit(cv, tile, Terrain.TREES, over=(Terrain.GRASS,))
+
+
 def _natural_site(cv: _Canvas, rng: random.Random, spec: _Spec, hc: Pos, halls: list[Point], rects: list[tuple[Pos, int]],
                   prefer: Callable[[Pos], float] | None) -> Pos | None:
     """As far out as the range allows, half again nearer its own hall than any other."""
@@ -891,7 +1078,10 @@ def _natural_site(cv: _Canvas, rng: random.Random, spec: _Spec, hc: Pos, halls: 
     for pos in _canonical_sites(cv):
         c = _mine_centre(pos)
         own = _dist(c, halls[0])
-        if not low <= own <= high or any(_dist(c, hall) < 1.4 * own for hall in halls[1:]):
+        # Out means out on either axis too: a diagonal mine can pass the circle at nine tiles
+        # while standing seven from the hall's wall, a second main mine rather than an expansion.
+        if not low <= own <= high or max(abs(c[0] - halls[0][0]), abs(c[1] - halls[0][1])) < 9 \
+                or any(_dist(c, hall) < 1.4 * own for hall in halls[1:]):
             continue
         scored.append((own + rng.uniform(0, 4) + (prefer(pos) if prefer else 0.0), pos))
     return _pick(cv, scored, rects, spec.natural_clearing > 0)
@@ -1113,8 +1303,9 @@ def _attempt(rng: random.Random, seed: int, width: int, height: int, players: in
     main = (hall[0] - 5, hall[1] - 4)
     if layout is Layout.FOREST:
         cv.paint(((x, y) for y in range(height) for x in range(width)), Terrain.TREES)
+        motif = "deepwood"
     else:
-        _speckle(cv, rng)
+        motif = _landscape(cv, rng, layout, hc)
     cv.symmetrize()
     cv.paint(cv.within(hc, clearing), Terrain.GRASS)
     cv.paint(_block(main), Terrain.GRASS)
@@ -1149,6 +1340,8 @@ def _attempt(rng: random.Random, seed: int, width: int, height: int, players: in
             problems.append("no room for a natural")
         else:  # the empty cell's stays, neutral
             _claim(cv, natural, EXPANSION_GOLD, rects, mines, clearing=spec.natural_clearing)
+            if layout is not Layout.FOREST:  # in the woods the clearing's edge already pockets it
+                _pocket(cv, rng, natural, halls[0], rects, walls.gates | walls.fords)
     thirds: list[Pos] = []
     for _ in range(_third_orbits(spec, cv.cw, cv.ch)):
         third = _third_site(cv, rng, spec, halls, rects, walls.prefer_third)
@@ -1157,6 +1350,8 @@ def _attempt(rng: random.Random, seed: int, width: int, height: int, players: in
             break
         thirds.append(third)
         _claim(cv, third, EXPANSION_GOLD, rects, mines, clearing=spec.third_clearing)
+        if layout is not Layout.FOREST:
+            _grove_beside(cv, rng, third, rects, walls.gates | walls.fords)
     if _wants_a_prize(spec, width, height, cv.cw, cv.ch):
         size = BUILDINGS[prize].size
         site = _prize_site(cv, rng, spec, halls, rects, size)
@@ -1191,6 +1386,8 @@ def _attempt(rng: random.Random, seed: int, width: int, height: int, players: in
             world.gate_links = tuple(zip(cv.rect_images(hall, 3)[:players], cv.rect_images(natural, 3)[:players]))
     report["problems"] = problems + report["problems"]
     report["wishes"] = wishes  # nothing the audit looks at is a wish: an unfair map is a fault, every time
+    report["motif"] = motif  # the centre the seed drew; describe() reads the same place off the ground
+    report["story"] = describe(world)
     return world, report
 
 
@@ -1380,6 +1577,112 @@ def _carve(world: World, cv: _Canvas, route: list[Pos], *, trees_only: bool = Fa
                     world._blocked[ny * world.width + nx] = 0
                     if world._forest is not None:
                         world._forest[ny * world.width + nx] = 0
+
+
+# -- The story a map tells --------------------------------------------------------
+
+#: Kept short on purpose: a description captions the preview beside its picture on a 680-pixel
+#: screen, where the whole story has some 155 characters of height to live in.
+_CENTRE_PHRASES: Final = {
+    "lake": "a lake fills the centre — pass either side",
+    "mesa": "a rock mesa blocks the centre",
+    "greatwood": "a great wood fills the centre — chop or go round",
+    "marsh": "marsh ponds break the centre",
+    "field": "an open field fills the centre",
+}
+
+
+def _centre_place(world: World) -> str:
+    """Which of :data:`_MOTIFS`' places the finished ground has at its middle, read off the tiles
+    within six of the centre rather than trusted from the draw: what a player sees is what the
+    description may claim."""
+    centre = (world.width / 2, world.height / 2)
+    tiles = [(x, y) for y in range(int(centre[1]) - 6, int(centre[1]) + 7)
+             for x in range(int(centre[0]) - 6, int(centre[0]) + 7)
+             if 0 <= x < world.width and 0 <= y < world.height and _dist((x, y), centre) <= 6]
+    share = {kind: int_sum(1 for x, y in tiles if world.terrain[y][x] is kind) / len(tiles)
+             for kind in (Terrain.WATER, Terrain.ROCK, Terrain.TREES)}
+    inner = [tile for tile in tiles if _dist(tile, centre) <= 2.5]
+    flooded = int_sum(1 for x, y in inner if world.terrain[y][x] is Terrain.WATER) / max(1, len(inner))
+    if share[Terrain.ROCK] >= 0.3:
+        return "mesa"
+    if flooded >= 0.6:  # a lake covers the middle itself; a marsh rings it with ponds
+        return "lake"
+    if share[Terrain.WATER] >= 0.12:
+        return "marsh"
+    if share[Terrain.TREES] >= 0.45:
+        return "greatwood"
+    return "field"
+
+
+def _own_naturals(world: World, halls: list[Building]) -> dict[int, Building]:
+    """Each hall's own expansion mine: the nearest 30 000 mine nearer it than any other hall."""
+    own: dict[int, Building] = {}
+    for hall in halls:
+        candidates = [m for m in world.mines() if m.type is BuildingType.GOLD_MINE and m.gold == EXPANSION_GOLD
+                      and all(_dist(m.center, other.center) > _dist(m.center, hall.center) for other in halls if other is not hall)]
+        if candidates:
+            own[hall.id] = min(candidates, key=lambda m: _dist(m.center, hall.center))
+    return own
+
+
+def describe(world: World) -> str:
+    """This map in two plain sentences, read off the finished ground: the place at its centre,
+    where the second base lies and what shelters it, and what the middle game is fought over.
+
+    Phrased by relation (toward the centre, along the home edge) rather than compass points, so
+    it is true from every seat of a symmetric map at once.  The New game screen shows it under
+    the layout's promise, and a seed whose ground supports no such sentences is a map with
+    nothing to plan around — which is what the generator exists to avoid."""
+    halls = sorted((b for b in world.buildings.values() if b.type is BuildingType.TOWN_HALL),
+                   key=lambda b: b.player if b.player is not None else -1)
+    if not halls:
+        return ""
+    hall = halls[0]
+    centre = (world.width / 2, world.height / 2)
+    own = _own_naturals(world, halls)
+    natural = own.get(hall.id)
+    mine_word = lambda n: "mine" if n == 1 else "mines"
+    if world.layout is Layout.KLONDIKE:
+        pit = int_sum(1 for m in world.mines() if m.gold == EXPANSION_GOLD)
+        return (f"Home gold is short: the match is the {pit} {mine_word(pit)} in the central rock pit — "
+                f"take a gate and hold it, or fall back on the poor corner mine.")
+    contested = [m for m in world.mines() if m.type is BuildingType.GOLD_MINE and m.gold == EXPANSION_GOLD
+                 and m not in own.values()]
+    if world.layout is Layout.CROSSINGS:
+        waters = [(x, y) for y in range(world.height) for x in range(world.width) if world.terrain[y][x] is Terrain.WATER]
+        banks = bool(contested) and bool(waters) and min(_dist(m.center, tile) for m in contested for tile in waters) <= 6
+        by_fords = "on the banks by the fords" if banks else "inland, behind the river"
+        return (f"One river, three fords: the wide centre ford is the short road. "
+                f"Naturals face it; the {len(contested)} contested {mine_word(len(contested))} sit {by_fords}.")
+    # Where the second base lies, and what stands behind it.
+    lies, shelter = "toward the centre", "on open ground"
+    if natural is not None:
+        to_centre = (centre[0] - hall.center[0], centre[1] - hall.center[1])
+        out = (natural.center[0] - hall.center[0], natural.center[1] - hall.center[1])
+        facing = (out[0] * to_centre[0] + out[1] * to_centre[1]) / ((_dist(out, (0.0, 0.0)) or 1.0) * (_dist(to_centre, (0.0, 0.0)) or 1.0))
+        lies = "toward the centre" if facing > 0.55 else "along the home edge" if facing > -0.2 else "behind the base"
+        far = [(x, y) for y in range(int(natural.center[1]) - 7, int(natural.center[1]) + 8)
+               for x in range(int(natural.center[0]) - 7, int(natural.center[0]) + 8)
+               if 0 <= x < world.width and 0 <= y < world.height and 4.5 <= _dist((x, y), natural.center) <= 7.0
+               and (x - natural.center[0]) * out[0] + (y - natural.center[1]) * out[1] > 0]
+        walled = [world.terrain[y][x] for x, y in far if world.terrain[y][x] is not Terrain.GRASS]
+        kinds = {kind: walled.count(kind) for kind in (Terrain.TREES, Terrain.ROCK, Terrain.WATER)}
+        backing = max(kinds, key=lambda k: kinds[k]) if walled else Terrain.GRASS
+        shelter = {Terrain.TREES: "tree-backed, mouths home", Terrain.ROCK: "rock-backed, mouths home",
+                   Terrain.WATER: "water-backed, mouths home"}.get(backing, "on open ground")
+        if len(walled) < 0.35 * max(1, len(far)):
+            shelter = "on open ground"
+    second = f"Naturals lie {lies}, {shelter}" if natural is not None else "There is no safe second base"
+    middle = (f"the {len(contested)} contested {mine_word(len(contested))} are the prize" if contested
+              else "the middle game goes to who expands furthest")
+    if world.layout is Layout.FOREST:
+        hidden = f"Naturals hide in clearings {lies}" if natural is not None else second
+        return f"Roads wind between clearings; fights start at their mouths. {hidden}, and {middle}."
+    centre_phrase = _CENTRE_PHRASES[_centre_place(world)]
+    if world.layout is Layout.BASTION:
+        return f"One gate in each tree ring, naturals outside; beyond, {centre_phrase}, and {middle}."
+    return f"{centre_phrase[0].upper() + centre_phrase[1:]}. {second}, and {middle}."
 
 
 # -- Audit -------------------------------------------------------------------------

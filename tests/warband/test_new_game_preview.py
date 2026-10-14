@@ -102,7 +102,9 @@ def test_the_map_row_picks_a_layout_and_the_caption_says_what_any_drew(tmp_path)
         assert any(t.startswith("Any drew ") for t in texts(game))
         click(game, "Forest")
         assert scene.layout is Layout.FOREST and scene.preview_world.layout is Layout.FOREST
-        assert mapgen.PROMISES[Layout.FOREST] in texts(game)
+        assert any(mapgen.PROMISES[Layout.FOREST] in text for text in texts(game))
+        # The caption wraps, so the story arrives as line fragments: its opening words are the check.
+        assert mapgen.describe(scene.preview_world)[:50] in " ".join(texts(game))
     finally:
         game.close()
 
