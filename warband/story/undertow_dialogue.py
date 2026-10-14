@@ -149,7 +149,7 @@ MAW_BRIEFING: Dialog = (
                   "It sheds the Weight's load safely; the Maw cannot release until that setting is made."),
     Line("Wrenna", "GROUND needs the whole grove, or the Guardian, living or as heart-stone. Our grove stands whole. "
                    "Three drinking vaults, and keepers tending them every day.", unless="undertow_grove_cut"),
-    Line("Wrenna", "With the grove cut, GROUND needs the Guardian or its heart-stone. "
+    Line("Wrenna", "With the grove cut, GROUND needs the Guardian standing until the works finish, or its stored heart-stone. "
                    "If we brought neither, we must reseal or open.", when="undertow_grove_cut"),
     Line("Issa", "Once we begin one, the other endings are closed. For GROUND, hold all three Maw vaults, bank 450 aether and beat the last surge. "
                  "For RESEAL, repair the Keystone fully and defeat the final assault."),

@@ -837,7 +837,8 @@ RELIEF_SLUICE: Point = (34.5, 22.5)
 
 def _ground_eligible(run: Run) -> bool:
     """GROUND needs somewhere for the breath to go: the whole grove, the Guardian, or its heart-stone."""
-    return not run.get("undertow_grove_cut") or bool(run.get("undertow_guardian_ally") or run.get("undertow_guardian_core"))
+    return not run.get("undertow_grove_cut") or bool(run.get("undertow_guardian_core")
+           or run.get("undertow_guardian_ally") and run.units(0, U.ANCIENT_GUARDIAN))
 
 
 def _setup_maw(run: Run) -> None:
@@ -1041,6 +1042,10 @@ MAW = Mission(
                   shown=lambda run: bool(run.get("ending_path")), optional=True),
         Objective("relief_sluice", "Issa operates the Relief Sluice", lambda run: bool(run.get("maw_relief_open")),
                   shown=lambda run: run.get("ending_path") == "open", optional=True),
+        Objective("ground_guardian", "Keep the Ancient for GROUND", lambda run: bool(run.get("maw_resolved")),
+                  failed=lambda run: not run.units(0, U.ANCIENT_GUARDIAN),
+                  shown=lambda run: run.get("ending_path") == "ground" and bool(run.get("undertow_grove_cut"))
+                  and not run.get("undertow_guardian_core"), optional=True),
         Objective("issa", "Issa must survive", lambda run: bool(run.get("maw_resolved")),
                   failed=lambda run: run.unit("issa") is None, optional=True),
         Objective("hall", "Your Town Hall must stand", lambda run: bool(run.get("maw_resolved")),
@@ -1069,7 +1074,8 @@ MAW = Mission(
         Trigger("bloom_hazard_0", all_of(lambda run: bool(run.get("ending_path")),
                                         lambda run: bool(run.get("undertow_seam_mined"))
                                         and not run.get("undertow_seam_capped")), _maw_bloom_hazard(0)),
-        Trigger("ground_warned", all_of(lambda run: _maw_vaults(run) >= 1, lambda run: not _ground_eligible(run)),
+        Trigger("ground_warned", all_of(lambda run: not run.get("ending_path"),
+                                        lambda run: _maw_vaults(run) >= 1, lambda run: not _ground_eligible(run)),
                 lambda run: run.say(Line("Wrenna", "Those vaults will draw, but they cannot ground the Maw alone — the grove was cut and no Guardian "
                                                    "stands with us, living or as stone. Reseal or open it instead."))),
         Trigger("keystone_full", all_of(lambda run: run.get("ending_path") == "sealed",

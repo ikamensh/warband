@@ -35,7 +35,9 @@ left-click looks there, right-click sends the selected units.
   her side down permanently, and the Keepers must defeat the escaping bloom.
 - **GROUND** — a finished vault on each of the three Maw rifts, held until the aether store reaches
   **450**, and defeat the final surge that begins at the first completed vault. Needs somewhere for the breath to go: the grove whole, or the Guardian, living or as
-  heart-stone. Without one, the mission says so in dialogue and the other endings remain.
+  heart-stone. With the grove cut and no stored core, keep the Ancient alive until grounding
+  finishes; its fall loses a committed GROUND attempt. Before commitment, its loss leaves the
+  other endings available. Without one, the mission says so in dialogue and the other endings remain.
 
 Exactly one of `undertow_ending_sealed/open/ground` is remembered; the epilogue composes a verse
 per flag. Sparing or destroying Sella’s refuge mage tower is also remembered and changes the closing

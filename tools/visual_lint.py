@@ -1422,6 +1422,27 @@ def _undertow_keeper_objectives(game: Game, *, campaign: Campaign) -> None:
     assert scene.objectives_body.visible
 
 
+def _undertow_ground_keeper(game: Game, *, campaign: Campaign) -> None:
+    """The cut-grove route shows its living Guardian requirement after a real vault commits GROUND."""
+    from tools.play_undertow import ensure_buildings
+
+    run = build_world(campaign.mission("undertow_maw"), flags={
+        "undertow_grove_cut": True, "undertow_guardian_ally": True})
+    run.world.hold([unit.id for unit in run.soldiers(0)])
+    ensure_buildings(run, [(BuildingType.VAULT, tuple(run.get("maw_rifts")[0]))], seconds=120)
+    assert run.get("ending_path") == "ground" and run.state["ground_guardian"] == "open"
+    run.pending.clear()
+    run.notes.clear()
+    run.completed.clear()
+    scene = MissionScene(campaign, run, difficulty=Difficulty.MEDIUM, settings=dict(QUIET))
+    scene.paused = True
+    game.push(scene)
+    ticks(game)
+    scene.focus_keeper()
+    ticks(game)
+    assert scene.objectives_body.visible
+
+
 def _undertow_reached_keeper(game: Game, *, campaign: Campaign, mission_id: str, answer: str | None = None) -> None:
     """Real salvage/parley phases leave current work readable beside the selected keeper's card."""
     from tools.campaign_phases import reached_keeper_phase
@@ -1484,6 +1505,7 @@ def campaign_cases(campaign: Campaign) -> dict[str, Screen]:
             "mission_undertow_journal": partial(_undertow_journal, campaign=campaign),
             "mission_undertow_committed": partial(_undertow_committed, campaign=campaign),
             "mission_undertow_keeper_objectives": partial(_undertow_keeper_objectives, campaign=campaign),
+            "mission_undertow_ground_keeper": partial(_undertow_ground_keeper, campaign=campaign),
             "mission_undertow_weight_keeper_phase": partial(_undertow_reached_keeper, campaign=campaign, mission_id="undertow_weight"),
             "mission_undertow_caravan_keeper_phase": partial(_undertow_reached_keeper, campaign=campaign, mission_id="undertow_caravan"),
             "mission_undertow_grove_cut_keeper_phase": partial(_undertow_reached_keeper, campaign=campaign, mission_id="undertow_grove", answer="cut"),
