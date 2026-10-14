@@ -21,6 +21,7 @@ from warband.ui.scene import (DEFAULT_SETTINGS, CodexScene, GameOverScene, HelpS
 from warband.ui.score_scene import HighScoreScene
 from warband.ui.style import build_theme
 from warband.ui.title import NewGameScene, TitleScene
+from tools.visual_lint import EXTRA_CAMPAIGN_SCREENS
 
 SIZES = [(1280, 800), (1280, 720), (1440, 900), (1728, 922), (1920, 1080)]  # the HUD is laid out for 1280 wide and up
 SHORTEST = (1280, 720)  # where text runs into text first: the fast tier's size, the others are the slow tier's
@@ -145,15 +146,21 @@ def mission_scene(game: Game, mission_id: str):
     return scene
 
 
+SCREENS.update(EXTRA_CAMPAIGN_SCREENS)
+EXTRA_SLOW_SCREENS = {name for name in EXTRA_CAMPAIGN_SCREENS if not name.endswith("_fresh")}
+
+
 @pytest.mark.parametrize("size", sizes())
 @pytest.mark.parametrize("screen", [pytest.param(screen, id=screen,
-                                                marks=pytest.mark.slow if screen == "mission complete" else ())
+                                                marks=pytest.mark.slow if screen == "mission complete" or screen in EXTRA_SLOW_SCREENS else ())
                                     for screen in SCREENS])
 def test_no_text_is_drawn_over_other_text(screen: str, size: tuple[int, int], tmp_path) -> None:
     """Every screen at the shortest window in the fast tier; the other four sizes build the same scenes again,
     so they are the slow tier's. The mission-complete screen also runs in the
     slow tier: constructing its full Court of Thorns mission and ticking past
     the title banner takes over a second locally even at the shortest window.
+    Additional campaigns come from the shared visual registry: their fresh page is representative
+    in the fast tier, and the seeded missions and complete window matrix stay in the slow tier.
     """
     game = Game("Warband layout", backend="mock", resolution=size, theme=build_theme(), save_dir=tmp_path / "saves")
     try:

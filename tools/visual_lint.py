@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import collections
+from functools import partial
 import math
 import os
 import random
@@ -32,7 +33,8 @@ from saga2d import Game, fonts  # noqa: E402
 from saga2d.effects import Toast  # noqa: E402
 from saga2d.testing.native_frames import tick as native_tick  # noqa: E402
 from warband.art import visual_lint as lint  # noqa: E402
-from warband.story.campaign import Progress, ProgressStore  # noqa: E402
+from warband.story.campaign import LEGACY_CAMPAIGN_ID, Campaign, Mission, Progress, ProgressStore  # noqa: E402
+from warband.story.catalog import CAMPAIGNS  # noqa: E402
 from warband.story.campaign_scene import CampaignScene  # noqa: E402
 from warband.story.dialog import DialogScene  # noqa: E402
 from warband.story.mission_scene import MissionResultScene, MissionScene, build_world  # noqa: E402
@@ -1280,7 +1282,7 @@ def high_scores_after_match(game: Game) -> None:
 
 @screen
 def campaign_fresh(game: Game) -> None:
-    game.push(CampaignScene())
+    game.push(CampaignScene(campaign=CAMPAIGN))
     ticks(game)
 
 
@@ -1326,6 +1328,61 @@ def mission_result(game: Game) -> None:
     scene.run.state.update(court="done", orcs="done")
     game.push(MissionResultScene(scene, won=True))
     ticks(game)
+
+
+def _catalog_campaign(game: Game, *, campaign: Campaign, underway: bool = False) -> None:
+    """Real progress surfaces under this campaign's own save identity, without assumptions about its plot flags."""
+    if underway:
+        ProgressStore(game.data_dir, campaign.id).save(Progress(campaign.id, Difficulty.MEDIUM,
+                                                               completed=[campaign.missions[0].id], flags={}))
+    game.push(CampaignScene(settings=dict(QUIET), campaign=campaign))
+    ticks(game)
+
+
+def _catalog_mission(game: Game, *, campaign: Campaign, mission: Mission) -> MissionScene:
+    """A real seeded mission held still while the banner passes: scenery, HUD and markers, not a playthrough."""
+    run = build_world(mission, flags={})
+    scene = MissionScene(campaign, run, difficulty=Difficulty.MEDIUM, settings=dict(QUIET))
+    scene.paused = True
+    game.push(scene)
+    ticks(game, 30, .1)
+    return scene
+
+
+def _catalog_opening(game: Game, *, campaign: Campaign, mission: Mission) -> None:
+    _catalog_mission(game, campaign=campaign, mission=mission)
+
+
+def _catalog_briefing(game: Game, *, campaign: Campaign, mission: Mission) -> None:
+    scene = _catalog_mission(game, campaign=campaign, mission=mission)
+    game.push(DialogScene(mission.briefing, campaign.speakers, scene.run.vars))
+    ticks(game)
+
+
+def _catalog_result(game: Game, *, campaign: Campaign, mission: Mission) -> None:
+    """A synthetic success overlay tests result layout only; it proves nothing about winning the actual mission."""
+    scene = _catalog_mission(game, campaign=campaign, mission=mission)
+    game.push(MissionResultScene(scene, won=True))
+    ticks(game)
+
+
+def campaign_cases(campaign: Campaign) -> dict[str, Screen]:
+    """The campaign page, progress page, each mission's opening and briefing, and one result layout."""
+    cases = {
+        f"campaign_{campaign.id}_fresh": partial(_catalog_campaign, campaign=campaign),
+        f"campaign_{campaign.id}_under_way": partial(_catalog_campaign, campaign=campaign, underway=True),
+    }
+    for mission in campaign.missions:
+        cases[f"mission_{campaign.id}_{mission.id}_opening"] = partial(_catalog_opening, campaign=campaign, mission=mission)
+        cases[f"mission_{campaign.id}_{mission.id}_briefing"] = partial(_catalog_briefing, campaign=campaign, mission=mission)
+    cases[f"mission_{campaign.id}_result"] = partial(_catalog_result, campaign=campaign, mission=campaign.missions[-1])
+    return cases
+
+
+# Thornwood keeps its explicit regression fixtures; every additional registered campaign is walked automatically.
+EXTRA_CAMPAIGN_SCREENS = {name: show for campaign in CAMPAIGNS if campaign.id != LEGACY_CAMPAIGN_ID
+                          for name, show in campaign_cases(campaign).items()}
+SCREENS.update(EXTRA_CAMPAIGN_SCREENS)
 
 
 # -- Running ----------------------------------------------------------------------------

@@ -253,7 +253,7 @@ SCREENS = ("title", "library", "multiplayer_setup", "multiplayer_lan", "multipla
            "alerts", "battle_wood",
            "help", "codex_0", "codex_2", "codex_3", "codex_4", "codex_5", "save_browser", "game_over_won", "high_scores",
            "campaign_fresh", "campaign_under_way", "mission_raid", "mission_choice", "mission_result",
-           "neutral_raid", "neutral_stronghold", "neutral_ancient", "neutral_slam", "neutral_air_defense", "neutral_guardian_reach", "neutral_reward", "neutral_results", "codex_wilds")
+           "neutral_raid", "neutral_stronghold", "neutral_ancient", "neutral_slam", "neutral_air_defense", "neutral_guardian_reach", "neutral_reward", "neutral_results", "codex_wilds") + tuple(screens.EXTRA_CAMPAIGN_SCREENS)
 
 
 #: Screens whose every label must hold its text: the overlays' tables, and the catalogues' captions of what an item needs.
@@ -262,6 +262,7 @@ SMALLEST = min(screens.RESOLUTIONS)
 FAST_SCREENS = {"title", "library", "multiplayer_setup", "multiplayer_identity_create_refused", "multiplayer_identity_join_refused", "multiplayer_identity_rejoin_refused", "select_army", "town_at_work", "battle_wood", "menu_build_hover", "help", "mission_raid", "spell_aim", "modes_build", "modes_withdraw",
                 "neutral_ancient", "codex_wilds", "new_game_observe", "observer_match", "observer_lobby",
                 "observer_network_match", "observer_network_menu", "observer_network_result"}
+FAST_SCREENS.update(name for name in screens.EXTRA_CAMPAIGN_SCREENS if name.endswith("_fresh"))
 
 
 @pytest.mark.parametrize("name, resolution", [pytest.param(name, r, id=f"{name}-{r[0]}x{r[1]}",
@@ -276,3 +277,57 @@ def test_the_screens_draw_nothing_over_anything(name: str, resolution: tuple[int
     findings = screens.run_screen(name, resolution, None)
     visible = [f for f in findings if f.check in VISIBLE or (f.check == "overflow" and name in OVERFLOW_CHECKED)]
     assert not visible, "\n".join(str(f) for f in visible)
+
+
+def test_campaign_visual_cases_follow_campaign_identity_without_legacy_flags(tmp_path) -> None:
+    """The reusable screen fixtures build real campaign pages and missions under a separate progress identity."""
+    from dataclasses import replace
+    from warband.story.campaign import ProgressStore
+    from warband.story.campaign_scene import CampaignScene
+    from warband.story.missions import CAMPAIGN
+
+    campaign = replace(CAMPAIGN, id="visual_campaign", missions=CAMPAIGN.missions[:2])
+    cases = screens.campaign_cases(campaign)
+    game = Game("Campaign coverage", backend="mock", resolution=SMALLEST, theme=build_theme(), save_dir=tmp_path / "saves")
+    try:
+        cases[f"campaign_{campaign.id}_fresh"](game)
+        assert isinstance(game.scene, CampaignScene) and game.scene.campaign is campaign
+        assert game.scene.next_mission is campaign.missions[0]
+        game.pop()
+        cases[f"campaign_{campaign.id}_under_way"](game)
+        assert game.scene.next_mission is campaign.missions[1]
+        saved = ProgressStore(game.data_dir, campaign.id).load()
+        assert saved is not None and saved.flags == {}
+        assert ProgressStore(game.data_dir, CAMPAIGN.id).load() is None
+    finally:
+        game.close()
+
+
+@pytest.mark.slow
+def test_catalog_mission_fixtures_render_the_opening_briefing_and_result(tmp_path) -> None:
+    """Three seeded mission scenes render their real art and portraits: the slow tier; the result is a layout fixture, not victory proof."""
+    from dataclasses import replace
+    from warband.story.dialog import DialogScene
+    from warband.story.mission_scene import MissionResultScene, MissionScene
+    from warband.story.missions import CAMPAIGN
+
+    campaign = replace(CAMPAIGN, id="visual_campaign", missions=CAMPAIGN.missions[:1])
+    mission = campaign.missions[0]
+    cases = screens.campaign_cases(campaign)
+    expected = ((f"mission_{campaign.id}_{mission.id}_opening", MissionScene),
+                (f"mission_{campaign.id}_{mission.id}_briefing", DialogScene),
+                (f"mission_{campaign.id}_result", MissionResultScene))
+    for name, scene_type in expected:
+        game = Game("Campaign fixture", backend="mock", resolution=SMALLEST, theme=build_theme(), save_dir=tmp_path / name / "saves")
+        try:
+            visual_lint.use_real_text_metrics(game)
+            cases[name](game)
+            assert isinstance(game.scene, scene_type)
+            if isinstance(game.scene, MissionResultScene):
+                assert all(state in {"open", "hidden"} for state in game.scene.scene.run.state.values())
+                assert not game.scene.scene.run.won
+            assert not game.text_overflows
+            visible = [f for f in visual_lint.lint_layout(game, game.scene) if f.check in VISIBLE]
+            assert not visible, "\n".join(str(f) for f in visible)
+        finally:
+            game.close()
