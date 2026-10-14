@@ -322,6 +322,7 @@ def test_a_committed_ending_at_the_maw_cannot_be_overwritten_by_another_work() -
             world.repair(free, keystone.id)
 
     solver.play_until(run, lambda r: r.get("ending_path") == "sealed", seconds=600, act=repair)
+    world.hold([w.id for w in solver.workers(run)])  # the repair stops here, as a player's would
     plans = [(B.VAULT, tuple(p)) for p in run.get("maw_rifts")]
     solver.ensure_buildings(run, plans, seconds=1200,
                             act=lambda r: solver.fight(r, tuple(r.get("keystone_center")), sides=(1, 2)))

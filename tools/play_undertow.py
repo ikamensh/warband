@@ -474,7 +474,11 @@ def solve_maw(run: Run, *, ending: str) -> float:
         if ending != "ground":
             mend_wounded(r)
         near = enemies_near(r)
-        fight(r, near[0].pos if near else point, sides=(1, 2))
+        issa = r.unit("issa")
+        fight(r, near[0].pos if near else point, sides=(1, 2),
+              exclude=(issa.id,) if issa is not None else ())
+        if issa is not None and _idle(issa):
+            r.world.move([issa.id], point)  # Issa must live: she holds the work, not the front
 
     if ending == "sealed":
         def repair_act(r: Run) -> None:
