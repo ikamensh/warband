@@ -64,7 +64,7 @@ def test_the_match_and_pause_menu_open_a_read_only_journal(game):
     """Slow: the real mission map, pause menu and journal exercise both reachable player entry points."""
     from warband.sim.rules import Difficulty
     from warband.story.journal import JournalScene
-    from warband.story.mission_scene import MissionScene
+    from warband.story.mission_scene import MissionPauseScene, MissionScene
     from warband.ui.scene import HelpScene
 
     mission = MissionScene(UNDERTOW, build_world(UNDERTOW.missions[0], flags={}), difficulty=Difficulty.MEDIUM)
@@ -78,7 +78,8 @@ def test_the_match_and_pause_menu_open_a_read_only_journal(game):
     first_line = next(line for line in mission.mission.briefing if isinstance(line, Line) and line.spoken(mission.run.vars))
     assert " ".join(first_line.text.split()) in " ".join(item["text"] for item in game.backend.texts)
     press(game, "escape")
-    press(game, "escape")
+    press(game, "f10")  # opens Pause regardless of the opening company's selection
+    assert isinstance(game.scene, MissionPauseScene)
     press(game, "j")
     assert isinstance(game.scene, JournalScene)
     press(game, "escape")

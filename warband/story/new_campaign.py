@@ -31,7 +31,7 @@ from warband.sim.rules import (
 
 SPEAKERS = {
     "Issa": Speaker("Captain Issa Renn", Race.HUMAN, U.KNIGHT, portrait="campaign/issa.png"),
-    "Hasp": Speaker("Mother Hasp", Race.HUMAN, U.PEASANT),
+    "Hasp": Speaker("Mother Hasp", Race.HUMAN, U.PEASANT, portrait="campaign/hasp.png"),
     "Brakk": Speaker("Brakk of the Broken Tooth", Race.ORC, U.CLERIC, portrait="campaign/brakk.png"),
     "Ugga": Speaker("Ugga Salt-Tongue", Race.ORC, U.PEASANT),
     "Wrenna": Speaker("Wrenna Root-Reader", Race.ELF, U.CLERIC, portrait="campaign/wrenna.png"),
@@ -169,7 +169,7 @@ def _wave(side: int, units: list[U], origin: Point, target_key: str, store_key: 
 
 # -- 1. Millfield (undertow_mill) ------------------------------------------------
 
-MILL_WAVE_ORIGINS = {"sw": (7.5, 31.5), "se": (40.5, 31.5), "s": (24.5, 35.5)}
+MILL_WAVE_ORIGINS = {"sw": (10.5, 27.5), "se": (36.5, 28.5), "s": (24.5, 34.5)}
 
 
 def _setup_mill(run: Run) -> None:
@@ -178,25 +178,34 @@ def _setup_mill(run: Run) -> None:
     _fill(terrain, 22, 6, 25, 7, Terrain.GRASS)          # its one ford
     for cx, cy in ((5, 33), (24, 37), (42, 33), (3, 3), (44, 3), (38, 18)):
         _disc(terrain, cx, cy, 2, Terrain.TREES)         # groves the beasts come out of
+    # Orchard rows frame the village and leave the south fields and both approaches open.
+    for x in (7, 9, 11, 33, 35, 37):
+        _fill(terrain, x, 20, x, 21, Terrain.TREES)
+    _fill(terrain, 0, 12, 2, 27, Terrain.WATER)          # the millrace along the western fields
+    for cx, cy in ((2, 10), (45, 12), (44, 23)):
+        _disc(terrain, cx, cy, 1, Terrain.ROCK)
     world = _authored(run, terrain, theme=MapTheme.SUMMER, races=(Race.HUMAN, Race.ORC),
                       rifts=((20, 16),), seed=2101)
     hall = _put(run, 0, B.TOWN_HALL, (20, 10))
-    _put(run, 0, B.FARM, (15, 10)); _put(run, 0, B.FARM, (26, 10)); _put(run, 0, B.FARM, (15, 15))
+    _put(run, 0, B.FARM, (15, 10)); _put(run, 0, B.FARM, (26, 10)); _put(run, 0, B.FARM, (15, 20))
     _put(run, 0, B.BARRACKS, (26, 14))
     vault = _put(run, 0, B.VAULT, (20, 16))
     pylon = _put(run, 1, B.FARM, (23, 2))                # bloom-choked, hostile-held, at the race-head on the north bank:
     # attackable, and across the river from every beast-fight, so only a deliberate march fells it
     _mine(run, B.GOLD_MINE, (7, 12))
-    band = run.spawn(0, [U.KNIGHT, U.CLERIC] + [U.FOOTMAN] * 3 + [U.ARCHER] * 2, (21.5, 14.5))
-    run.spawn(0, [U.PEASANT] * 4, (19.5, 12.5))
+    band = run.spawn(0, [U.KNIGHT, U.CLERIC] + [U.FOOTMAN] * 3 + [U.ARCHER] * 2, (19.5, 23.5))
+    band[2].hp = band[2].info.hp * 2 // 3             # a wounded outrider gives Mend an immediate purpose
+    run.spawn(0, [U.PEASANT] * 3, (19.5, 12.5))
+    run.spawn(0, [U.PEASANT], (16.5, 22.5))
     world.players[0].upgrades.add(Upgrade.MEND)
     _purse(run, 0, 900, 350, 60)
     _defaults(run, issa=band[0].id, mill_vault_id=vault.id, mill_pylon=pylon.id,
               mill_vault_pos=list(vault.pos), mill_vault_center=list(vault.center),
-              mill_farm_center=[16.0, 11.0])
+              mill_farm_center=[16.0, 21.0])
     _landmark(run, "mill_vault", "The straining vault", vault.center, kind="anchor", state="active")
     _landmark(run, "mill_pylon", "Mill lock-pylon", pylon.center, kind="gate", state="active")
     _landmark(run, "mill_hall", "Millfield Town Hall", hall.center, kind="bell", state="active")
+    _landmark(run, "mill_fields", "Hasp's south field", (16.0, 21.0), kind="refuge", state="active")
     world.update_vision()
 
 
@@ -228,6 +237,16 @@ def _mill_reserve(run: Run) -> None:
     run.toast("Millfield's reserve musters", "Two footmen at the hall. There are no more.")
 
 
+def _mill_first_wave(run: Run) -> None:
+    _wave(1, [U.WOLF] * 3, MILL_WAVE_ORIGINS["sw"], "mill_farm_center", "wave_1_band")(run)
+    run.toast("Wolves in the south field", "Right-click a wolf to attack.")
+
+
+def _mill_last_wave(run: Run) -> None:
+    _wave(1, [U.WOLF] * 3 + [U.SPIDER] * 2, MILL_WAVE_ORIGINS["s"], "mill_vault_center", "wave_3_band")(run)
+    run.toast("The last surge", "Keep the vault standing, or cross the ford to shutter it.")
+
+
 def _mill_hold(run: Run) -> None:
     run.set("mill_decided", True)
     run.set("undertow_mill_vault", True)
@@ -243,11 +262,11 @@ MILL = Mission(
     debrief=dialogue.MILL_DEBRIEF,
     setup=_setup_mill,
     objectives=(
-        Objective("wave_1", "Drive the beasts out of Millfield's fields",
-                  lambda run: "wave_1" in run.fired and not run.units(1)),
+        Objective("wave_1", "Defend Hasp's south field",
+                  _band_cleared("wave_1_band")),
         Objective("mend", "Cast Mend on a wounded ally",
                   lambda run: Upgrade.MEND in run.world.players[0].cooldowns, optional=True),
-        Objective("hold", "Hold the straining vault through two more surges",
+        Objective("hold", "Hold the vault through the final surge",
                   lambda run: bool(run.get("undertow_mill_vault")),
                   shown=lambda run: "wave_2" in run.fired, optional=True),
         Objective("shutter", "Or destroy the north-bank lock-pylon",
@@ -262,22 +281,18 @@ MILL = Mission(
                   failed=lambda run: run.hall(0) is None, optional=True),
     ),
     triggers=(
-        Trigger("wave_1", at(4), _wave(1, [U.WOLF] * 3, MILL_WAVE_ORIGINS["sw"], "mill_farm_center", "wave_1_band",
-                                        Line("Issa", "Wolves in the south fields — and not hunting sheep. Soldiers, to me!"))),
+        Trigger("wave_1", at(4), _mill_first_wave),
         Trigger("wave_2", all_of(after("wave_1", 25), any_of(objective_done("wave_1"), at(180)),
                                  lambda run: not run.get("mill_decided")),
                 _wave(1, [U.SPIDER] * 2 + [U.WOLF] * 2, MILL_WAVE_ORIGINS["se"], "mill_vault_center", "wave_2_band",
-                      Line("Hasp", "Captain — they went past my farm. Past it! They're at the vault, not at us!"),
-                      Line("Issa", "Then the vault is bait whether we like it or not. Hold it through what's coming — "
-                                   "or tear down its lock-pylon and let the scent die. Your call, and make it with steel."),
-                      Choice("mill_intent", "Issa", "The vault, Captain?",
-                             (Option("Hold it through the surges", True), Option("Shutter it at the pylon", False))),
-                      Line("Issa", "Hold it, then. Two more surges. Mend who you can.", when="mill_intent"),
-                      Line("Issa", "Shutter it, then. Steel on the pylon — and be sure.", unless="mill_intent"))),
+                      Line("Hasp", "They ran past my farm. It's the vault they want. "
+                                   "Don't spend my people saving a machine, Issa."),
+                      Line("Issa", "Hold the vault through one last surge to keep our spell-light. "
+                                   "Or cross the north ford and destroy the lock-pylon to stop the surges. "
+                                   "You can change course until the pylon falls. The village comes first."))),
         Trigger("wave_3", all_of(after("wave_2", 60), any_of(_band_cleared("wave_2_band"), after("wave_2", 180)),
                                  lambda run: not run.get("mill_decided")),
-                _wave(1, [U.WOLF] * 3 + [U.SPIDER] * 2, MILL_WAVE_ORIGINS["s"], "mill_vault_center", "wave_3_band",
-                      Line("Issa", "Last surge. Everything the low ground has, coming at the vault. Hold the line!"))),
+                _mill_last_wave),
         Trigger("shuttered", all_of(lambda run: not run.get("mill_decided"),
                                     lambda run: run.get("mill_pylon") not in run.world.buildings
                                     or run.get("mill_vault_id") not in run.world.buildings), _mill_shutter),
@@ -293,6 +308,7 @@ MILL = Mission(
     ),
     win=var("mill_resolved", True),
     remember=("undertow_mill_vault", "undertow_mill_shuttered", "undertow_mill_lost"),
+    opening_focus=(20.0, 21.0),
 )
 # -- 2. The Salt Caravan (undertow_caravan) -------------------------------------
 
@@ -1117,5 +1133,7 @@ CAMPAIGN = Campaign(
     speakers=SPEAKERS,
     missions=(MILL, CARAVAN, GROVE, WEIGHT, MAW),
     cover="campaign/undertow.png",
+    introduction="Lead Captain Issa Renn down a valley whose ancient locks are failing. "
+                 "Save its people. Decide what deserves to survive.",
     epilogue=dialogue.EPILOGUE,
 )

@@ -26,7 +26,7 @@ from warband.story.campaign import Choice, Line, Progress, ProgressStore  # noqa
 from warband.story.campaign_scene import CampaignScene  # noqa: E402
 from warband.story.catalog import DEFAULT_CAMPAIGN, get_campaign  # noqa: E402
 from warband.story.dialog import DialogScene  # noqa: E402
-from warband.story.mission_scene import MissionScene, build_world  # noqa: E402
+from warband.story.mission_scene import MissionScene, build_world, start_mission  # noqa: E402
 from warband.sim.rules import Difficulty, UnitType  # noqa: E402
 from warband.art.textures import TILE  # noqa: E402
 from warband.ui.style import build_theme  # noqa: E402
@@ -78,8 +78,8 @@ def main(out: Path, campaign_id: str, size: tuple[int, int], flags: dict) -> Non
                 run = build_world(mission, flags=flags)
                 prefix = f"{number:02}-{mission.id}"
                 mission_map(run, out / f"{prefix}-atlas.png")
-                game.clear_and_push(MissionScene(campaign, run, difficulty=Difficulty.MEDIUM))
-                game.push(DialogScene(mission.briefing, campaign.speakers, run.vars, record=True))
+                start_mission(game, campaign, mission, Progress(campaign.id, Difficulty.MEDIUM, flags=flags), None)
+                run = game.scenes[-2].run
                 shot(f"{prefix}-briefing")
                 dialogue = game.scene
                 while isinstance(dialogue.current, Line):
@@ -106,7 +106,7 @@ def main(out: Path, campaign_id: str, size: tuple[int, int], flags: dict) -> Non
                 from pyglet.window import key
                 from tools.play_undertow import solve_maw
 
-                for mission_id, trigger_id in (("undertow_mill", "wave_2"), ("undertow_weight", "confession")):
+                for mission_id, trigger_id in (("undertow_weight", "confession"),):
                     mission = campaign.mission(mission_id)
                     run = build_world(mission, flags=flags)
                     paused_mission(run)

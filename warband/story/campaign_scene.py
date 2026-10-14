@@ -13,7 +13,7 @@ from pathlib import Path
 
 from PIL import Image as PILImage
 
-from saga2d import Anchor, Button, Column, Image, KeyHints, Label, Row, SaveError, Scene
+from saga2d import Anchor, Button, Column, Image, KeyHints, Label, Row, SaveError, Scene, Style, TextStyle, fonts
 from warband.story.campaign import Campaign, Mission, Progress, ProgressStore
 from warband.story.dialog import DialogScene
 from warband.story.mission_scene import MissionScene, build_world, campaign_save_slot, start_mission
@@ -22,7 +22,7 @@ from warband.sim.rules import Difficulty
 from warband.ui.profile_scene import home_relative
 from warband.ui.scene import _clock, load_game
 from warband.audio.sound import play_sound
-from warband.ui.style import ACTION_BUTTON, BAD, DIM, GHOST_BUTTON, GOLD, GOOD, MUTED, OVERLAY_STYLE
+from warband.ui.style import ACTION_BUTTON, BAD, DIM, GHOST_BUTTON, GOLD, GOOD, MUTED, OVERLAY_STYLE, PICKED_BUTTON, TEXT
 
 PREVIEW_KEY = "campaign.preview"
 PREVIEW_SIZE = (256, 192)
@@ -102,6 +102,9 @@ class CampaignScene(Scene):
 
     def _build(self) -> None:
         self.ui.clear()
+        if self._has_cover_entry:
+            self._build_cover()
+            return
         panel = Column(spacing=12, anchor=Anchor.CENTER, style=OVERLAY_STYLE)
         panel.add(Label(self.campaign.title, text_style="title"))
         panel.add(Label(self.campaign.tagline, text_style="sub"))
@@ -117,6 +120,35 @@ class CampaignScene(Scene):
             self._build_under_way(panel)
         panel.add(Label(lambda: self.notice, text_style="body", text_color=BAD, width=760, wrap=True))
         self.ui.add(panel)
+
+    @property
+    def _has_cover_entry(self) -> bool:
+        return (self.progress is None and not self.unreadable and self.cover_key is not None
+                and bool(self.campaign.introduction) and not self.has_difficulty)
+
+    def _build_cover(self) -> None:
+        """The first visit sells the journey; mission navigation belongs to the campaign already under way."""
+        self.ui.add(Row(*(Button(campaign.title, on_click=lambda selected=campaign: self.select_campaign(selected),
+                                style=PICKED_BUTTON if campaign.id == self.campaign.id else GHOST_BUTTON,
+                                width=210) for campaign in catalog.CAMPAIGNS),
+                        spacing=8, anchor=Anchor.TOP_RIGHT, margin=(40, 32)))
+        width = min(520, self.game.width - 100)
+        hero = Column(spacing=22, width=width, anchor=Anchor.LEFT_CENTER, margin=(64, 0))
+        hero.add(Label("WARBAND  /  STORY CAMPAIGN", text_style="caption", text_color=GOLD, width=width))
+        hero.add(Label(self.campaign.title, text_style=TextStyle(46, TEXT, fonts.EXTRABOLD), width=width))
+        hero.add(Label(self.campaign.tagline, text_style=TextStyle(20, GOLD, fonts.REGULAR), width=width, wrap=True))
+        hero.add(Label(self.campaign.introduction, text_style=TextStyle(17, TEXT, fonts.REGULAR), width=width, wrap=True))
+        first = self.campaign.missions[0]
+        hero.add(Column(Label(f"CHAPTER 01  /  {first.title.upper()}", text_style="heading", text_color=GOLD, width=width-32),
+                        Label(first.objectives[0].text, text_style="body", width=width-32, wrap=True),
+                        spacing=8, style=Style(background_color=(12, 16, 25, 180), padding=16,
+                                               border_color=(255, 214, 110, 80), border_width=1, radius=8)))
+        hero.add(Row(Button("Begin the campaign", hotkey="Enter", on_click=self.continue_campaign,
+                            style=ACTION_BUTTON, width=300),
+                     Button("Back", hotkey="Esc", on_click=self.back, style=GHOST_BUTTON, width=120), spacing=12))
+        self.ui.add(hero)
+        self.ui.add(Label(f"{len(self.campaign.missions)} chapters  ·  Your choices reshape the final battle", text_style="sub",
+                          text_color=MUTED, anchor=Anchor.BOTTOM_LEFT, margin=(64, 32)))
 
     def _build_unreadable(self, panel: Column) -> None:
         """The player's place is in a file this version cannot read: say why, and offer no way in that would write over it."""
@@ -202,7 +234,14 @@ class CampaignScene(Scene):
             scale = max(w / source_width, h / source_height)
             width, height = source_width * scale, source_height * scale
             self.draw_image(self.cover_key, (w - width) / 2, (h - height) / 2, width, height)
-        self.draw_rect(0, 0, w, h, (6, 8, 14, 150))
+        with self.screen_layer(1):
+            if self._has_cover_entry:
+                self.draw_rect(0, 0, w, h, (6, 8, 14, 35))
+                # Shade the type's side without burying the valley's descent on the right.
+                for index in range(128):
+                    self.draw_rect(index*w/160, 0, w/160, h, (6, 8, 14, round(220*(1-index/128))))
+            else:
+                self.draw_rect(0, 0, w, h, (6, 8, 14, 150))
 
     # -- Actions --------------------------------------------------------------------------
 

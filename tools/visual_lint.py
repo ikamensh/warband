@@ -38,7 +38,7 @@ from warband.story.catalog import CAMPAIGNS  # noqa: E402
 from warband.story.campaign_scene import CampaignScene  # noqa: E402
 from warband.story.dialog import DialogScene  # noqa: E402
 from warband.story.journal import JournalScene  # noqa: E402
-from warband.story.mission_scene import MissionResultScene, MissionScene, build_world  # noqa: E402
+from warband.story.mission_scene import MissionResultScene, MissionScene, build_world, start_mission  # noqa: E402
 from warband.story.missions import CAMPAIGN  # noqa: E402
 from warband.sim.model import World, tile_center  # noqa: E402
 from warband.sim.rules import BLEEDING, BUILT, CHOICES, LODE_GOLD, PLAYABLE_UNITS, SIM_DT, UNITS, UPGRADES, BuildingType, Difficulty, Race, Terrain, UnitType, Upgrade  # noqa: E402
@@ -1488,6 +1488,25 @@ def _undertow_epilogue(game: Game, *, campaign: Campaign) -> None:
     assert isinstance(game.scene, DialogScene)
 
 
+def _undertow_handoff(game: Game, *, campaign: Campaign) -> None:
+    """The final briefing line, including the longer button the player uses to take command."""
+    mission = campaign.missions[0]
+    start_mission(game, campaign, mission, Progress(campaign.id, Difficulty.MEDIUM), dict(QUIET))
+    for _ in mission.briefing[:-1]:
+        game.scene.advance()
+    ticks(game)
+
+
+def _undertow_first_command(game: Game, *, campaign: Campaign) -> None:
+    """Reach the first fight after Mend: its completion notice must leave the company card readable."""
+    scene = _catalog_mission(game, campaign=campaign, mission=campaign.missions[0])
+    wounded = next(unit for unit in scene.run.soldiers(0) if unit.hp < unit.info.hp)
+    scene.aim_level(1)
+    scene.cast_at(wounded.pos)
+    scene.paused = False
+    ticks(game, 50, .1)
+
+
 def campaign_cases(campaign: Campaign) -> dict[str, Screen]:
     """The campaign pages, each mission's opening, briefing and full objective panel, and a result layout."""
     cases = {
@@ -1501,6 +1520,8 @@ def campaign_cases(campaign: Campaign) -> dict[str, Screen]:
     cases[f"mission_{campaign.id}_result"] = partial(_catalog_result, campaign=campaign, mission=campaign.missions[-1])
     if campaign.id == "undertow":
         cases.update({
+            "mission_undertow_handoff": partial(_undertow_handoff, campaign=campaign),
+            "mission_undertow_first_command": partial(_undertow_first_command, campaign=campaign),
             "mission_undertow_choice": partial(_undertow_choice, campaign=campaign),
             "mission_undertow_journal": partial(_undertow_journal, campaign=campaign),
             "mission_undertow_committed": partial(_undertow_committed, campaign=campaign),
