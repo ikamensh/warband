@@ -37,6 +37,7 @@ if __name__ in ("__main__", "__mp_main__"):
     fastsim.activate()
 from warband.league import arena  # noqa: E402
 from warband.brains.ai import Brain, CAMP_READY_HP, CREEP_REACH, camp_worth, dodge_camp_slams, prepared_cohort, push_is_blind, retry_force  # noqa: E402
+from warband.brains.pro_assignments import Duty
 from warband.brains.pro_ai import ProBrain, RaceBrain  # noqa: E402
 from warband.brains.pro_force import camp_strength, strength  # noqa: E402
 from warband.sim import camps, mapgen, path as pathing  # noqa: E402
@@ -246,19 +247,24 @@ class Measurements:
                 continue
             if not world.players[seat].alive or world.winner is not None:
                 continue
-            if brain.attacking and not push_is_blind(world, seat):
-                continue
-            if brain._threats(world):
-                continue
-            if isinstance(brain, ProBrain) and brain._home_towers(world):
-                continue  # breaking a tower's fire on our economy precedes creeping
-            busy = set(brain.raiders) | set(brain.hunt.party) | set(brain.commander.errands) | set(brain.camp_escape)
-            army = [unit for unit in brain._army(world) if unit.id not in busy]
-            if brain.creeping is not None:
-                army = [unit for unit in army if unit.id in brain.creep_party]
+            tactics = brain.army if isinstance(brain, ProBrain) else brain
+            if isinstance(brain, ProBrain):
+                if brain.army.camp_obstructed(world):
+                    continue
+                army = brain.army.camp_candidates(world)
+                if brain.army.creeping is not None:
+                    party = set(brain.army.assignments.members(Duty.CREEP))
+                    army = [unit for unit in army if unit.id in party]
+            else:
+                if (brain.attacking and not push_is_blind(world, seat)) or brain._threats(world):
+                    continue
+                busy = set(brain.raiders) | set(brain.hunt.party) | set(brain.commander.errands) | set(brain.camp_escape)
+                army = [unit for unit in brain._army(world) if unit.id not in busy]
+                if tactics.creeping is not None:
+                    army = [unit for unit in army if unit.id in brain.creep_party]
             if isinstance(brain, ProBrain):
                 profile = brain.profile
-                if world.time < max(profile.creep_from, brain.regroup_until):
+                if world.time < max(profile.creep_from, tactics.regroup_until):
                     continue
                 ready_hp = profile.rejoin_hp
                 minimum, ratio, reach = profile.creep_army, profile.creep_ratio, profile.creep_reach
@@ -282,22 +288,22 @@ class Measurements:
             for lair, point in knowledge.encounters.items():
                 if lair not in self.camps or lair in knowledge.cleared_encounters:
                     continue
-                if brain.creeping is not None and brain.creeping != lair:
+                if tactics.creeping is not None and tactics.creeping != lair:
                     continue  # an expedition already has its job
-                if world.time < brain.camp_retry.get(lair, 0.0):
+                if world.time < tactics.camp_retry.get(lair, 0.0):
                     continue
                 record = SimpleNamespace(id=lair, center=point)
                 if dist(origin, point) > reach * camp_worth(world, seat, record):
                     continue
                 cohort = prepared_cohort(world, self._known_cohort(world, seat, army, lair, point), ready_hp)
                 force = strength(world, cohort)
-                threat = camp_strength(world, seat, point, cohort, lair, brain.camp_seen.get(lair, 0.0))
+                threat = camp_strength(world, seat, point, cohort, lair, tactics.camp_seen.get(lair, 0.0))
                 if len(cohort) < (1 if threat == 0 else minimum):
                     continue
                 if force < ratio * threat:
                     continue
-                if force < retry_force(brain.camp_failed.get(lair, 0.0),
-                                       brain.camp_at_launch.get(lair, 0.0), threat):
+                if force < retry_force(tactics.camp_failed.get(lair, 0.0),
+                                       tactics.camp_at_launch.get(lair, 0.0), threat):
                     continue
                 self.feasible[seat].add(lair)
 

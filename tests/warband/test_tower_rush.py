@@ -27,8 +27,8 @@ def test_the_rush_raises_a_tower_behind_the_enemy_mine_and_its_order_is_paid(see
         bank = world.players[0]
         before = (bank.gold, bank.lumber)
         brain.think(world, rng)
-        rushers.update(brain.rushers)
-        walking = [world.units[i] for i in brain.rushers if i in world.units and world.units[i].constructing is None]
+        rushers.update(brain.army.workers.rushers)
+        walking = [world.units[i] for i in brain.army.workers.rushers if i in world.units and world.units[i].constructing is None]
         if walking and before[0] >= price.gold and before[1] >= price.lumber:
             assert bank.gold >= price.gold and bank.lumber >= price.lumber, "the brain spent a walking rusher's price"
         world.step()

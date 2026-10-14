@@ -8,6 +8,7 @@ import random
 
 import pytest
 
+from tests.warband.brain_helpers import military
 from warband.brains.ai import Brain
 from warband.brains.pro_ai import ProBrain
 from warband.sim import camps
@@ -58,7 +59,7 @@ def test_hidden_completion_does_not_change_an_expedition_before_the_seat_visits(
         assert not world.is_visible(0, (int(site[0]), int(site[1])))
         brain = Brain(0, Difficulty.MEDIUM) if kind == "medium" else ProBrain(0)
         brain.think(world, random.Random(11))
-        assert brain.creeping == lair, "a hidden rival clear is still an unknown camp to this seat"
+        assert military(brain).creeping == lair, "a hidden rival clear is still an unknown camp to this seat"
         assert all(isinstance(unit.order, AttackMove)
                    and dist(unit.order.target, site) < camps.CAMP_WATCH for unit in army)
         if world is completed:
@@ -71,8 +72,8 @@ def test_hidden_completion_does_not_change_an_expedition_before_the_seat_visits(
         observed_brain.think(completed, rng)
         if lair in completed.worker_knowledge[0].cleared_encounters:
             break
-        assert observed_brain.creeping == lair, "marching must not reveal hidden completion either"
+        assert military(observed_brain).creeping == lair, "marching must not reveal hidden completion either"
     assert lair in completed.worker_knowledge[0].cleared_encounters
     completed.time += 1.0
     observed_brain.think(completed, rng)
-    assert observed_brain.creeping is None, "observed completion releases the expedition"
+    assert military(observed_brain).creeping is None, "observed completion releases the expedition"

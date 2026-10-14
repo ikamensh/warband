@@ -2,6 +2,7 @@
 
 import json
 import random
+from warband.brains.pro_assignments import Duty
 from pathlib import Path
 
 from warband.brains.ai import prepared_cohort
@@ -37,7 +38,7 @@ def test_an_active_visible_rival_fight_is_not_replaced_by_an_outpost_march():
     assert any(isinstance(unit.order, Attack) for unit in own)
     brain = ProBrain(1)
     brain.think(world, random.Random(11))
-    assert brain.creeping is None
+    assert brain.army.creeping is None
     site = camps.centre(world, world.camps[0])
     assert not any(isinstance(unit.order, AttackMove) and dist(unit.order.target, site) < 6
                    for unit in own)
@@ -48,8 +49,8 @@ def test_expired_rival_attack_orders_do_not_hold_a_prepared_cohort_back():
     world = captured_skirmish(rivals=False)
     brain = ProBrain(1)
     brain.think(world, random.Random(11))
-    assert brain.creeping == world.camps[0].lair
-    assert len(brain.creep_party) == 6
+    assert brain.army.creeping == world.camps[0].lair
+    assert len(brain.army.assignments.members(Duty.CREEP)) == 6
 
 
 def test_a_target_just_killed_or_a_neutral_target_does_not_mark_a_rival_fight():
@@ -74,7 +75,7 @@ def test_held_troops_fighting_the_same_visible_rivals_are_busy():
     assert any(isinstance(unit.order, Hold) and unit.order.target is not None for unit in own)
     brain = ProBrain(1)
     brain.think(world, random.Random(11))
-    assert brain.creeping is None
+    assert brain.army.creeping is None
 
 
 def test_a_target_inside_a_mine_is_not_a_visible_rival_fight():

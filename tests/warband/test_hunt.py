@@ -9,7 +9,9 @@ import random
 
 import pytest
 
+from tests.warband.brain_helpers import members
 from warband.brains.ai import CAMP_REACH, HUNT_FLYERS_ALONE, make_brain
+from warband.brains.pro_assignments import Duty
 from warband.brains.pro_ai import PRO, ProBrain
 from warband.online.authority import WarbandMatch
 from warband.online.online_ai import _PlanningWorld
@@ -82,10 +84,10 @@ def test_the_flyer_sweeps_first_and_the_fastest_soldiers_join_it() -> None:
     brain = ProBrain(0, PRO)
     flyer = next(u for u in world.units.values() if u.flying)
     play(world, brain, 3.0)
-    assert brain.hunt.party and set(brain.hunt.party) == {flyer.id}, "the flyer alone, to begin with"
+    assert members(brain, Duty.HUNT) and set(members(brain, Duty.HUNT)) == {flyer.id}, "the flyer alone, to begin with"
     assert isinstance(flyer.order, Move)
     play(world, brain, HUNT_FLYERS_ALONE)
-    soldiers = [world.units[i] for i in brain.hunt.party if i != flyer.id]
+    soldiers = [world.units[i] for i in members(brain, Duty.HUNT) if i != flyer.id]
     assert soldiers and all(u.type is UnitType.KNIGHT for u in soldiers[:2]), [u.type for u in soldiers]
 
 
@@ -170,4 +172,4 @@ def test_nobody_hunts_while_the_expedition_still_has_its_guess_to_look_at() -> N
         for brain in brains:
             brain.think(world, rng)
         world.step()
-    assert all(not brain.hunt.party for brain in brains)
+    assert all(not members(brain, Duty.HUNT) for brain in brains)

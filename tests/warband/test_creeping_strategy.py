@@ -4,6 +4,8 @@ import random
 from dataclasses import replace
 
 import pytest
+from tests.warband.brain_helpers import members, military, workers
+from warband.brains.pro_assignments import Duty
 
 from warband.brains.ai import Brain, Hunt, dodge_camp_slams
 from warband.brains.pro_ai import PRO, ProBrain
@@ -50,7 +52,7 @@ def test_a_base_defense_interrupts_the_whole_committed_expedition():
     world.reveal_all(0)
     brain = ProBrain(0, replace(PRO, scout=False))
     brain.think(world, random.Random(11))
-    assert brain.creeping == camp.lair
+    assert military(brain).creeping == camp.lair
     # Recorded attacks reproduce the engaged front line that _defend used to
     # exclude, leaving only the unengaged part of its expedition to defend.
     world.attack([unit.id for unit in army[:6]], camp.guards[0])
@@ -76,16 +78,16 @@ def test_a_base_defense_interrupts_the_whole_committed_expedition():
     world.reveal_all(0)
     world.time += 1
     brain.think(world, random.Random(11))
-    assert brain.creeping is None
-    assert not brain.creep_party
+    assert military(brain).creeping is None
+    assert not members(brain, Duty.CREEP)
     # The whole expedition walks out blind past the threat: stopping or
     # attack-moving inside the roused camp would reacquire its guards, and
     # stopping at the threat leaves the vanguard fighting chasers alone.
     from warband.brains.ai import rally_past
     rally = rally_past(centre, rival.pos)
     assert all(isinstance(unit.order, Move) and dist(unit.order.target, rally) < 1.0 for unit in army)
-    assert camp.lair in brain.camp_retry
-    assert brain.camp_failed[camp.lair] > 0
+    assert camp.lair in military(brain).camp_retry
+    assert military(brain).camp_failed[camp.lair] > 0
     # Escape under pressure: think on the way out, as a live match does, and
     # no interrupted member may die to the camp or still stand in its watch.
     for step in range(round(12 / SIM_DT)):
@@ -101,7 +103,7 @@ def test_a_base_defense_interrupts_the_whole_committed_expedition():
             # retasking this test hunts; every brain destination lies
             # farther from the rally than the model's home ground.
             for uid in party_ids:
-                if uid not in world.units or uid not in brain.camp_escape:
+                if uid not in world.units or uid not in members(brain, Duty.ESCAPE):
                     continue
                 order = world.units[uid].order
                 if isinstance(order, Move) and dist(order.target, rally) < 2.0:
@@ -114,7 +116,7 @@ def test_a_base_defense_interrupts_the_whole_committed_expedition():
     # Out of the camp, the walk-out is over: every survivor is back in the
     # normal assignment pool, answering whatever the match needs next.
     brain.think(world, random.Random(11))
-    assert not brain.camp_escape
+    assert not members(brain, Duty.ESCAPE)
 
 
 def test_a_medium_base_defense_cancels_the_committed_expedition():
@@ -127,8 +129,8 @@ def test_a_medium_base_defense_cancels_the_committed_expedition():
     world.reveal_all(0)
     brain = Brain(0, Difficulty.MEDIUM)
     brain.think(world, random.Random(11))
-    assert brain.creeping == camp.lair
-    assert gryphon.id in brain.creep_party
+    assert military(brain).creeping == camp.lair
+    assert gryphon.id in members(brain, Duty.CREEP)
     world.attack([unit.id for unit in army[:6]], camp.guards[0])
     assert all(isinstance(unit.order, Attack) for unit in army[:6])
     # The interruption must hit a genuinely roused camp, not a quiet one: step
@@ -142,7 +144,7 @@ def test_a_medium_base_defense_cancels_the_committed_expedition():
     assert camp.roused, "the staged attack never roused the camp"
     assert any(dist(unit.pos, centre) <= CAMP_WATCH + 1.0
                for unit in army[:6] if unit.id in world.units), "the party never reached the watch"
-    party_ids = set(brain.creep_party)
+    party_ids = set(members(brain, Duty.CREEP))
     assert len(party_ids) > 2
     # A rival scout overhead gives the gryphon an own-unit errand on the
     # defense pass, when the raid, the hunt and the commander have already
@@ -155,10 +157,10 @@ def test_a_medium_base_defense_cancels_the_committed_expedition():
     world.reveal_all(0)
     world.time += 1
     brain.think(world, random.Random(11))
-    assert brain.creeping is None
-    assert not brain.creep_party
-    assert camp.lair in brain.camp_retry
-    assert brain.camp_failed[camp.lair] > 0
+    assert military(brain).creeping is None
+    assert not members(brain, Duty.CREEP)
+    assert camp.lair in military(brain).camp_retry
+    assert military(brain).camp_failed[camp.lair] > 0
     # Every interrupted member walks out blind past the threat: an
     # attack-move would reacquire the guards, stopping at the threat leaves
     # the vanguard fighting chasers alone, and a member left standing to
@@ -183,7 +185,7 @@ def test_a_medium_base_defense_cancels_the_committed_expedition():
             # retasking this test hunts; every brain destination lies
             # farther from the rally than the model's home ground.
             for uid in party_ids:
-                if uid not in world.units or uid not in brain.camp_escape:
+                if uid not in world.units or uid not in members(brain, Duty.ESCAPE):
                     continue
                 order = world.units[uid].order
                 if isinstance(order, Move) and dist(order.target, rally) < 2.0:
@@ -197,7 +199,7 @@ def test_a_medium_base_defense_cancels_the_committed_expedition():
     # Out of the camp, the walk-out is over: every survivor is back in the
     # normal assignment pool, answering whatever the match needs next.
     brain.think(world, random.Random(11))
-    assert not brain.camp_escape
+    assert not members(brain, Duty.ESCAPE)
 
 
 def test_wounded_soldiers_are_not_counted_as_a_prepared_expedition():
@@ -208,7 +210,7 @@ def test_wounded_soldiers_are_not_counted_as_a_prepared_expedition():
     world.reveal_all(0)
     brain = ProBrain(0, replace(PRO, scout=False, push_after=600))
     brain.think(world, random.Random(11))
-    assert brain.creeping is None
+    assert military(brain).creeping is None
     assert not any("clear the camp" in text for _, text in brain.log)
     # Once enough bodies have recovered, only the ready soldiers commit; the
     # still-wounded archer gets the existing healing muster instead.
@@ -216,8 +218,8 @@ def test_wounded_soldiers_are_not_counted_as_a_prepared_expedition():
         unit.hp = unit.max_hp
     world.time += 1
     brain.think(world, random.Random(11))
-    assert brain.creeping == camp.lair
-    assert army[0].id not in brain.creep_party
+    assert military(brain).creeping == camp.lair
+    assert army[0].id not in members(brain, Duty.CREEP)
     assert isinstance(army[0].order, Move)
     assert all(isinstance(unit.order, AttackMove) for unit in army[1:])
 
@@ -243,7 +245,9 @@ def test_a_searcher_revalidates_its_march_beneath_an_automatic_guard_attack(kind
     else:
         brain = Brain(0, Difficulty.MEDIUM)
     brain.next_think = world.time + 100
-    brain.hunt.party[rider.id] = -1
+    military(brain).hunt.party[rider.id] = -1
+    if kind == "pro":
+        brain.army.assignments.assign([rider.id], Duty.HUNT)
     brain.think(world, random.Random(1002))
     assert isinstance(rider.order, AttackMove)
     assert dist(rider.order.target, camps.centre(world, camp)) > CAMP_WATCH
@@ -560,7 +564,7 @@ def test_a_scout_reconsiders_its_destination_when_it_discovers_a_camp():
     assert camp.lair not in world.worker_knowledge[0].encounters
     world.reveal_all(0)
     brain = ProBrain(0, replace(PRO, scout=True))
-    brain.scouts = [scout.id]
+    workers(brain).scouts = [scout.id]
     brain.next_think = brain.next_combat = 10.0
     brain.think(world, random.Random(1001))
     assert isinstance(scout.order, Move)
@@ -651,7 +655,7 @@ def test_a_medium_army_already_pushing_a_rival_does_not_divert_to_a_camp():
     rival = world.player_buildings(1, BuildingType.TOWN_HALL)[0].center
     world.attack_move([unit.id for unit in army], rival)
     brain = Brain(0, Difficulty.MEDIUM)
-    brain.attacking = True
+    military(brain).attacking = True
     brain.think(world, random.Random(11))
     assert not any("clear the camp" in text for _, text in brain.log)
     assert all(isinstance(unit.order, AttackMove) and unit.order.target == rival for unit in army)
@@ -714,7 +718,7 @@ def test_a_blind_pro_push_yields_to_a_remembered_camp():
     world, camp, army = stranded_endgame(10, lair_down=False, time=200.0, revealed=False)
     brain = ProBrain(0, PRO)
     brain.think(world, random.Random(5))
-    assert brain.attacking and brain.creeping is None
+    assert military(brain).attacking and military(brain).creeping is None
     learn_the_map(world)
     world.time += 1
     brain.think(world, random.Random(5))
@@ -728,7 +732,7 @@ def test_a_blind_medium_push_yields_to_a_remembered_camp():
     world, camp, army = stranded_endgame(16, lair_down=False, time=500.0, revealed=False)
     brain = Brain(0, Difficulty.MEDIUM)
     brain.think(world, random.Random(5))
-    assert brain.attacking and brain.creeping is None
+    assert military(brain).attacking and military(brain).creeping is None
     learn_the_map(world)
     world.time += 1
     brain.think(world, random.Random(5))
@@ -805,10 +809,10 @@ def test_only_the_reachable_cohort_commits_to_a_camp(kind):
     brain = (Brain(0, Difficulty.MEDIUM) if kind == "medium"
              else ProBrain(0, replace(PRO, scout=False)))
     brain.think(world, random.Random(11))
-    assert brain.creeping == far.lair
-    assert stranded.id not in brain.creep_party
-    assert len(brain.creep_party) >= 8
-    assert all(world.units[uid].pos[0] < 8 for uid in brain.creep_party)
+    assert military(brain).creeping == far.lair
+    assert stranded.id not in members(brain, Duty.CREEP)
+    assert len(members(brain, Duty.CREEP)) >= 8
+    assert all(world.units[uid].pos[0] < 8 for uid in members(brain, Duty.CREEP))
     for _ in range(round(150 / SIM_DT)):
         world.step()
         if round(world.time * 20) % 10 == 0:
@@ -833,8 +837,8 @@ def test_stranded_troops_do_not_fund_an_expedition(kind):
     for _ in range(3):
         world.time += 1
         brain.think(world, random.Random(11))
-    assert brain.creeping is None
-    assert not brain.creep_party
+    assert military(brain).creeping is None
+    assert not members(brain, Duty.CREEP)
 
 
 def test_a_pro_soldier_bleeding_against_guards_withdraws_to_heal():
@@ -851,9 +855,9 @@ def test_a_pro_soldier_bleeding_against_guards_withdraws_to_heal():
     world.update_vision()
     brain = ProBrain(0, replace(PRO, scout=False))
     brain.think(world, random.Random(11))
-    assert hurt.id in brain._hurt
+    assert hurt.id in members(brain, Duty.HEAL)
     assert isinstance(world.units[hurt.id].order, Move)
-    assert sound.id not in brain._hurt
+    assert sound.id not in members(brain, Duty.HEAL)
 
 
 def test_a_wounded_flyer_ignores_ground_guards_but_answers_air_threats():
@@ -869,7 +873,7 @@ def test_a_wounded_flyer_ignores_ground_guards_but_answers_air_threats():
         world.update_vision()
         brain = ProBrain(0, replace(PRO, scout=False))
         brain.think(world, random.Random(11))
-        return gryphon.id in brain._hurt
+        return gryphon.id in members(brain, Duty.HEAL)
 
     assert not retreats_from("wolf_den")
     assert retreats_from("spider_nest")

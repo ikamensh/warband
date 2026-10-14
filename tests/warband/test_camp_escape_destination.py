@@ -5,6 +5,8 @@ import random
 from pathlib import Path
 
 import pytest
+from tests.warband.brain_helpers import members, military
+from warband.brains.pro_assignments import Duty
 
 from warband.brains.ai import CAMP_REACH, Brain
 from warband.brains.pro_ai import ProBrain
@@ -29,14 +31,17 @@ def interrupted_expedition(kind):
     world = World.from_dict(saved)
     brain = ProBrain(1) if kind == "pro" else Brain(1, Difficulty.MEDIUM)
     state = captured["brain_state"]
-    brain.creeping = state["creeping"]
-    brain.creep_party = set(state["party"])
-    brain.creep_strength = state["strength"]
-    brain.creep_until = state["until"]
-    brain.camp_at_launch = {int(lair): value for lair, value in state["launch"].items()}
+    military(brain).creeping = state["creeping"]
+    if kind == "pro":
+        brain.army.assignments.assign(state["party"], Duty.CREEP)
+    else:
+        brain.creep_party = set(state["party"])
+    military(brain).creep_strength = state["strength"]
+    military(brain).creep_until = state["until"]
+    military(brain).camp_at_launch = {int(lair): value for lair, value in state["launch"].items()}
     if kind == "medium":
-        brain.creep_size = len(brain.creep_party)
-    party = [world.units[uid] for uid in sorted(brain.creep_party)]
+        brain.creep_size = len(members(brain, Duty.CREEP))
+    party = [world.units[uid] for uid in sorted(members(brain, Duty.CREEP))]
     return world, brain, party
 
 
@@ -47,7 +52,7 @@ def test_projected_defense_retreat_stays_outside_every_other_known_camp(kind):
     other = world.camp_for(27)
     assert world.is_visible(1, world.units[44].tile) and not other.roused
     brain.think(world, random.Random(11))
-    assert brain.creeping is None and not brain.creep_party
+    assert military(brain).creeping is None and not members(brain, Duty.CREEP)
     assert all(isinstance(unit.order, Move) for unit in party)
     assert all(dist(unit.order.target, point) > CAMP_REACH
                for unit in party for _lair, point in camps.defended(world, 1))

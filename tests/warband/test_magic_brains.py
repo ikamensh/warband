@@ -145,9 +145,9 @@ def test_a_rival_passing_a_vault_is_no_raid_on_the_base() -> None:
     world.place_building(0, BuildingType.VAULT, MIDDLE)
     passing = held(world, 1, UnitType.FOOTMAN, (MIDDLE[0] + 3.5, MIDDLE[1] + 1.0))
     brain = ProBrain(0, PRO_VANGUARD)
-    assert brain._threats(world) == []
+    assert brain.army._threats(world) == []
     passing.x, passing.y = 7.5, 5.5  # by the hall
-    assert brain._threats(world) == [passing]
+    assert brain.army._threats(world) == [passing]
 
 
 def test_easy_and_medium_never_touch_magic_and_a_posture_without_it_neither() -> None:
@@ -421,7 +421,7 @@ def test_online_a_brain_casts_from_its_snapshot_its_store_stays_its_own_and_a_re
 
     def plan() -> list[dict]:
         planning = _PlanningWorld(json.loads(json.dumps(match.snapshot(1)))['world'])
-        brain._combat(planning)  # the pass that casts
+        brain.army.combat(planning)  # the pass that casts
         return [c for c in planning.commands if c['action'] == 'cast']
 
     [command] = plan()

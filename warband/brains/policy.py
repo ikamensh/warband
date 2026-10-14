@@ -55,38 +55,38 @@ def features(brain, world: World) -> tuple[float, ...]:
     """The wrapped brain's situation as the policy reads it (see FEATURE_NAMES)."""
     player = brain.player
     own = world.players[player]
-    army = brain._army(world)
+    army = brain.army.fit_units(world)
     mine = strength(world, army)
     used, cap = world.supply(player)
-    victim = brain._victim(world)
-    remembered = plain_sum(brain.remembered(victim).values()) if victim is not None else 0.0
-    targets = brain._attack_targets(world)
-    theirs = brain._defenders_near(world, targets[0]) if targets else 0.0
-    hall = brain._hall(world)
-    seen = brain._army_seen.get(victim) if victim is not None else None
+    victim = brain.army._victim(world)
+    remembered = plain_sum(brain.intel.remembered(victim).values()) if victim is not None else 0.0
+    targets = brain.army._attack_targets(world)
+    theirs = brain.army._defenders_near(world, targets[0]) if targets else 0.0
+    hall = brain.intel.hall(world)
+    seen = brain.intel.army_sighting(victim) if victim is not None else None
     buildings = world.player_buildings(player)
-    threats = brain._threats(world)
+    threats = brain.army._threats(world)
     return (
         1.0,
         _clamp(world.time / 600.0),
         _clamp(len(army) / 20.0),
         _clamp(mine / 200.0),
-        _clamp(len(brain._peasants(world)) / 20.0),
+        _clamp(len(brain.intel.peasants(world)) / 20.0),
         _clamp(own.gold / 2000.0),
         _clamp(own.lumber / 1000.0),
         _clamp((cap - used) / 10.0, -1.0),
         _clamp(remembered / 20.0),
         _clamp(theirs / 200.0),
         _clamp(mine / max(1.0, theirs), 0.0, 3.0),
-        _clamp((world.time - brain.last_seen(victim)) / 60.0) if victim is not None else 3.0,
+        _clamp((world.time - brain.intel.last_seen(victim)) / 60.0) if victim is not None else 3.0,
         _clamp(dist(seen[1], hall.center) / 50.0) if seen is not None and hall is not None else 1.0,
         _clamp(sum(1 for b in buildings if b.done and b.type is BuildingType.TOWN_HALL) / 2.0),
         _clamp(sum(1 for b in buildings if b.done and b.type is BuildingType.TOWER) / 3.0),
         _clamp(len(own.upgrades) / 6.0),
         _clamp(strength(world, threats) / 200.0),
-        1.0 if brain.attacking else 0.0,
-        _clamp(mine / max(1.0, brain.commit_strength)) if brain.attacking else 1.0,
-        _clamp(sum(1 for r in brain._known_enemy_buildings(world)
+        1.0 if brain.army.attacking else 0.0,
+        _clamp(mine / max(1.0, brain.army.commit_strength)) if brain.army.attacking else 1.0,
+        _clamp(sum(1 for r in brain.intel.known_buildings(world)
                    if r.type is BuildingType.TOWN_HALL) / 2.0),
         _clamp(len(known_camps(world, player)) / 4.0),
     )
@@ -139,5 +139,5 @@ class PolicyBrain:
             reading = features(self.inner.brain, world)
             scores = [plain_sum(w * x for w, x in zip(row, reading)) for row in self.weights]
             self.stance = max(range(len(scores)), key=lambda i: scores[i])
-            self.inner.brain.profile = self._stances[self.stance]
+            self.inner.brain.set_profile(self._stances[self.stance])
         self.inner.think(world, rng)

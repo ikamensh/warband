@@ -261,7 +261,7 @@ def test_a_side_buys_its_own_unit_with_an_army_to_lead_and_invests_in_it_from_id
     assert commander.waits_for(world, 0, seen) == (Upgrade.KEEP,)
     assert commander.building(world, 0, seen) is BuildingType.CHURCH, "the Rune Shrine it is trained at"
     brain = ProBrain(0, PRO_VANGUARD)
-    brain._seen = {1: dict(seen)}  # private: what it remembers of the rival, the melee line, staged rather than played for
+    brain.intel._seen = {1: dict(seen)}  # private: what it remembers of the rival, the melee line, staged rather than played for
     hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
     for _ in range(round(3.0 / SIM_DT)):
         brain.think(world, random.Random(0))

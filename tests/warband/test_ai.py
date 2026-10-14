@@ -10,6 +10,7 @@ import random
 
 import pytest
 
+from tests.warband.brain_helpers import military
 from warband.sim import mapgen
 from warband.brains.ai import DEFEND_RADIUS, PROFILES, Brain
 from warband.brains.pro_ai import PRO, ProBrain
@@ -51,7 +52,7 @@ def _siege_setup(enemy_type, enemy_count):
     target = world.player_buildings(1, BuildingType.TOWN_HALL)[0].center
     footmen = [world.spawn_unit(0, UnitType.FOOTMAN, (hall.center[0] + i, hall.center[1] + 1)) for i in range(8)]
     world.attack_move([u.id for u in footmen], target)
-    brain.attacking = True
+    military(brain).attacking = True
     fx, fy = farm.center
     enemies = [world.spawn_unit(1, enemy_type, (fx + 2, fy + i * 0.7)) for i in range(enemy_count)]
     world.update_vision()
@@ -71,7 +72,7 @@ def test_a_lone_rider_draws_only_a_couple_of_defenders_and_the_attack_goes_on() 
                if isinstance(u.order, AttackMove) and dist(u.order.target, target) < 1.0]
     assert len(defending) <= 3
     assert len(holding) >= 5
-    assert brain.attacking is True
+    assert military(brain).attacking is True
     assert len(_defend_lines(brain)) == 1
     world.time += brain.profile.think_every + 0.1
     brain.think(world, random.Random(2))
@@ -84,7 +85,7 @@ def test_a_serious_raid_recalls_the_whole_army_and_cancels_the_attack() -> None:
     threat = brain._threat(world)
     assert threat is not None
     assert all(Brain._aimed_at(world, u, threat) for u in footmen)
-    assert brain.attacking is False
+    assert military(brain).attacking is False
 
 
 def _farm_headroom(world, count=3) -> None:
@@ -302,9 +303,9 @@ def test_a_hard_brain_caps_its_wave_at_what_the_farms_feed() -> None:
     for _ in range(3):
         brain.think(world, rng)
         world.time += brain.profile.think_every + 0.1
-        if brain.attacking:
+        if military(brain).attacking:
             break
-    assert brain.attacking
+    assert military(brain).attacking
     assert any("wave capped at 24" in what for _, what in brain.log)
 
 
@@ -329,9 +330,9 @@ def test_a_normal_brain_presses_the_attack_against_a_hall_less_enemy() -> None:
     for _ in range(3):
         brain.think(world, rng)
         world.time += brain.profile.think_every + 0.1
-        if brain.attacking:
+        if military(brain).attacking:
             break
-    assert brain.attacking  # five soldiers beat the wave of ten while the enemy has no army
+    assert military(brain).attacking  # five soldiers beat the wave of ten while the enemy has no army
 
 
 def _press_world(difficulty: Difficulty):
@@ -366,15 +367,15 @@ def test_an_easy_brain_holds_its_first_wave_until_it_is_full() -> None:
     for _ in range(3):
         brain.think(world, rng)
         world.time += brain.profile.think_every + 0.1
-    assert not brain.attacking
+    assert not military(brain).attacking
     assert _attacks(brain) == []
     brain.waves_sent = 1
     for _ in range(3):
         brain.think(world, rng)
         world.time += brain.profile.think_every + 0.1
-        if brain.attacking:
+        if military(brain).attacking:
             break
-    assert brain.attacking
+    assert military(brain).attacking
     assert _attacks(brain) != []
 
 
@@ -387,10 +388,10 @@ def test_easy_sends_no_wave_before_minute_eight_however_big_its_army() -> None:
     while world.time < brain.profile.first_attack - brain.profile.think_every:
         brain.think(world, rng)
         world.time += brain.profile.think_every
-    assert not brain.attacking and _attacks(brain) == []
+    assert not military(brain).attacking and _attacks(brain) == []
     world.time = brain.profile.first_attack
     brain.think(world, rng)
-    assert brain.attacking
+    assert military(brain).attacking
 
 
 def test_a_medium_brain_presses_even_before_its_first_wave() -> None:
@@ -400,9 +401,9 @@ def test_a_medium_brain_presses_even_before_its_first_wave() -> None:
     for _ in range(3):
         brain.think(world, rng)
         world.time += brain.profile.think_every + 0.1
-        if brain.attacking:
+        if military(brain).attacking:
             break
-    assert brain.attacking
+    assert military(brain).attacking
     assert _attacks(brain) != []
 
 
@@ -491,10 +492,10 @@ def test_a_soldier_standing_where_the_brain_wants_it_is_not_ordered_there_again(
     brain = ProBrain(0, PRO)
     hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
     unit = world.spawn_unit(0, UnitType.ARCHER, (12.0, 12.0))
-    point = brain._front_point(world, hall)  # the brain's own questions: where it gathers, and this unit's place in it
-    unit.x, unit.y = brain._muster(world, point, unit)
-    brain._send_to_muster(world, point, unit)
+    point = brain.intel.front_point(world, hall)  # the brain's own questions: where it gathers, and this unit's place in it
+    unit.x, unit.y = brain.army._muster(world, point, unit)
+    brain.army._send_to_muster(world, point, unit)
     assert not unit.orders, "a soldier already standing at its place was sent there again"
     unit.x, unit.y = unit.x + 3.0, unit.y
-    brain._send_to_muster(world, point, unit)
+    brain.army._send_to_muster(world, point, unit)
     assert unit.orders, "a soldier three tiles off its place has to be sent to it"

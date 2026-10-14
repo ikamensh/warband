@@ -68,8 +68,8 @@ def test_a_physically_trapped_reinforcement_is_not_reissued_an_unreachable_march
     """Seed81: a completed nearest-edge walk must not be restarted forever by the reinforcement branch."""
     world, trapped, connected, target = boxed_army()
     brain = ProBrain(0, replace(PRO_WARDEN, scout=False, retreat_ratio=0, abort_ratio=0))
-    brain.attacking = True
-    brain.target = target.center
+    brain.army.attacking = True
+    brain.army.target = target.center
     brain.think(world, random.Random(81))
     assert all(not unit.orders for unit in trapped)
     assert all((isinstance(unit.order, AttackMove) and unit.order.target == target.center)

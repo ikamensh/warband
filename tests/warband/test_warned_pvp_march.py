@@ -5,6 +5,8 @@ import random
 from pathlib import Path
 
 import pytest
+from tests.warband.brain_helpers import members, military
+from warband.brains.pro_assignments import Duty
 
 from tools.fuzz import check_progress
 from warband.brains.ai import Brain
@@ -41,9 +43,9 @@ def captured_march(filename, player):
 def warned_march():
     world, _ = captured_march("plains1009_warned_march.json", 0)
     brain = ProBrain(0)
-    brain.attacking = True
-    brain.target = (57.5, 34.5)
-    brain.commit_strength = 85.0
+    military(brain).attacking = True
+    military(brain).target = (57.5, 34.5)
+    military(brain).commit_strength = 85.0
     brain.next_think = world.time + 100  # guard reaction cannot wait for the next macro pass
     return world, brain
 
@@ -51,7 +53,7 @@ def warned_march():
 def medium_warned_march():
     world, captured = captured_march("plains1005_medium_warned_march.json", 1)
     brain = Brain(1)
-    brain.attacking = True
+    military(brain).attacking = True
     brain.wave = captured["brain_state"]["wave"]
     brain.waves_sent = captured["brain_state"]["waves_sent"]
     brain.next_think = captured["brain_state"]["next_think"]
@@ -66,7 +68,7 @@ def test_medium_breaks_off_an_unpriced_push_at_its_first_guard_warning():
     assert brain.next_think > world.time
     rng = random.Random(11)
     brain.think(world, rng)
-    assert not brain.attacking
+    assert not military(brain).attacking
     assert all(isinstance(world.units[uid].order, Move) for uid in starts)
     stalled = {}
     for tick in range(round(35 / SIM_DT)):
@@ -87,7 +89,7 @@ def test_medium_warning_response_keeps_deliberate_fights_and_retreats(job):
     world, brain = medium_warned_march()
     party = [50, 54, 59]
     if job == "camp":
-        brain.creeping = 15
+        military(brain).creeping = 15
         brain.creep_party = set(party)
         world.attack_move(party, world.camp_for(15).origin)
     elif job == "rival":
@@ -110,7 +112,7 @@ def test_a_new_guard_warning_breaks_off_the_unsafe_ordinary_push():
     assert len(world.worker_knowledge[0].guard_warnings) == 2
     starts = {uid: world.units[uid].pos for uid in (67, 70)}
     brain.think(world, random.Random(11))
-    assert not brain.attacking and brain.regroup_until > world.time
+    assert not military(brain).attacking and military(brain).regroup_until > world.time
     assert all(isinstance(world.units[uid].order, Move) for uid in starts)
     brain.next_think = world.time  # real macro passes must honor regroup instead of restarting the old push
     rng = random.Random(11)
@@ -127,8 +129,8 @@ def test_a_new_guard_warning_breaks_off_the_unsafe_ordinary_push():
 def test_warning_response_keeps_a_deliberately_committed_camp_party():
     """The same sighting cannot cancel the neutral expedition that owns these two archers."""
     world, brain = warned_march()
-    brain.creeping = 15
-    brain.creep_party = {67, 70}
+    military(brain).creeping = 15
+    brain.army.assignments.assign([67, 70], Duty.CREEP)
     world.attack_move([67, 70], world.camp_for(15).origin)
     brain.think(world, random.Random(11))
     assert all(isinstance(world.units[uid].order, AttackMove)
@@ -149,9 +151,9 @@ def test_warning_response_preserves_patients_and_existing_escape_walks():
     """The newly seen guard does not overwrite an existing safe retreat with another assignment."""
     world, brain = warned_march()
     world.units[67].hp = 10
-    brain._hurt.add(67)  # actual patient bookkeeping for the retained retreat control
+    brain.army.assignments.assign([67], Duty.HEAL)  # actual patient bookkeeping for the retained retreat control
     world.move([67, 70], (8.5, 8.5))
-    brain.camp_escape[70] = world.time + 30
+    brain.army.assignments.assign([70], Duty.ESCAPE, until=world.time + 30)
     brain.think(world, random.Random(11))
     assert all(isinstance(world.units[uid].order, Move)
                and world.units[uid].order.target == (8.5, 8.5) for uid in (67, 70))

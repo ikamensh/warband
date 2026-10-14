@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from warband.brains.pro_assignments import Duty
 from warband.brains.ai import make_brain, prepared_cohort
 from warband.sim.model import Move, World
 from warband.sim.rules import BuildingType, Difficulty, SIM_DT, Terrain, UnitType
@@ -28,13 +29,17 @@ def deadlocked_match():
     for brain, state in zip(brains, captured["brain_state"]):
         # These private fields restore real decision state omitted by World saves;
         # assertions below exercise public think, recorded orders and actual training.
-        brain._hurt = set(state["hurt"])
-        brain._seen = {int(seat): {UnitType(kind): count for kind, count in values.items()}
+        brain.army.assignments.assign(state["hurt"], Duty.HEAL)
+        brain.intel._seen = {int(seat): {UnitType(kind): count for kind, count in values.items()}
                        for seat, values in state["seen"].items()}
-        brain._seen_at = {int(seat): when for seat, when in state["seen_at"].items()}
-        for key in ("next_think", "next_combat", "attacking", "commit_strength", "regroup_until", "rush_over", "rush_drafted"):
+        brain.intel._seen_at = {int(seat): when for seat, when in state["seen_at"].items()}
+        for key in ("next_think", "next_combat"):
             setattr(brain, key, state[key])
-        brain.target = tuple(state["target"])
+        for key in ("attacking", "commit_strength", "regroup_until"):
+            setattr(brain.army, key, state[key])
+        for key in ("rush_over", "rush_drafted"):
+            setattr(brain.economy, key, state[key])
+        brain.army.target = tuple(state["target"])
     rng = random.Random()
     state = captured["brain_rng"]
     rng.setstate((state[0], tuple(state[1]), state[2]))
@@ -51,12 +56,12 @@ def think_until_due(world, brains, rng):
 def test_unhealable_idle_patients_restore_the_real_army_and_worker_recovery():
     """The eventless Human–Orc position must regain ordinary combat and its affordable worker order."""
     world, brains, rng = deadlocked_match()
-    patients = {uid for brain in brains for uid in brain._hurt}
+    patients = {uid for brain in brains for uid in brain.army.assignments.members(Duty.HEAL)}
     assert len(patients) == 34
     assert all(not world.units[uid].orders and not world.units[uid].info.regen for uid in patients)
     assert not any(unit.info.heal for unit in world.units.values())
     think_until_due(world, brains, rng)
-    assert all(not brain._hurt for brain in brains)
+    assert all(not brain.army.assignments.members(Duty.HEAL) for brain in brains)
     assert any(UnitType.PEASANT in hall.queue for hall in world.player_buildings(0, BuildingType.TOWN_HALL))
     assert any(world.units[uid].orders for uid in patients)
     # Release is for ordinary combat: low health still cannot fund a planned camp assault.
@@ -67,7 +72,7 @@ def test_unhealable_idle_patients_restore_the_real_army_and_worker_recovery():
 def test_real_patients_wait_when_a_healer_is_alive_or_in_training(support):
     """A healing prospect retains the captured patients instead of spending their remaining health."""
     world, brains, rng = deadlocked_match()
-    expected = set(brains[0]._hurt)
+    expected = set(brains[0].army.assignments.members(Duty.HEAL))
     if support == "alive":
         world.spawn_unit(0, UnitType.CLERIC, (15.5, 15.5))
     else:
@@ -75,16 +80,16 @@ def test_real_patients_wait_when_a_healer_is_alive_or_in_training(support):
         church = world.place_building(0, BuildingType.CHURCH, (15, 15))
         world.train(church.id, UnitType.CLERIC)
     think_until_due(world, brains, rng)
-    assert expected <= brains[0]._hurt
+    assert expected <= set(brains[0].army.assignments.members(Duty.HEAL))
 
 
 def test_a_patient_finishes_its_retreat_before_rejoining_without_healing():
     """Lack of a healer cannot reclaim a soldier whose recorded walk to safety is still running."""
     world, brains, rng = deadlocked_match()
-    uid = next(iter(brains[0]._hurt))
+    uid = next(iter(brains[0].army.assignments.members(Duty.HEAL)))
     world.move([uid], (15.5, 15.5))
     think_until_due(world, brains, rng)
-    assert uid in brains[0]._hurt
+    assert uid in brains[0].army.assignments.members(Duty.HEAL)
     assert isinstance(world.units[uid].order, Move)
 
 
@@ -92,7 +97,7 @@ def test_natural_regeneration_keeps_a_patient_waiting_to_recover():
     """An actual regenerating treant remains a patient even without another healer."""
     world, brains, rng = deadlocked_match()
     tree = world.spawn_unit(0, UnitType.TREANT, (15.5, 15.5))
-    brains[0]._hurt.add(tree.id)  # captured patient state with the regenerating-unit control
+    brains[0].army.assignments.assign([tree.id], Duty.HEAL)  # captured patient state with the regenerating-unit control
     tree.hp = 10
     think_until_due(world, brains, rng)
-    assert tree.id in brains[0]._hurt
+    assert tree.id in brains[0].army.assignments.members(Duty.HEAL)

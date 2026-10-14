@@ -82,36 +82,36 @@ def test_the_enemy_memory_counts_soldiers_rather_than_sightings():
     world, brain = _world_with_army()
     _raiders_at_our_base(world, 3)
     for _ in range(40):
-        brain._observe(world)
-    assert brain.remembered(1)[UnitType.ARCHER] == 3
+        brain.intel.observe(world)
+    assert brain.intel.remembered(1)[UnitType.ARCHER] == 3
 
 
 def test_a_sighting_fades_once_the_enemy_is_out_of_sight():
     world, brain = _world_with_army()
     archers = _raiders_at_our_base(world, 3)
     for _ in range(10):
-        brain._observe(world)
-    seen = brain.remembered(1)[UnitType.ARCHER]
+        brain.intel.observe(world)
+    seen = brain.intel.remembered(1)[UnitType.ARCHER]
     for unit in archers:
         world.units.pop(unit.id)
     world.update_vision()
     for _ in range(200):
         world.time += PRO.think_every
-        brain._observe(world)
-    assert brain.remembered(1).get(UnitType.ARCHER, 0.0) < seen
+        brain.intel.observe(world)
+    assert brain.intel.remembered(1).get(UnitType.ARCHER, 0.0) < seen
 
 
 def test_barracks_first_wishes_for_nothing_else_until_it_stands():
     from dataclasses import replace
     world, brain = _world_with_army()
-    brain.profile = replace(PRO, barracks_first=True)
+    brain.set_profile(replace(PRO, barracks_first=True))
     world.players[0].gold, world.players[0].lumber = 5000, 5000
-    wanted = [building for building, _ in brain._wish_list(world)]
+    wanted = [building for building, _ in brain.economy._wish_list(world)]
     assert BuildingType.BARRACKS in wanted
     assert set(wanted) <= {BuildingType.FARM, BuildingType.BARRACKS}
     hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
     world.place_building(0, BuildingType.BARRACKS, (hall.x + 6, hall.y))
-    wanted = [building for building, _ in brain._wish_list(world)]
+    wanted = [building for building, _ in brain.economy._wish_list(world)]
     assert BuildingType.LUMBER_MILL in wanted, "once the barracks stands, the rest of the list is back"
 
 
@@ -121,9 +121,9 @@ def test_an_army_out_on_the_map_still_defends_its_base():
     world, brain = _world_with_army()
     world.reveal_all(0)
     _spawn(world, 1, UnitType.FOOTMAN, 2, 10)  # their army, nowhere near their hall
-    brain._observe(world)
+    brain.intel.observe(world)
     enemy_hall = world.player_buildings(1, BuildingType.TOWN_HALL)[0].center
-    assert brain._defenders_near(world, enemy_hall) > 0.0
+    assert brain.army._defenders_near(world, enemy_hall) > 0.0
 
 
 def test_an_enemy_nobody_has_looked_at_is_not_assumed_to_be_harmless():
@@ -132,7 +132,7 @@ def test_an_enemy_nobody_has_looked_at_is_not_assumed_to_be_harmless():
     army = _spawn(world, 0, UnitType.FOOTMAN, 2, 10)
     world.time = 600.0  # long past any sighting
     enemy_hall = world.player_buildings(1, BuildingType.TOWN_HALL)[0].center
-    assert brain._defenders_near(world, enemy_hall) == pytest.approx(strength(world, army[:PRO.min_army]) * PRO.symmetry_prior)
+    assert brain.army._defenders_near(world, enemy_hall) == pytest.approx(strength(world, army[:PRO.min_army]) * PRO.symmetry_prior)
 
 
 # -- Committing to a push --------------------------------------------------------
@@ -141,26 +141,26 @@ def test_a_push_is_not_called_off_while_the_army_is_still_whole():
     """Regression: re-deciding every pass walked the army home as soon as a tower came into view."""
     world, brain = _world_with_army()
     army = _spawn(world, 0, UnitType.FOOTMAN, 2, 12)
-    brain.attacking = True
-    brain.commit_strength = strength(world, army)
-    brain.target = world.player_buildings(1, BuildingType.TOWN_HALL)[0].center
+    brain.army.attacking = True
+    brain.army.commit_strength = strength(world, army)
+    brain.army.target = world.player_buildings(1, BuildingType.TOWN_HALL)[0].center
     # A tower right next to the army: under the old rule this alone turned it round.
     world.place_building(1, BuildingType.TOWER, (int(army[0].x) + 3, int(army[0].y) + 3))
-    brain._military(world)
-    assert brain.attacking
+    brain.army.step(world)
+    assert brain.army.attacking
 
 
 def test_a_push_that_has_lost_most_of_itself_breaks_off():
     world, brain = _world_with_army()
     army = _spawn(world, 0, UnitType.FOOTMAN, 2, 12)
-    brain.attacking = True
-    brain.commit_strength = strength(world, army)
-    brain.target = world.player_buildings(1, BuildingType.TOWN_HALL)[0].center
+    brain.army.attacking = True
+    brain.army.commit_strength = strength(world, army)
+    brain.army.target = world.player_buildings(1, BuildingType.TOWN_HALL)[0].center
     for unit in army[3:]:
         world.units.pop(unit.id)
-    brain._military(world)
-    assert not brain.attacking
-    assert brain.regroup_until > world.time, "a beaten army rebuilds before trying again"
+    brain.army.step(world)
+    assert not brain.army.attacking
+    assert brain.army.regroup_until > world.time, "a beaten army rebuilds before trying again"
 
 
 # -- Playing a whole game --------------------------------------------------------
@@ -201,11 +201,11 @@ def test_the_weakest_opponent_is_the_one_attacked_not_the_nearest():
     world.reveal_all(0)
     _spawn(world, 1, UnitType.FOOTMAN, 2, 8)
     _spawn(world, 2, UnitType.FOOTMAN, 2, 1)
-    brain._observe(world)
-    assert brain._victim(world) == 2
-    targets = brain._attack_targets(world)
+    brain.intel.observe(world)
+    assert brain.army._victim(world) == 2
+    targets = brain.army._attack_targets(world)
     assert targets
-    assert all(brain._owner_of(world, t) == 2 for t in targets)
+    assert all(brain.army._owner_of(world, t) == 2 for t in targets)
 
 
 def test_caution_stops_growing_past_five_seats():
@@ -214,9 +214,9 @@ def test_caution_stops_growing_past_five_seats():
     two = mapgen.generate(seed=9, players=2, human=None)
     four = mapgen.generate(seed=9, players=4, human=None)
     six = mapgen.generate(seed=11, width=144, height=108, players=6, human=None)
-    assert ProBrain(0, PRO)._caution(two) == 1.0
-    assert ProBrain(0, PRO)._caution(four) == 1.0 + PRO.ffa_caution * 2
-    assert ProBrain(0, PRO)._caution(six) == 1.0 + PRO.ffa_caution * 3
+    assert ProBrain(0, PRO).army._caution(two) == 1.0
+    assert ProBrain(0, PRO).army._caution(four) == 1.0 + PRO.ffa_caution * 2
+    assert ProBrain(0, PRO).army._caution(six) == 1.0 + PRO.ffa_caution * 3
 
 
 def test_unknown_ground_is_priced_as_one_opponent_not_all():
@@ -230,11 +230,11 @@ def test_unknown_ground_is_priced_as_one_opponent_not_all():
     second = [world.spawn_unit(2, UnitType.FOOTMAN, (hall.center[0] + 1 + i * 0.5, hall.center[1] + 2))
               for i in range(8)]
     world.update_vision()
-    corner = brain._unexplored_corner(world)
-    assert brain._owner_of(world, corner) is None
+    corner = brain.intel.unexplored_corner(world)
+    assert brain.army._owner_of(world, corner) is None
     one = max(strength(world, first), strength(world, second))
-    assert brain._defenders_near(world, corner) == pytest.approx(one)
-    assert brain._defenders_near(world, corner) < strength(world, first + second)
+    assert brain.army._defenders_near(world, corner) == pytest.approx(one)
+    assert brain.army._defenders_near(world, corner) < strength(world, first + second)
 
 
 @pytest.mark.parametrize("posture", BRED[Race.HUMAN])
@@ -247,18 +247,18 @@ def test_a_blind_grandmaster_army_explores_in_a_large_free_for_all(posture):
     world = mapgen.generate(seed=11, width=144, height=108, players=6, human=None, wilds=False)
     brain = ProBrain(0, replace(posture, creep=False))
     assert not brain.profile.scout
-    assert not brain._known_enemy_buildings(world)
+    assert not brain.intel.known_buildings(world)
     _spawn(world, 0, UnitType.FOOTMAN, 2, 25)
     world.time = 650.0
 
-    brain._military(world)
+    brain.army.step(world)
 
-    assert brain.attacking, "the army needs to discover an opponent before it can judge one"
+    assert brain.army.attacking, "the army needs to discover an opponent before it can judge one"
     home = world.player_buildings(0, BuildingType.TOWN_HALL)[0].center
     guesses = mapgen.start_guesses(world.width, world.height, world.seats)
     own_cell = min(guesses, key=lambda point: dist(point, home))
     nearby = min((point for point in guesses if point != own_cell), key=lambda point: dist(point, home))
-    assert brain.target == nearby, "look in a nearby rival cell before crossing the entire map"
+    assert brain.army.target == nearby, "look in a nearby rival cell before crossing the entire map"
 
 
 def test_a_scouted_enemy_keeps_the_full_free_for_all_attack_margin():
@@ -270,11 +270,11 @@ def test_a_scouted_enemy_keeps_the_full_free_for_all_attack_margin():
         _spawn(world, player, UnitType.FOOTMAN, 2, 20)
     world.reveal_all(0)
     world.time = 650.0
-    brain._observe(world)
+    brain.intel.observe(world)
 
-    brain._military(world)
+    brain.army.step(world)
 
-    assert not brain.attacking
+    assert not brain.army.attacking
 
 
 def test_a_stale_base_sighting_does_not_hold_a_large_army_home():
@@ -283,13 +283,13 @@ def test_a_stale_base_sighting_does_not_hold_a_large_army_home():
     brain = ProBrain(0, replace(BRED[Race.HUMAN][1], creep=False))
     world.reveal_all(0)
     world.update_vision()
-    assert brain._known_enemy_buildings(world)
+    assert brain.intel.known_buildings(world)
     _spawn(world, 0, UnitType.FOOTMAN, 2, 25)
     world.time = 650.0
 
-    brain._military(world)
+    brain.army.step(world)
 
-    assert brain.attacking
+    assert brain.army.attacking
 
 
 def test_a_visible_field_army_keeps_the_full_ffa_margin_without_a_known_base():
@@ -301,13 +301,13 @@ def test_a_visible_field_army_keeps_the_full_ffa_margin_without_a_known_base():
     for index in range(12):
         world.spawn_unit(1, UnitType.FOOTMAN, (72.5 + index * 0.5, 54.5))
     world.update_vision()
-    assert not brain._known_enemy_buildings(world)
-    brain._observe(world)
+    assert not brain.intel.known_buildings(world)
+    brain.intel.observe(world)
     world.time = 650.0
 
-    brain._military(world)
+    brain.army.step(world)
 
-    assert not brain.attacking
+    assert not brain.army.attacking
 
 
 @pytest.mark.slow
@@ -329,7 +329,7 @@ def test_soldiers_sent_home_are_sent_somewhere_they_can_stand():
     """
     world, brain = _world_with_army()
     hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
-    point = brain._home_point(world, hall)
+    point = brain.army._home_point(world, hall)
     assert world.building_at((int(point[0]), int(point[1]))) is None
     assert world.passable(int(point[0]), int(point[1]))
 
@@ -339,9 +339,9 @@ def test_the_muster_point_is_never_inside_a_building():
     an order no unit could ever finish."""
     world, brain = _world_with_army()
     hall = world.player_buildings(0, BuildingType.TOWN_HALL)[0]
-    point = brain._front_point(world, hall)
+    point = brain.intel.front_point(world, hall)
     world.place_building(0, BuildingType.FARM, (int(point[0]), int(point[1])))
-    moved = brain._front_point(world, hall)
+    moved = brain.intel.front_point(world, hall)
     assert world.passable(int(moved[0]), int(moved[1]))
 
 
@@ -358,17 +358,17 @@ def test_the_brain_knows_nothing_of_an_enemy_base_it_has_never_seen():
     brain = ProBrain(0, PRO)
     enemy_hall = world.player_buildings(1, BuildingType.TOWN_HALL)[0]
 
-    assert brain._known_enemy_buildings(world) == [], "their base has not been seen"
-    assert all(dist(t, enemy_hall.center) > 3.0 for t in brain._attack_targets(world)), \
+    assert brain.intel.known_buildings(world) == [], "their base has not been seen"
+    assert all(dist(t, enemy_hall.center) > 3.0 for t in brain.army._attack_targets(world)), \
         "an unseen hall is not a target"
-    assert brain._victim(world) is None
+    assert brain.army._victim(world) is None
     world.place_building(1, BuildingType.TOWER, (enemy_hall.x + 5, enemy_hall.y))
     assert _tower_strength(world, 0, enemy_hall.center) == 0.0, "an unseen tower defends nothing we know of"
 
     world.reveal_all(0)
     world.update_vision()
-    assert brain._known_enemy_buildings(world), "once looked at, it is known"
-    assert any(dist(t, enemy_hall.center) <= 3.0 for t in brain._attack_targets(world))
+    assert brain.intel.known_buildings(world), "once looked at, it is known"
+    assert any(dist(t, enemy_hall.center) <= 3.0 for t in brain.army._attack_targets(world))
     assert _tower_strength(world, 0, enemy_hall.center) > 0.0
 
 
@@ -394,10 +394,12 @@ def test_raiders_hunt_only_peasants_they_can_see():
                     points.append(target)
         return points
 
-    brain._raid(world, riders)
+    brain.army.prepare(world)
+    brain.army._raid(world, riders)
     assert all(dist(point, worker.pos) > 1.0 for point in targets() for worker in workers)
     world.reveal_all(0)
-    brain._raid(world, riders)
+    brain.army.prepare(world)
+    brain.army._raid(world, riders)
     visible_targets = targets()
     assert visible_targets and all(any(dist(point, worker.pos) <= 1.0 for worker in workers) for point in visible_targets)
 
@@ -518,7 +520,7 @@ def test_a_brain_takes_another_mine_when_the_face_is_full_even_with_gold_left():
     for _ in range(int(20 / SIM_DT)):
         brain.think(world, rng)
         world.step()
-    assert BuildingType.TOWN_HALL in [o.type for o in brain._ordered(world)] or \
+    assert BuildingType.TOWN_HALL in [o.type for o in brain.economy._ordered(world)] or \
         len(world.player_buildings(0, BuildingType.TOWN_HALL)) > 1
 
 
@@ -535,7 +537,7 @@ def test_a_brain_takes_another_mine_when_the_one_it_works_is_running_out():
         brain.think(world, rng)
         world.step()
     halls = [b for b in world.player_buildings(0, BuildingType.TOWN_HALL)]
-    ordered = [o.type for o in brain._ordered(world)]
+    ordered = [o.type for o in brain.economy._ordered(world)]
     assert len(halls) > 1 or BuildingType.TOWN_HALL in ordered, "no second hall was even ordered"
     assert near.gold > 0, "the mine still had gold: the brain moved before it was starved"
 
@@ -547,7 +549,7 @@ def test_a_brain_with_room_at_the_face_and_gold_left_does_not_expand_early():
     for _ in range(int(20 / SIM_DT)):
         brain.think(world, rng)
         world.step()
-    ordered = [o.type for o in brain._ordered(world)]
+    ordered = [o.type for o in brain.economy._ordered(world)]
     assert len(world.player_buildings(0, BuildingType.TOWN_HALL)) == 1 and BuildingType.TOWN_HALL not in ordered
 
 
@@ -616,11 +618,11 @@ def test_a_defence_is_not_ordered_again_to_soldiers_already_on_their_way_to_the_
     brain = ProBrain(0, PRO)
     army = _spawn(world, 0, UnitType.FOOTMAN, 3, 4)
     threat = _spawn(world, 1, UnitType.FOOTMAN, 9, 1)
-    brain._defend(world, army, threat)
+    brain.army._defend(world, army, threat)
     orders = [u.order for u in army]
     threat[0].x += 0.6  # it steps aside
-    brain._defend(world, army, threat)
+    brain.army._defend(world, army, threat)
     assert [u.order for u in army] == orders and all(a is b for a, b in zip((u.order for u in army), orders))
     threat[0].x += 6.0  # it got well away: the soldiers go after it
-    brain._defend(world, army, threat)
+    brain.army._defend(world, army, threat)
     assert all(u.order is not before for u, before in zip(army, orders))

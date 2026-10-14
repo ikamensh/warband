@@ -50,9 +50,9 @@ def _soft_scene(soft: bool) -> ProBrain:
 def test_soft_target_walks_at_the_undefended_hall_not_the_nearest_barracks():
     soft = _soft_scene(True)
     plain = _soft_scene(False)
-    assert soft.attacking and plain.attacking
-    assert dist(soft.target, (53.5, 37.5)) < 6.0, f"soft target chose {soft.target}"
-    assert dist(plain.target, (21.5, 9.5)) < 6.0, f"nearest target chose {plain.target}"
+    assert soft.army.attacking and plain.army.attacking
+    assert dist(soft.army.target, (53.5, 37.5)) < 6.0, f"soft target chose {soft.army.target}"
+    assert dist(plain.army.target, (21.5, 9.5)) < 6.0, f"nearest target chose {plain.army.target}"
 
 
 def _punish_scene(punish: bool) -> ProBrain:
@@ -68,8 +68,8 @@ def _punish_scene(punish: bool) -> ProBrain:
 
 
 def test_punish_attacks_the_empty_base_it_would_otherwise_leave():
-    assert _punish_scene(True).attacking, "their army is seen away: go now"
-    assert not _punish_scene(False).attacking, "six against eight on paper: the unmodified brain waits"
+    assert _punish_scene(True).army.attacking, "their army is seen away: go now"
+    assert not _punish_scene(False).army.attacking, "six against eight on paper: the unmodified brain waits"
 
 
 def test_a_push_turned_back_by_towers_calls_for_catapults_without_holding_the_army():
@@ -83,19 +83,19 @@ def test_a_push_turned_back_by_towers_calls_for_catapults_without_holding_the_ar
     ours = _soldiers(world, 0, 4, (50.5, 30.5))
     world.reveal_all(0)
     brain = _brain(siege_answer=2, abort_ratio=1.5, attack_ratio=0.5)
-    brain.attacking = True
-    brain.target = (53.5, 37.5)
-    brain.commit_strength = strength(world, ours)
+    brain.army.attacking = True
+    brain.army.target = (53.5, 37.5)
+    brain.army.commit_strength = strength(world, ours)
     brain.think(world, random.Random(1))
-    assert not brain.attacking, "the push reads the towers and turns back"
-    assert brain._siege_wanted(world), "and calls for catapults"
-    assert not brain._push_waits(world), "but the army is not held hostage to the workshop"
+    assert not brain.army.attacking, "the push reads the towers and turns back"
+    assert brain.army.siege_wanted(world), "and calls for catapults"
+    assert not brain.army._push_waits(world), "but the army is not held hostage to the workshop"
     counts = {t: 0 for t in (UnitType.FOOTMAN, UnitType.CATAPULT, UnitType.FLYING_MACHINE)}
-    wish = brain._choose_unit(workshop, counts, {UnitType.CATAPULT: 0.1, UnitType.FOOTMAN: 0.9})
+    wish = brain.economy._choose_unit(workshop, counts, {UnitType.CATAPULT: 0.1, UnitType.FOOTMAN: 0.9})
     assert wish is not None and wish[1] is UnitType.CATAPULT
     world.spawn_unit(0, UnitType.CATAPULT, (6.5, 20.5))
     world.spawn_unit(0, UnitType.CATAPULT, (7.5, 20.5))
-    assert not brain._siege_wanted(world)
+    assert not brain.army.siege_wanted(world)
 
 
 def _trade_scene(trade: bool) -> ProBrain:
@@ -113,8 +113,8 @@ def _trade_scene(trade: bool) -> ProBrain:
 
 
 def test_base_trade_lets_the_towers_hold_and_walks_at_their_base():
-    assert _trade_scene(True).attacking, "home holds on its towers: start the race"
-    assert not _trade_scene(False).attacking, "the unmodified brain comes home to defend"
+    assert _trade_scene(True).army.attacking, "home holds on its towers: start the race"
+    assert not _trade_scene(False).army.attacking, "the unmodified brain comes home to defend"
 
 
 def _intercept_scene(intercept: bool) -> ProBrain:
@@ -134,8 +134,8 @@ def _intercept_scene(intercept: bool) -> ProBrain:
 def test_intercept_fights_the_army_in_the_open_instead_of_its_towers():
     on = _intercept_scene(True)
     off = _intercept_scene(False)
-    assert on.attacking and dist(on.target, (32.5, 26.0)) < 6.0, f"intercept chose {on.target}"
-    assert off.target is None or dist(off.target, (32.5, 26.0)) >= 6.0
+    assert on.army.attacking and dist(on.army.target, (32.5, 26.0)) < 6.0, f"intercept chose {on.army.target}"
+    assert off.army.target is None or dist(off.army.target, (32.5, 26.0)) >= 6.0
 
 
 def _repair_orders(world: World) -> int:
@@ -152,7 +152,7 @@ def test_a_repair_crew_mends_several_walls_at_once_and_under_fire_when_asked():
     barracks.hp = barracks.max_hp // 3
     _soldiers(world, 1, 2, (15.5, 17.5))  # at the tower's wall, far from the barracks
     solo = _brain()
-    solo._repairs(world)
+    solo.economy._repairs(world)
     assert _repair_orders(world) == 1, "the unmodified brain sends one hammer, to whichever wall is quiet"
 
     world2 = _world()
@@ -162,7 +162,7 @@ def test_a_repair_crew_mends_several_walls_at_once_and_under_fire_when_asked():
     barracks2.hp = barracks2.max_hp // 3
     _soldiers(world2, 1, 2, (15.5, 17.5))
     crew = _brain(repair_crew=3, repair_under_fire=True)
-    crew._repairs(world2)
+    crew.economy._repairs(world2)
     assert _repair_orders(world2) == 2, "both walls get a hammer, the tower's under fire included"
 
 
@@ -173,7 +173,7 @@ def test_queue_depth_lets_a_barracks_run_ahead_of_itself():
             world.place_building(0, BuildingType.FARM, (12 + 3 * i, 6))
         brain = _brain(queue_depth=depth)
         for _ in range(3):
-            brain._training(world)
+            brain.economy._training(world)
         barracks = next(b for b in world.player_buildings(0) if b.type is BuildingType.BARRACKS)
         return len(barracks.queue)
 
@@ -190,8 +190,8 @@ def test_without_siege_answer_the_same_withdrawal_asks_for_nothing():
     ours = _soldiers(world, 0, 4, (50.5, 30.5))
     world.reveal_all(0)
     brain = _brain(abort_ratio=1.5, attack_ratio=0.5)
-    brain.attacking = True
-    brain.target = (53.5, 37.5)
-    brain.commit_strength = strength(world, ours)
+    brain.army.attacking = True
+    brain.army.target = (53.5, 37.5)
+    brain.army.commit_strength = strength(world, ours)
     brain.think(world, random.Random(1))
-    assert not brain.attacking and not brain._siege_wanted(world)
+    assert not brain.army.attacking and not brain.army.siege_wanted(world)

@@ -15,7 +15,11 @@ from warband.sim.races import RACES
 from warband.sim.rules import BUILDINGS, PLAYABLE_UNITS, UPGRADES, BuildingType, Cost, UnitType, Upgrade
 from warband.sim.worker_knowledge import KnownMine
 
-from warband.brains.pro_core import _ProBrainCore
+from warband.brains.pro_intelligence import Intelligence
+from warband.brains.pro_assignments import WorkerErrands
+from warband.brains.pro_army import Army
+from warband.brains.pro_profiles import ProProfile
+from warband.brains.unique import Commander
 
 _MELEE_TYPES: Final = (UnitType.FOOTMAN, UnitType.KNIGHT)
 STRICT_SLACK: Final = 0.1
@@ -27,15 +31,57 @@ UNIQUE_CLAIM: Final = 0.1
 BUILD_MIN_DISTANCE: Final = 2
 BUILD_MAX_DISTANCE: Final = 12
 
-class _ProBrainEconomy(_ProBrainCore):
+class Economy:
     """Turn known resources into workers, buildings, soldiers and upgrades."""
+
+    def __init__(self, player: int, profile: ProProfile, intel: Intelligence,
+                 army: Army, workers: WorkerErrands, commander: Commander) -> None:
+        self.player = player
+        self.profile = profile
+        self.intel = intel
+        self.army = army
+        self.workers = workers
+        self.commander = commander
+        self._prospect_leg = 0
+        self.rush_drafted = 0
+        self.rush_over = False
+        self.lumber_short = 0
+        self._opening_next: BuildingType | None = None
+        self.unique_first: tuple[Upgrade, ...] = ()
+
+    def step(self, world: World, rng: random.Random) -> None:
+        """Spend in policy order: workers, rush, army, construction, research, repairs."""
+        self._economy(world)
+        self._tower_rush(world)
+        self._training(world)
+        self._construction(world, rng)
+        self._research(world)
+        self._repairs(world)
+
+    def recover(self, world: World) -> None:
+        """Nothing left but buildings: buy the cheapest body that can still work."""
+        buildings = world.player_buildings(self.player)
+        if any(b.done and b.queue for b in buildings):
+            return
+        recruit = world.recovery_recruit(self.player)
+        if recruit is None:
+            return
+        building, unit_type = recruit
+        if world.can_train(building, unit_type) is not None:
+            for b in buildings:
+                if not b.done:
+                    world.cancel_building(b.id)
+                elif b.research is not None:
+                    world.cancel_research(b.id)
+        world.train(building.id, unit_type)
+
 
     def _worked_mines(self, world: World) -> list[KnownMine]:
         """Deposits with gold still coming out of them inside reach of one of our halls."""
-        halls = self._halls(world)
+        halls = self.intel.halls(world)
         if not halls:
             return []
-        return [m for m in self._known_mines(world) if m.has_gold and min(dist(m.center, h.center) for h in halls) < 14.0]
+        return [m for m in self.intel.known_mines(world) if m.has_gold and min(dist(m.center, h.center) for h in halls) < 14.0]
 
     def _worker_target(self, world: World) -> int:
         """Peasants worth having: what the mines being worked can absorb.
@@ -70,13 +116,13 @@ class _ProBrainEconomy(_ProBrainCore):
             return
         found = self._expansion_site(world) is not None
         low = int_sum(mine.gold for mine in self._worked_mines(world)) < profile.prospect_floor
-        if self.prospector is not None and (found or not low or self.prospector not in world.units):
-            if self.prospector in world.units:
-                world.release_workers([self.prospector])
-            self.prospector = None
+        if self.workers.prospector is not None and (found or not low or self.workers.prospector not in world.units):
+            if self.workers.prospector in world.units:
+                world.release_workers([self.workers.prospector])
+            self.workers.prospector = None
         if found or not low:
             return
-        hall = self._hall(world)
+        hall = self.intel.hall(world)
         if hall is None:
             return
         places = [(world.width / 2, world.height / 2)] + sorted(
@@ -84,16 +130,16 @@ class _ProBrainEconomy(_ProBrainCore):
             key=lambda corner: dist(corner, hall.center))[1:]
         if self._prospect_leg >= 2 * len(places):
             return  # looked everywhere twice: there is nothing to find
-        if self.prospector is None:
-            spare = [p for p in self._free_peasants(world) if p.carrying is None and not p.hidden]
+        if self.workers.prospector is None:
+            spare = [p for p in self.workers.free(world, self.player) if p.carrying is None and not p.hidden]
             if len(spare) < 4:
                 return
-            self.prospector = min(spare, key=lambda p: dist(p.pos, places[0])).id
-        walker = world.units[self.prospector]
+            self.workers.prospector = min(spare, key=lambda p: dist(p.pos, places[0])).id
+        walker = world.units[self.workers.prospector]
         if not isinstance(walker.order, Move):
-            world.move([walker.id], self._standable(world, places[self._prospect_leg % len(places)]))
+            world.move([walker.id], self.intel.standable(world, places[self._prospect_leg % len(places)]))
             self._prospect_leg += 1
-            self.note(world, f"prospect: peasant {walker.id} looks for gold")
+            self.intel.note(world, f"prospect: peasant {walker.id} looks for gold")
 
     @staticmethod
     def _on_lumber(peasant: Unit) -> bool:
@@ -120,9 +166,9 @@ class _ProBrainEconomy(_ProBrainCore):
         lacked. Above ``lumber_stock`` all but one chopper go back to the mine.
         """
         player = world.players[self.player]
-        peasants = [p for p in self._peasants(world)
-                    if not p.hidden and not isinstance(p.order, (Build, Repair, Salvage)) and p.id not in self.scouts
-                    and not self._answering(p)]
+        peasants = [p for p in self.intel.peasants(world)
+                    if not p.hidden and not isinstance(p.order, (Build, Repair, Salvage)) and p.id not in self.workers.scouts
+                    and not self.workers.answering(p.id)]
         if player.lumber >= self.profile.lumber_stock:
             # Let go of the axe and let the model's own policy place them. Naming a
             # mine here crashed a league sixty matches in: the brain chose from the
@@ -156,12 +202,12 @@ class _ProBrainEconomy(_ProBrainCore):
         damaged = sorted((b for b in world.player_buildings(self.player, done=True)
                           if b.hp < b.max_hp * profile.repair_from and b.info.mine is None),
                          key=lambda b: b.hp / b.max_hp)
-        peasants = self._peasants(world)
+        peasants = self.intel.peasants(world)
         mending = int_sum(1 for p in peasants if isinstance(p.order, Repair))
         if not damaged or mending >= profile.repair_crew:
             return
         spare = [p for p in peasants if not p.hidden and p.carrying is None and not isinstance(p.order, Build)
-                 and not isinstance(p.order, Repair) and not self._answering(p)]
+                 and not isinstance(p.order, Repair) and not self.workers.answering(p.id)]
         for target in damaged:
             if mending >= profile.repair_crew or not spare:
                 return
@@ -180,12 +226,12 @@ class _ProBrainEconomy(_ProBrainCore):
         """What to put up next, best first. Nothing here waits on a round number of gold."""
         player = self.player
         profile = self.profile
-        halls = self._halls(world)
+        halls = self.intel.halls(world)
         hall = halls[0] if halls else None
-        peasants = self._peasants(world)
+        peasants = self.intel.peasants(world)
         fallback = peasants[0].pos if peasants else (world.width / 2, world.height / 2)
         if hall is None:
-            mines = self._known_mines(world)
+            mines = self.intel.known_mines(world)
             nearest = min(mines, key=lambda m: dist(m.center, fallback)) if mines else None
             return [(BuildingType.TOWN_HALL, nearest.center if nearest is not None else fallback)]
 
@@ -217,7 +263,7 @@ class _ProBrainEconomy(_ProBrainCore):
             needs = BUILDINGS[step].requires
             if have(step) + begun.count(step) >= listed[step] or (needs is not None and not have(needs)):
                 continue  # up already, or waiting for what it needs: the next of the opening goes up meanwhile
-            where = self._front_point(world, hall) if step is BuildingType.TOWER else anchor
+            where = self.intel.front_point(world, hall) if step is BuildingType.TOWER else anchor
             if step is BuildingType.TOWN_HALL:
                 site = self._expansion_site(world)
                 if site is None:
@@ -240,7 +286,7 @@ class _ProBrainEconomy(_ProBrainCore):
         if count(BuildingType.TOWER) < profile.towers_early:
             # A tower is two footmen's worth of fight for less than one footman's
             # gold, for as long as the enemy comes to it — and Master comes to it.
-            wishes.append((BuildingType.TOWER, self._front_point(world, hall)))
+            wishes.append((BuildingType.TOWER, self.intel.front_point(world, hall)))
         if count(BuildingType.LUMBER_MILL) < 1:
             # Beside the hall, where the site search puts it. Siting it at the
             # edge of the nearest wood measured level (52–56% against Master,
@@ -248,7 +294,7 @@ class _ProBrainEconomy(_ProBrainCore):
             # every start, and a second mill at the wood front no better.
             wishes.append((BuildingType.LUMBER_MILL, anchor))
         # The race's own unit is the answer (WB-068): the building that trains it, or the one that building needs.
-        own = self.commander.building(world, player, self.remembered()) if self.profile.unique else None
+        own = self.commander.building(world, player, self.intel.remembered()) if self.profile.unique else None
         if own is not None and count(own) < 1:
             needs = BUILDINGS[own].requires
             wishes.append((own if needs is None or have(needs) else needs, anchor))
@@ -257,7 +303,7 @@ class _ProBrainEconomy(_ProBrainCore):
             wishes.extend(self._magic_wishes(world, have, count, anchor))
         # A push the towers turned back wants its catapults now, not once production saturates: the smith
         # and then the workshop jump the optional queue while the want stands (``siege_answer``).
-        if self._siege_wanted(world):
+        if self.army.siege_wanted(world):
             if not have(BuildingType.BLACKSMITH):
                 wishes.append((BuildingType.BLACKSMITH, anchor))
             elif count(BuildingType.WORKSHOP) < 1:
@@ -301,8 +347,8 @@ class _ProBrainEconomy(_ProBrainCore):
             wishes.append((BuildingType.WORKSHOP, anchor))
         if profile.clerics and count(BuildingType.CHURCH) < 1:
             wishes.append((BuildingType.CHURCH, anchor))
-        if count(BuildingType.TOWER) < profile.tower_count and len(self._army(world)) >= 4:
-            wishes.append((BuildingType.TOWER, self._front_point(world, hall)))
+        if count(BuildingType.TOWER) < profile.tower_count and len(self.army.fit_units(world)) >= 4:
+            wishes.append((BuildingType.TOWER, self.intel.front_point(world, hall)))
         return wishes
 
     def _magic_wishes(self, world: World, have: Callable[[BuildingType], int], count: Callable[[BuildingType], int],
@@ -336,7 +382,7 @@ class _ProBrainEconomy(_ProBrainCore):
         # rests on one is exactly an economy that has to go and find another mine.
         if int_sum(mine.gold for mine in mines) < self.profile.mine_floor * len(mines):
             return True
-        miners = int_sum(1 for p in self._peasants(world)
+        miners = int_sum(1 for p in self.intel.peasants(world)
                          if p.inside is not None or any(isinstance(o, Harvest) and isinstance(o.target, int) for o in p.orders))
         return miners >= int_sum(mine.slots for mine in mines)
 
@@ -361,18 +407,18 @@ class _ProBrainEconomy(_ProBrainCore):
         A lode pays half as fast again as a mine and is taken over one that is not two thirds of its walk; a seam
         pays a fifth of a mine's trip and never runs out, so it is the expansion to take when the mines are drunk
         or claimed, not the one to take first (:func:`~warband.brains.ai.hall_first`)."""
-        halls = self._halls(world)
+        halls = self.intel.halls(world)
         if not halls:
             return None
         claimed = [h.center for h in world.player_buildings(self.player, BuildingType.TOWN_HALL)]
         best, best_rank = None, (True, math.inf)
-        for mine in self._known_mines(world):
+        for mine in self.intel.known_mines(world):
             if not mine.has_gold or min(dist(mine.center, c) for c in claimed) < 12.0:
                 continue
             if guarded(world, self.player, mine.center):
                 continue  # a deposit with a live camp beside it is not an expansion; clear it first
             away = min(dist(mine.center, h.center) for h in halls)
-            enemy_halls = [r.center for r in self._known_enemy_buildings(world)]
+            enemy_halls = [r.center for r in self.intel.known_buildings(world)]
             if enemy_halls and min(dist(mine.center, c) for c in enemy_halls) < away:
                 continue  # not ours to take yet
             rank = hall_first(mine, away)
@@ -389,7 +435,7 @@ class _ProBrainEconomy(_ProBrainCore):
         order re-gives it every pass — which sends peasant after peasant off the
         gold to start the same barracks in four different places.
         """
-        return [p.order for p in self._peasants(world) if isinstance(p.order, Build)]
+        return [p.order for p in self.intel.peasants(world) if isinstance(p.order, Build)]
 
     def _shortfall(self, world: World, wishes: Sequence[tuple[BuildingType, Point]]) -> int:
         """The lumber the wished-for buildings lack while the gold for them is in the bank, the list walked in order
@@ -420,8 +466,8 @@ class _ProBrainEconomy(_ProBrainCore):
         free = self.profile.max_sites - len(sites) - int_sum(1 for o in self._ordered(world) if o.type not in magic.BUILDINGS)
         if free <= 0 and not any(wanted in magic.BUILDINGS for wanted, _anchor in wishes):
             return
-        builders = [p for p in self._peasants(world)
-                    if not p.hidden and not isinstance(p.order, (Build, Repair, Salvage)) and not self._answering(p)]
+        builders = [p for p in self.intel.peasants(world)
+                    if not p.hidden and not isinstance(p.order, (Build, Repair, Salvage)) and not self.workers.answering(p.id)]
         if not builders:
             return
         # Ground already spoken for by an order in flight: can_place cannot know
@@ -447,7 +493,7 @@ class _ProBrainEconomy(_ProBrainCore):
             builders.remove(builder)
             if wanted not in magic.BUILDINGS:
                 free -= 1
-            self.note(world, f"build {wanted.value} at {site}")
+            self.intel.note(world, f"build {wanted.value} at {site}")
 
     def _site(self, world: World, building_type: BuildingType, anchor: Point, rng: random.Random,
               taken: Sequence[tuple[Pos, int]] = ()) -> Pos | None:
@@ -462,12 +508,12 @@ class _ProBrainEconomy(_ProBrainCore):
         builder is still walking to its site. A build order is paid at the site, and a bank spent during the
         walk drops it there: a quarter of Master's orders died so before this held them (WB-043)."""
         gold = lumber = 0
-        for peasant in self._peasants(world):
+        for peasant in self.intel.peasants(world):
             order = peasant.order
-            if isinstance(order, Build) and order.building is None and (self.profile.hold_builds or peasant.id in self.rushers):
+            if isinstance(order, Build) and order.building is None and (self.profile.hold_builds or peasant.id in self.workers.rushers):
                 cost = BUILDINGS[order.type].cost
                 gold, lumber = gold + cost.gold, lumber + cost.lumber
-            elif peasant.id in self.rushers and peasant.constructing is None and not isinstance(order, Build):
+            elif peasant.id in self.workers.rushers and peasant.constructing is None and not isinstance(order, Build):
                 cost = BUILDINGS[BuildingType.TOWER].cost
                 gold, lumber = gold + cost.gold, lumber + cost.lumber
         for saved in self._saving_for(world):
@@ -529,8 +575,8 @@ class _ProBrainEconomy(_ProBrainCore):
     def _enemy_mine_guess(self, world: World) -> Point | None:
         """Where the one opponent's main mine must be: a two-seat map is the point reflection of itself
         through the centre, so it is the reflection of our own main mine."""
-        hall = self._hall(world)
-        mines = self._known_mines(world)
+        hall = self.intel.hall(world)
+        mines = self.intel.known_mines(world)
         if hall is None or not mines or world.seats != 2:
             return None
         ours = min(mines, key=lambda m: dist((m.x + m.size / 2, m.y + m.size / 2), hall.center))
@@ -538,12 +584,12 @@ class _ProBrainEconomy(_ProBrainCore):
 
     def _rush_mine(self, world: World, guess: Point) -> KnownMine | None:
         """The enemy's main mine, once seen."""
-        seen = [m for m in self._known_mines(world) if dist((m.x + m.size / 2, m.y + m.size / 2), guess) < 3]
+        seen = [m for m in self.intel.known_mines(world) if dist((m.x + m.size / 2, m.y + m.size / 2), guess) < 3]
         return seen[0] if seen else None
 
     def _enemy_start(self, world: World) -> Point | None:
         """Where the one opponent started: the point reflection of our own start through the centre."""
-        hall = self._hall(world)
+        hall = self.intel.hall(world)
         if hall is None or world.seats != 2:
             return None
         return (world.width - hall.center[0], world.height - hall.center[1])
@@ -588,28 +634,28 @@ class _ProBrainEconomy(_ProBrainCore):
                                         if rect_gap(b.center, mine.rect) <= 4.5) >= profile.rush_towers:
             self._end_rush(world)
             return
-        self.rushers = [i for i in self.rushers if i in world.units]
-        while len(self.rushers) < profile.rush_builders and self.rush_drafted < profile.rush_tries:
-            spare = [p for p in self._peasants(world) if not p.hidden and p.id not in self.rushers
-                     and not isinstance(p.order, (Build, Repair, Salvage)) and p.constructing is None and not self._answering(p)]
+        self.workers.rushers = [i for i in self.workers.rushers if i in world.units]
+        while len(self.workers.rushers) < profile.rush_builders and self.rush_drafted < profile.rush_tries:
+            spare = [p for p in self.intel.peasants(world) if not p.hidden and p.id not in self.workers.rushers
+                     and not isinstance(p.order, (Build, Repair, Salvage)) and p.constructing is None and not self.workers.answering(p.id)]
             if not spare:
                 break
             drafted = min(spare, key=lambda p: dist(p.pos, start))
-            self.rushers.append(drafted.id)
+            self.workers.rushers.append(drafted.id)
             self.rush_drafted += 1
-            self.note(world, f"rush: drafted peasant {drafted.id}")
-        if not self.rushers:
+            self.intel.note(world, f"rush: drafted peasant {drafted.id}")
+        if not self.workers.rushers:
             if self.rush_drafted >= profile.rush_tries:
                 self._end_rush(world)  # every try spent and none of them left alive
             return  # nobody to spare this tick (all of them building, mending or answering a raid): look again next one
-        post = self._standable(world, self._behind(guess, start, 4.0))
-        for rusher in [world.units[i] for i in self.rushers]:
+        post = self.intel.standable(world, self._behind(guess, start, 4.0))
+        for rusher in [world.units[i] for i in self.workers.rushers]:
             if rusher.constructing is not None or isinstance(rusher.order, Build):
                 continue
             site = self._rush_site(world, mine, start) if mine is not None and barracks else None
             if site is not None and world.can_afford(self.player, BUILDINGS[BuildingType.TOWER].cost) is None:
                 world.build(rusher.id, BuildingType.TOWER, site)
-                self.note(world, f"rush: tower at {site}")
+                self.intel.note(world, f"rush: tower at {site}")
             elif dist(rusher.pos, post) > 1.5:
                 if not rusher.orders or rusher.path_goal is None:
                     world.move([rusher.id], post)
@@ -619,15 +665,14 @@ class _ProBrainEconomy(_ProBrainCore):
     def _end_rush(self, world: World) -> None:
         """The rush is done or given up: its builders go back to work and its price is no longer held."""
         self.rush_over = True
-        self.rushers = []
-        self.note(world, "rush: over")
+        self.workers.rushers = []
+        self.intel.note(world, "rush: over")
 
     def _training(self, world: World) -> None:
-        if self._siege_by and not self._siege_wanted(world):
-            self._siege_by = 0.0  # fielded or forgotten: _choose_unit reads the flag, not the clock
+        self.army.review_recruitment(world)
         player = self.player
-        army = self._army(world)
-        halls = self._halls(world)
+        army = self.army.fit_units(world)
+        halls = self.intel.halls(world)
         # Peasants come first only while there is something to defend them with.
         # Raiders killing workers is exactly the moment the hall wants to replace
         # them, and replacing them is what pays for the soldiers that would stop
@@ -640,13 +685,13 @@ class _ProBrainEconomy(_ProBrainCore):
         # spendable, the Keep goes first -- its hall trains no more peasants and its price is held for the pass -- and not
         # before: held while the army was still being paid for, it cost the orcs more matches than their sappers won.
         self.unique_first = ()
-        first = self.commander.waits_for(world, player, self.remembered()) if self.profile.unique else ()
+        first = self.commander.waits_for(world, player, self.intel.remembered()) if self.profile.unique else ()
         if first and all(self._affordable(world, UPGRADES[u].cost) for u in first):
             self.unique_first = first
         free = self.commander.kept_free(world, player, self.unique_first)
         if not rebuilding:
             target = self._worker_target(world)
-            peasants = len(self._peasants(world))
+            peasants = len(self.intel.peasants(world))
             for hall in halls:
                 if peasants + int_sum(len(h.queue) for h in halls) >= target:
                     break
@@ -657,7 +702,7 @@ class _ProBrainEconomy(_ProBrainCore):
         counts = {t: int_sum(1 for u in army if u.type is t) for t in PLAYABLE_UNITS}
         # The eyes are no share of the army: the one flying machine a scouting posture keeps is counted apart, those in
         # training with it, or a workshop would start another while the first is still on the stocks.
-        counts[UnitType.FLYING_MACHINE] = (int_sum(1 for u in self._units(world) if u.type is UnitType.FLYING_MACHINE)
+        counts[UnitType.FLYING_MACHINE] = (int_sum(1 for u in self.intel.units(world) if u.type is UnitType.FLYING_MACHINE)
                                            + int_sum(b.queue.count(UnitType.FLYING_MACHINE) for b in world.player_buildings(player)))
         targets = self._army_targets(world)
         wishes: list[tuple[float, UnitType, Building]] = []
@@ -665,10 +710,10 @@ class _ProBrainEconomy(_ProBrainCore):
             if not building.info.trains or building.type is BuildingType.TOWN_HALL:
                 continue
             if building.rally is None and halls:
-                world.set_rally(building.id, self._front_point(world, halls[0]))
+                world.set_rally(building.id, self.intel.front_point(world, halls[0]))
             if building.research is not None or len(building.queue) >= self.profile.queue_depth:
                 continue
-            own = self.commander.wish(world, player, building, self.remembered()) if self.profile.unique else None
+            own = self.commander.wish(world, player, building, self.intel.remembered()) if self.profile.unique else None
             wish = (UNIQUE_CLAIM, own) if own is not None else self._choose_unit(building, counts, targets)
             if wish is not None:
                 wishes.append((*wish, building))
@@ -706,7 +751,7 @@ class _ProBrainEconomy(_ProBrainCore):
         total = plain_sum(plan.values())
         if total > 0:
             plan = {t: share / total for t, share in plan.items()}
-        seen = self.remembered()
+        seen = self.intel.remembered()
         archers = seen.get(UnitType.ARCHER, 0.0)
         knights = seen.get(UnitType.KNIGHT, 0.0)
         melee = plain_sum(seen.get(t, 0.0) for t in _MELEE_TYPES)
@@ -731,7 +776,7 @@ class _ProBrainEconomy(_ProBrainCore):
         A scouting posture's workshop makes its one flying machine before anything else."""
         if building.type is BuildingType.WORKSHOP and self.profile.scout and counts.get(UnitType.FLYING_MACHINE, 0) < 1:
             return math.inf, UnitType.FLYING_MACHINE
-        if (building.type is BuildingType.WORKSHOP and self._siege_by > 0.0
+        if (building.type is BuildingType.WORKSHOP and self.army.siege_requested
                 and counts.get(UnitType.CATAPULT, 0) < self.profile.siege_answer):
             return 2.0, UnitType.CATAPULT  # the siege answer outranks the plan's shares until it is fielded
         soldiers = int_sum(n for t, n in counts.items() if t is not UnitType.FLYING_MACHINE)

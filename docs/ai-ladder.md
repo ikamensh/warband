@@ -595,6 +595,43 @@ the five left are standoffs with both sides alive, not a lost peasant. The
 difficulty ladder above was measured again with the hunt and came out the
 same to the point: its matches are settled before a hunt starts.
 
+### Stronger brain ownership
+
+`ProBrain` schedules three independent modules: `Intelligence` remembers only
+observed opponents and finds safe map locations; `Economy` owns spending,
+construction and workforce decisions; `Army` owns tactical commitments and
+recruitment requests. A learned stance changes their policy through
+`ProBrain.set_profile`, retaining their separate match memories. The former
+core/economy/brain inheritance chain is gone.
+
+`Army.assignments` is the sole soldier roster. A soldier belongs to the main
+force, home guard, raid, hunt, commander, camp expedition, escape or healing
+at one time. Transferring it ends its old duty immediately. Hunt squares and
+commander targets remember an errand's route and quarry; they cannot grant
+ownership. Dead soldiers and finished escape walks are released before any
+new decisions. Worker scouts, prospectors, rush builders and peasants answering
+a rush share `WorkerErrands`; they are worker reservations, rather than army
+membership.
+
+This corrects a concrete overlap in the captured Forest1003 position. With
+raiding enabled and one detached raider, knight 31 raids while knight 29 is in
+the committed camp expedition. After knight 31 dies, the old raid policy drafts
+knight 29 again without releasing its expedition membership. The new roster
+keeps knight 29 on the camp and waits for an available replacement. The exact
+captured terrain and positions remain in `test_creeping_strategy.forest_expedition`;
+`test_army_assignments.py` checks this decision through `think` and also follows
+a raider through withdrawal, recovery and death. A blind push yielding to a camp
+also ends its old push target, so seeing a rival later cannot silently reclaim
+those soldiers. A tower defense interrupts a camp through the same transition
+as a rival army: it ends the expedition, records the retry, and walks its members
+out under the escape duty while available defenders strike the tower. A young
+frame is priced against those available defenders before interrupting the camp;
+escaping expedition members cannot fund that strike. Disabling camp policy
+while an expedition is live, or aborting for timeout or losses, uses the same
+safe withdrawal, replacing its old camp orders before clearing the commitment. The tests exercise these transitions
+on the same captured Forest1003 geometry. These are
+ownership corrections; no claim about playing strength follows from them.
+
 ### Each race's own unit (WB-068)
 
 Both brain families (Medium's `Brain`, and `ProBrain` for Hard, Master and the bred postures) hand their race's own

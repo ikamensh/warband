@@ -186,7 +186,7 @@ def test_a_sensible_pvp_or_defense_assignment_is_not_an_ignored_camp(duty):
     world.time = 700
     if duty == "pvp":
         brains[0].think(world, random.Random(11))
-        assert brains[0].attacking
+        assert brains[0].army.attacking
         camp = camps.place_encounter(world, (24, 20), "wolf_den")
     elif duty == "defense":
         world.spawn_unit(1, UnitType.FOOTMAN, (8.5, 7.5))
@@ -256,7 +256,7 @@ def test_fresh_recruits_do_not_make_a_failed_committed_expedition_ready():
     world, camp, army, brains = readiness_world()
     world.time = 180
     brains[0].think(world, random.Random(11))
-    assert brains[0].creeping == camp.lair
+    assert brains[0].army.creeping == camp.lair
     for unit in army:
         unit.hp = 0
     world.step()

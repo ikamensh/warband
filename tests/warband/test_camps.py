@@ -105,8 +105,8 @@ def test_the_brains_hunt_rivals_not_creatures() -> None:
     assert brain._enemy_targets(world) == [rival.pos]
     assert brain._enemy_soldiers(world) == 0, "the troll and the wolf are no enemy soldiers"
     pro = ProBrain(0, PRO)
-    assert [u.id for u in pro._enemies(world)] == [rival.id]
-    assert pro._attack_targets(world) == [rival.pos]
+    assert [u.id for u in pro.intel.enemies(world)] == [rival.id]
+    assert pro.army._attack_targets(world) == [rival.pos]
 
 
 # -- Rousing, leashing, resetting -------------------------------------------------------

@@ -5,6 +5,8 @@ import random
 from pathlib import Path
 
 import pytest
+from tests.warband.brain_helpers import members, military
+from warband.brains.pro_assignments import Duty
 
 from warband.brains.ai import Brain
 from warband.brains.pro_ai import ProBrain
@@ -39,12 +41,12 @@ def test_scattered_distant_strength_does_not_send_a_lone_archer_ahead(kind):
     archer = world.units[1039]
     assert not (isinstance(archer.order, AttackMove)
                 and dist(archer.order.target, camps.centre(world, camp)) < 6)
-    assert archer.id not in brain.creep_party
-    assert 130 not in brain.creep_party, "the real8HP footman is not prepared for another fight"
+    assert archer.id not in members(brain, Duty.CREEP)
+    assert 130 not in members(brain, Duty.CREEP), "the real8HP footman is not prepared for another fight"
     # The force already together may still march: distant isolated arrivals
     # must not make a sufficient healthy cluster idle indefinitely.
-    assert brain.creeping == camp.lair
-    assert len(brain.creep_party) >= 6
+    assert military(brain).creeping == camp.lair
+    assert len(members(brain, Duty.CREEP)) >= 6
     for _ in range(round(12 / SIM_DT)):
         world.step()
         world.take_events()
