@@ -37,10 +37,13 @@ def test_shipped_smoke_accepts_authority_movement_and_seat_rejoin():
 
 
 NATIVE_JOURNEY = """\
+import faulthandler
 import importlib.util
 import json
 import sys
 from pathlib import Path
+print("[DEBUG-native-timeout] traceback timer armed", flush=True)
+faulthandler.dump_traceback_later(90, repeat=True)
 root, check, frames, report, endpoint = sys.argv[1:6]
 sys.path.insert(0, root)
 spec = importlib.util.spec_from_file_location("package_check", check)
@@ -49,6 +52,7 @@ spec.loader.exec_module(checker)
 info = {"source_commit": "source-check", "version": "0.0-source",
         "executable": "source-native-check", "executable_sha256": "source"}
 result = checker.native_journey(Path(frames), endpoint, info)
+faulthandler.cancel_dump_traceback_later()
 Path(report).write_text(json.dumps(result, indent=2, sort_keys=True) + "\\n", encoding="utf-8")
 """
 
