@@ -8,6 +8,16 @@ from warband.story.mission_scene import build_world
 from warband.story.new_campaign import CAMPAIGN
 
 
+def test_open_release_accepts_an_open_hand_already_eliminated() -> None:
+    """A side already out before release cannot be asked to resign a second time."""
+    run = build_world(CAMPAIGN.mission("undertow_maw"), flags={})
+    run.world.resign(1)  # Public faction withdrawal models the same eliminated-side state as total defeat.
+    run.world.move([run.get("issa")], tuple(run.get("relief_sluice")))
+    solver.play_until(run, lambda r: "pylons_down" in r.fired, seconds=30, what="release after faction defeat")
+    assert not run.units(1) and not run.world.players[1].alive
+    assert run.units(2), "the bloom remains an actual concluding encounter"
+
+
 @pytest.mark.slow
 def test_open_cannot_finish_until_issa_operates_the_corrected_relief_sluice() -> None:
     """Slow: destroy all three pylons with real orders, then operate the surveyed bypass.

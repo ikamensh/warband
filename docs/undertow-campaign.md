@@ -9,7 +9,10 @@ World and story design: `docs/campaign-setting.md`. This note records what shipp
 Each playable keeper has a named map tag and an authored portrait in dialogue, the selection
 card and the army grid. **F3** selects and centres the current keeper; that link follows a rescue
 or saved mission. Detailed orders appear in dialogue; the HUD keeps the objectives compact. The first ending act
-commits its course; the briefing names these acts before play begins.
+commits its course; the briefing names these acts before play begins. **J** opens the saved
+mission journal from play or the pause menu: reread the briefing and witnessed dialogue or
+chosen answers without replaying a decision. Hover a minimap diamond to read its charted name;
+left-click looks there, right-click sends the selected units.
 
 ## The missions
 
@@ -50,6 +53,19 @@ leaving at the result screen never skips one.
   also capped → half the gold and no blooms. Capped alone → quiet rifts.
 - Starting supply (hall + up to six farms) covers every combination of these arrivals; a test
   audits the combinations.
+
+## Delivery
+
+Open **Campaign** from the title (A), or run `uv run warband --campaign`.
+`uv run warband --mission list` lists both campaigns; `--mission undertow_maw` starts that map
+with saved choices. The title’s Continue and Load game discover both independent campaign
+autosaves. Manual save browsers cannot overwrite those automatic slots.
+
+The frozen native acceptance gate enters The Undertow through the title, displays its cover
+and five authored keeper portraits, renders every mission’s objectives and landmarks, and
+saves then resumes each mission through the ordinary Load controls. Its receipt requires
+`native_campaign` and `campaign_autosave_load`; source playtests alone cannot satisfy those
+packaged delivery checks.
 
 ## How it is built, and how it is proven
 

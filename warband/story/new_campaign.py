@@ -982,7 +982,8 @@ def _maw_final_sealed(run: Run) -> None:
 
 
 def _maw_opened(run: Run) -> None:
-    run.world.resign(1)
+    if run.world.players[1].alive:
+        run.world.resign(1)
     run.world.take_events()
     for i in range(3):
         _landmark_state(run, f"seal_pylon_{i + 1}", "ruined")
@@ -1032,13 +1033,13 @@ MAW = Mission(
                   lambda run: run.get("maw_resolved") == "sealed", optional=True),
         Objective("open", "OPEN: sluice, three pylons, bloom",
                   lambda run: run.get("maw_resolved") == "open", optional=True),
-        Objective("ground", f"GROUND: three vaults, {GROUND_AETHER} aether + surge",
+        Objective("ground", f"GROUND: 3 vaults, {GROUND_AETHER} aether + surge",
                   lambda run: run.get("maw_resolved") == "ground", optional=True),
         Objective("tower_spared", "Spare Sella's mage tower", lambda run: bool(run.get("maw_resolved"))
-                  and run.get("sella_tower") in run.world.buildings, optional=True),
+                  and run.get("sella_tower") in run.world.buildings,
+                  shown=lambda run: bool(run.get("ending_path")), optional=True),
         Objective("relief_sluice", "Issa operates the Relief Sluice", lambda run: bool(run.get("maw_relief_open")),
                   shown=lambda run: run.get("ending_path") == "open", optional=True),
-        Objective("ending", "Complete the chosen works", lambda run: bool(run.get("maw_resolved"))),
         Objective("issa", "Issa must survive", lambda run: bool(run.get("maw_resolved")),
                   failed=lambda run: run.unit("issa") is None, optional=True),
         Objective("hall", "Your Town Hall must stand", lambda run: bool(run.get("maw_resolved")),
