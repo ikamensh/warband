@@ -113,11 +113,11 @@ def test_observe_gives_every_seat_a_brain_and_no_human() -> None:
 def test_watching_is_unrated_unrecorded_and_unsaved(watch) -> None:
     """No profile, no replay, no tutorial, no autosave under a watcher."""
     _game, scene = watch
-    assert scene.ranked is False
-    assert scene.replay is None
-    assert scene.profile is None
+    assert scene.record.ranked is False
+    assert scene.record.replay is None
+    assert scene.record.profile is None
     assert scene.tutorial is None
-    assert scene.autosave_at == math.inf
+    assert scene.record.autosave_at == math.inf
     assert scene.leaving() is None
     assert scene.conclude("left") is None
 
@@ -137,8 +137,8 @@ def test_new_game_observe_flow_keeps_settings(game) -> None:
     assert "you watch" in " ".join(texts(game))
     click_label(game, "Watch")
     scene = game.scene
-    assert scene.seed == seed
-    assert scene.difficulty is Difficulty.HARD
+    assert scene.record.seed == seed
+    assert scene.record.difficulty is Difficulty.HARD
     assert scene.world.seats == 2
     assert scene.world.players[0].race is Race.ORC
     press(game, "pageup")

@@ -66,6 +66,10 @@ recording — it drifts only if the game's rules have changed since.
 
 ## Storage
 
+`ui.match_record.MatchRecord` owns the local recording, rating, high-score and
+autosave lifecycle. [Match ownership](match-execution.md) describes its interface
+and how it stays separate from simulation execution and scene presentation.
+
 Everything of the player's lives under `~/.warband` (`%USERPROFILE%\.warband`
 on Windows), the same folder for a source checkout and the installed app
 whatever directory the game is started from (`Game.data_dir`, derived from

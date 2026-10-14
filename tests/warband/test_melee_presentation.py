@@ -348,7 +348,7 @@ def test_recorded_contact_survives_replay_speed_and_pause(game, faster):
     from warband.ui.replay_scene import ReplayScene
 
     scene, attacker, victim = duel(game, unit_type=UnitType.KNIGHT)
-    replay = Replay.begin(scene.world, seed=scene.seed, difficulty=scene.difficulty, human=scene.human)
+    replay = Replay.begin(scene.world, seed=scene.record.seed, difficulty=scene.record.difficulty, human=scene.human)
     scene.world.attack([attacker.id], victim.id)
     for _ in range(30):  # the fight is recorded in tenths; the replay is watched frame by frame
         game.tick(0.1)

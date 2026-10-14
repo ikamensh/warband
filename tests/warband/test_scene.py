@@ -586,7 +586,7 @@ def test_title_continue_loads_the_saved_match(game) -> None:
     game.tick(1 / 60)
     press(game, "c")
     scene = game.scene
-    assert isinstance(scene, GameScene) and scene.seed == 11 and scene.player.gold == 4242 and scene.world.width == 48
+    assert isinstance(scene, GameScene) and scene.record.seed == 11 and scene.player.gold == 4242 and scene.world.width == 48
 
 
 # -- Content through the UI ------------------------------------------------------------------
@@ -655,7 +655,7 @@ def test_the_title_offers_every_difficulty_and_saves_keep_it(game) -> None:
         assert game.scene.difficulty is difficulty
     press(game, "return")
     scene = game.scene
-    assert isinstance(scene, GameScene) and scene.difficulty is Difficulty.MASTER
+    assert isinstance(scene, GameScene) and scene.record.difficulty is Difficulty.MASTER
     # Master is a ProBrain, not a Brain with a profile.
     assert Difficulty.MASTER not in PROFILES
     assert all(isinstance(b, ProBrain) for b in scene.execution.brains)
@@ -663,7 +663,7 @@ def test_the_title_offers_every_difficulty_and_saves_keep_it(game) -> None:
     game.clear_and_push(TitleScene())
     game.tick(1 / 60)
     press(game, "c")
-    assert game.scene.difficulty is Difficulty.MASTER
+    assert game.scene.record.difficulty is Difficulty.MASTER
 
 
 def test_double_click_and_ctrl_click_select_every_unit_of_a_type_on_screen(play) -> None:

@@ -50,14 +50,14 @@ def test_a_victory_is_rated_and_its_replay_kept(play):
     world.resign(1)  # the computer concedes: an order, so the replay carries it
     tick(game, 0.5)
     assert isinstance(game.scene, GameOverScene) and world.winner == scene.human
-    change = scene.rating_change
+    change = scene.record.rating_change
     assert change is not None and change.delta > 0 and change.result.outcome == "victory" and change.result.weight == 1.0
     assert any(t.startswith("Rating 1000 →") and "replay saved" in t for t in texts(game))
     profile = Profile.load(game.data_dir)
     assert profile.counts()["victories"] == 1 and profile.rating == change.after
     store = ReplayStore(game.data_dir)
-    assert store.exists(scene.run_id)
-    playback = Playback(store.load(scene.run_id))
+    assert store.exists(scene.record.run_id)
+    playback = Playback(store.load(scene.record.run_id))
     playback.run()
     assert playback.faithful and playback.world.winner == scene.human
     assert playback.world.players[scene.human].name == "Tester"
@@ -106,7 +106,7 @@ def test_resigning_on_even_terms_asks_first_and_counts_a_fifth_of_a_loss(play):
     press(game, "return")
     tick(game, 0.5)
     assert isinstance(game.scene, GameOverScene) and not scene.player.alive
-    change = scene.rating_change
+    change = scene.record.rating_change
     assert change is not None and change.result.outcome == "resigned" and change.result.weight == EARLY_EXIT_WEIGHT
     assert change.delta < 0 and "no enemy at the gates" in change.result.reason
     assert Profile.load(game.data_dir).counts() == {"victories": 0, "defeats": 0, "left": 1}
@@ -124,7 +124,7 @@ def test_resigning_under_attack_costs_a_full_loss(play):
     press(game, "return")
     tick(game, 0.5)
     assert isinstance(game.scene, GameOverScene)
-    assert scene.rating_change.result.weight == 1.0
+    assert scene.record.rating_change.result.weight == 1.0
 
 
 def test_leaving_for_the_title_is_recorded_as_a_loss_and_the_replay_kept(play):
@@ -137,8 +137,8 @@ def test_leaving_for_the_title_is_recorded_as_a_loss_and_the_replay_kept(play):
     assert isinstance(game.scene, TitleScene)
     profile = Profile.load(game.data_dir)
     assert profile.counts()["left"] == 1 and profile.results[-1].outcome == "left"
-    assert ReplayStore(game.data_dir).exists(scene.run_id)
-    replay = ReplayStore(game.data_dir).load(scene.run_id)
+    assert ReplayStore(game.data_dir).exists(scene.record.run_id)
+    replay = ReplayStore(game.data_dir).load(scene.record.run_id)
     assert replay.end["outcome"] == "left"
 
 
@@ -164,7 +164,7 @@ def test_a_loaded_save_goes_on_recording_and_replays_faithfully(play):
     world.resign(1)  # the computer concedes: an order, so the replay carries it
     tick(game, 0.5)
     assert isinstance(game.scene, GameOverScene)
-    replay = ReplayStore(game.data_dir).load(scene.run_id)
+    replay = ReplayStore(game.data_dir).load(scene.record.run_id)
     assert [row[1] for row in replay.orders].count("reload") == 1
     playback = Playback(replay)
     playback.run()
@@ -185,7 +185,7 @@ def test_a_finished_save_reopened_does_not_rate_the_match_twice(play):
     game.scene.world.resign(1)
     tick(game, 0.5)
     assert isinstance(game.scene, GameOverScene)
-    assert game.scene.game_scene.rating_change.replaced
+    assert game.scene.game_scene.record.rating_change.replaced
     again = Profile.load(game.data_dir)
     assert len(again.results) == len(first.results) == 1
 
@@ -201,8 +201,8 @@ def test_loading_another_matchs_save_asks_first_and_counts_as_leaving(play):
     press(game, "f9")
     assert isinstance(game.scene, LeaveScene)
     press(game, "return")
-    assert game.scene.run_id == first.run_id
-    assert [(result.run_id, result.outcome) for result in Profile.load(game.data_dir).results] == [(second.run_id, "left")]
+    assert game.scene.record.run_id == first.record.run_id
+    assert [(result.run_id, result.outcome) for result in Profile.load(game.data_dir).results] == [(second.record.run_id, "left")]
 
 
 def test_the_leave_confirmation_states_the_cost_of_leaving_a_match_already_rated(play):

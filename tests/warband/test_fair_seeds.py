@@ -89,7 +89,7 @@ def test_new_game_starts_the_seed_and_map_it_shows(tmp_path, monkeypatch) -> Non
         assert scene.seed == UNFAIR + 1
         preview = scene.preview_world
         press(game, "return")
-        assert isinstance(game.scene, GameScene) and game.scene.seed == UNFAIR + 1 and game.scene.world.terrain == preview.terrain
+        assert isinstance(game.scene, GameScene) and game.scene.record.seed == UNFAIR + 1 and game.scene.world.terrain == preview.terrain
     finally:
         game.close()
 
@@ -106,7 +106,7 @@ def test_new_game_after_a_match_plays_the_next_fair_seed(tmp_path) -> None:
         game.push(GameOverScene(match))
         game.tick(1 / 60)
         press(game, "n")
-        assert isinstance(game.scene, GameScene) and game.scene is not match and game.scene.seed == UNFAIR + 1
+        assert isinstance(game.scene, GameScene) and game.scene is not match and game.scene.record.seed == UNFAIR + 1
         assert game.scene.world.layout is Layout.FOREST and [p.race for p in game.scene.world.players[:game.scene.world.seats]] == races
     finally:
         game.close()

@@ -72,7 +72,7 @@ def rated(game: Game) -> Profile:
                                    "left with no enemy at the gates and no material disadvantage: 0.2 of a loss" if outcome == "left" else "",
                                    difficulty, 1000, 1 + i % 3, "orc", 64, 48, "winter", "forest", 100 + i, 600 + 90 * i, i == 4))
     scene = new_game(seed=5)
-    replay = Replay.begin(scene.world, seed=5, difficulty=scene.difficulty, human=scene.human)
+    replay = Replay.begin(scene.world, seed=5, difficulty=scene.record.difficulty, human=scene.human)
     for _ in range(20):
         scene.world.step()
     replay.finish(scene.world, "resigned")

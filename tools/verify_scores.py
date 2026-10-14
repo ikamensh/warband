@@ -122,7 +122,7 @@ def verify(out: Path, resolution: tuple[int, int]) -> None:
             store.path.write_text("{broken", encoding="utf-8")
             game.clear_and_push(load_game(state, settings=settings))
             frames()
-            assert game.scene.score_error
+            assert game.scene.game_scene.record.score_error
             press(key.B)
             assert isinstance(game.scene, HighScoreScene) and game.scene.error
             shot("storage-error")

@@ -8,7 +8,8 @@ from saga2d import Game, SaveError
 from saga2d.settings import Settings
 from warband.sim.model import tile_center
 from warband.sim.rules import BuildingType, UnitType
-from warband.ui.scene import AUTOSAVE_EVERY, DEFAULT_SETTINGS, SAVE_VERSION, GameScene, SaveBrowserScene, SettingsScene, check_save, new_game
+from warband.ui.match_record import AUTOSAVE_EVERY, SAVE_VERSION, check_save
+from warband.ui.scene import DEFAULT_SETTINGS, GameScene, SaveBrowserScene, SettingsScene, new_game
 from warband.ui.style import build_theme
 from warband.ui.title import TitleScene
 
@@ -98,7 +99,7 @@ def test_quicksave_and_autosave_slots(game) -> None:
     scene.world.time = AUTOSAVE_EVERY - 0.1
     tick(game, 0.5)
     assert game.save_manager.load("autosave") is not None and any("Autosaved" in t for t in texts(game))
-    assert scene.autosave_at == pytest.approx(2 * AUTOSAVE_EVERY)
+    assert scene.record.autosave_at == pytest.approx(2 * AUTOSAVE_EVERY)
 
 
 def test_damaged_and_foreign_saves_are_refused_with_a_message(game, tmp_path) -> None:
@@ -142,11 +143,11 @@ def test_title_continue_takes_the_newest_save_and_the_browser_lists_them(game) -
     press(game, "l")
     assert isinstance(game.scene, SaveBrowserScene)
     press(game, "1")
-    assert isinstance(game.scene, GameScene) and game.scene.seed == 5
+    assert isinstance(game.scene, GameScene) and game.scene.record.seed == 5
     game.clear_and_push(TitleScene())
     game.tick(1 / 60)
     press(game, "c")
-    assert isinstance(game.scene, GameScene) and game.scene.seed == 6
+    assert isinstance(game.scene, GameScene) and game.scene.record.seed == 6
 
 
 # -- Tutorial ------------------------------------------------------------------------------------

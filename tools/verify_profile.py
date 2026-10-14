@@ -63,9 +63,9 @@ def verify(out: Path, resolution: tuple[int, int] = (1280, 800)) -> None:
                 game.tick(1 / 60)
             scene.world.resign(1)
             frames(10)
-            assert isinstance(game.scene, GameOverScene) and scene.rating_change is not None
+            assert isinstance(game.scene, GameOverScene) and scene.record.rating_change is not None
             shot("results-rating")
-            run_id = scene.run_id
+            run_id = scene.record.run_id
             assert ReplayStore(game.data_dir).exists(run_id)
             game.clear_and_push(TitleScene(settings=settings))
             shot("title")

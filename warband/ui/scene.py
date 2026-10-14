@@ -5,12 +5,9 @@ from __future__ import annotations
 import gc
 import inspect
 import itertools
-import json
 import math
 import random
 from collections import Counter, deque
-from datetime import datetime, timezone
-from uuid import NAMESPACE_URL, uuid4, uuid5
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
@@ -35,9 +32,9 @@ from warband.sim.rules import (AETHER_EVERY, AETHER_STORE, BUFFS, BUILDINGS, CAM
                                Terrain, UnitInfo, UnitType, Upgrade, an, listing)
 from warband.sim.rules import Layout as MapLayout
 from warband.league import fastsim
-from warband.records.profile import MatchResult, Profile, RatingChange, Standing, plural, standing
-from warband.records.replay import ORDERS, Replay, ReplayStore
-from warband.records.scores import HighScores, score_breakdown
+from warband.records.profile import RatingChange, Standing, plural
+from warband.records.replay import ORDERS, Replay
+from warband.records.scores import score_breakdown
 from warband.audio.sound import IMPACTS, apply_volumes, impact_sound, play_music, play_sound
 from warband.audio.voices import voiced
 from warband.ui.controls import (ACTIONS, BUILD_SLOTS, CARD_COLS, CHORDS, GRID_KEYS, LOCAL_WORK, MODE_KEYS, ORDER_CHOICES,
@@ -49,11 +46,12 @@ from warband.ui.style import (
 )
 from warband.ui import tech
 from warband.ui.match import LocalMatch, MatchExecution
+from warband.ui.match_record import MatchRecord, check_save, saved_replay, saved_run_id
 from warband.ui.tech import Need, Prerequisite, TechTree
 from warband.ui.version import running_build
 from warband.art.textures import TILE
 from warband.ui.tutorial import OBJECTIVES, Tutorial
-from warband.ui.view import CONDITION_LOOKS, FLIGHT, SHOT_LOOKS, SHOT_SIZE, MapView, Overlay, Sighting, check_memory, rgba, to_tiles, to_world
+from warband.ui.view import CONDITION_LOOKS, FLIGHT, SHOT_LOOKS, SHOT_SIZE, MapView, Overlay, Sighting, rgba, to_tiles, to_world
 
 DEFAULT_SETTINGS: dict[str, Any] = {"music": 0.6, "sfx": 0.8, "edge_scroll": True, "scroll_speed": 1.0, "fullscreen": False, "tutorial": True, "blood": True,
                                     "controls": "modal"}
@@ -72,9 +70,7 @@ CAMP_TIPS = {"wolf_den": "Shield archers from wolves", "spider_nest": "Cavalry c
              "troll_mound": "Focus arrows on the troll", "stone_cairn": "Spread out; dodge slam marks",
              "troll_toll": "Break the toll or take the long way", "cairn_watch": "Dodge slam marks or go around",
              "ancient_sanctum": "Dodge slams · guards the air"}
-SAVE_VERSION = 2  # 2: the world records its layout
 SAVE_SLOTS = 3
-AUTOSAVE_EVERY = 120.0  # seconds of match time
 SELECT_GAP = 30.0  # seconds: selecting is constant, and its cue answers only the first selection in a while (WB-039)
 PENDING_ASKS = {"move": "Click where to move", "attack": "Click a target, or the ground to attack-move there",
                 "patrol": "Click the far end of the patrol", "repair": "Click one of your damaged buildings or sites",
@@ -572,29 +568,20 @@ class GameScene(Scene):
 
     def __init__(self, world: World, seed: int, *, difficulty: Difficulty = Difficulty.MEDIUM, settings: dict[str, Any] | None = None,
                  player: int | None = None, run_id: str | None = None, ranked: bool = True, replay: Replay | None = None,
-                 execution: MatchExecution | None = None) -> None:
+                 execution: MatchExecution | None = None, autosave: bool = True) -> None:
         """A *ranked* match is recorded from here on (or *replay* goes on recording it, after a load) and rated when it ends."""
         human = next(p.id for p in world.players if p.human) if player is None else player
         self.execution = execution if execution is not None else LocalMatch(world, seed, difficulty=difficulty, player=human)
         self.view: MapView | None = None  # made on entry: it needs the game
         self._seen: dict | None = None  # what a save's view remembered of ground out of sight, until this scene's view takes it over
-        self.run_id = run_id if run_id is not None else str(uuid4())  # one leaderboard row per match, however often it is reloaded
-        self.ranked = ranked
-        self.seed = seed
-        self.difficulty = difficulty
         self.human = human
-        self.replay: Replay | None = None  # recording from entry on, when ranked
-        self._saved_replay = replay
-        self.profile: Profile | None = None  # loaded on entry: the scene needs the data directory
-        self.profile_error = ""
-        self.rating_change: RatingChange | None = None  # what the finished or abandoned match did to the rating
-        self._resignation: Standing | None = None  # where the player stood when they resigned
+        self.record = MatchRecord(seed=seed, difficulty=difficulty, human=human, run_id=run_id,
+                                  ranked=ranked, replay=replay, autosave=autosave)
         self.fx_rng = random.Random(seed)  # sparks, blood and dust
         self.settings = settings if settings is not None else dict(DEFAULT_SETTINGS)  # a saga2d Settings when the game runs
         for key, value in DEFAULT_SETTINGS.items():
             self.settings.setdefault(key, value)
         self.tutorial = Tutorial() if self.settings["tutorial"] else None
-        self._autosave_at = AUTOSAVE_EVERY
         self.selection: list[int] = []
         self.groups: dict[str, list[int]] = {}
         self.pending: str | None = None  # "move" | "attack" | "patrol" | "repair" | "salvage" | "assembly" | "place:<building type>" | CANCEL
@@ -658,10 +645,7 @@ class GameScene(Scene):
     # -- Lifecycle -------------------------------------------------------------
 
     def on_enter(self) -> None:
-        self._load_profile()
-        if self.ranked:
-            self.replay = self._recording(self._saved_replay)
-            self._saved_replay = None
+        self.record.start(self.game.data_dir, self.world)
         self.view = self._make_view()
         self._setup_camera()
         self.apply_settings()
@@ -1208,11 +1192,6 @@ class GameScene(Scene):
     def queue_hits(self) -> tuple[tuple[tuple[float, float, float, float], QueueEntry], ...]:
         """The production queue's entries on the panel and where each can be clicked."""
         return tuple(self._queue_hits)
-
-    @property
-    def autosave_at(self) -> float:
-        """The match time of the next autosave."""
-        return self._autosave_at
 
     def hint(self) -> list[tuple[str, str]]:
         """The bar at the bottom: what the keys do in the mode the card is in, named as this scheme names them."""
@@ -2585,7 +2564,7 @@ class GameScene(Scene):
         a network match are left alone.
         """
         if (self.auto_pause_on_background and not self.execution.paused and not self._auto_paused
-                and not self._game_over and self.world.winner is None and self.player.alive):
+                and not self._game_over and not self.execution.done):
             self._auto_paused = True
             self.execution.paused = True
 
@@ -2633,7 +2612,7 @@ class GameScene(Scene):
             self.warn("Nothing saved there" if slot != "quick" else "No quicksave yet — F5 makes one")
             return
         where = self.leaving()
-        if where is not None and loaded.run_id != self.run_id:
+        if where is not None and loaded.record.run_id != self.record.run_id:
             self.game.push(LeaveScene(self, where, "Load", lambda: (self.conclude("left", where), self._go_on(loaded))))
             return
         self._go_on(loaded)
@@ -2827,8 +2806,7 @@ class GameScene(Scene):
         self.army_button.visible = bool(self._army())
         self._update_objectives()
         self._fold_objectives()
-        if self.world.time >= self._autosave_at and not self._game_over:
-            self._autosave_at += AUTOSAVE_EVERY
+        if not self._game_over and self.record.autosave_due(self.world.time):
             self.game.save(self.AUTOSAVE_SLOT, scene=self)
             self.say("Autosaved")
         self._check_game_over()
@@ -2864,7 +2842,7 @@ class GameScene(Scene):
         how crowded, how fast, how far out the camera, how far the clock has fallen behind real time, and whether the
         simulation ran compiled."""
         world = self.world
-        return {"run": self.run_id, "map": f"{world.width}x{world.height}", "seats": world.seats, "tick": world.tick,
+        return {"run": self.record.run_id, "map": f"{world.width}x{world.height}", "seats": world.seats, "tick": world.tick,
                 "units": len(world.units), "buildings": len(world.buildings), "speed": self.execution.speed, "paused": self.execution.paused,
                 "zoom": round(self.camera.zoom, 2), "behind_s": round(self.execution.behind, 1),
                 "simulation": "compiled" if fastsim.compiled() else "source"}
@@ -3273,71 +3251,23 @@ class GameScene(Scene):
         self.execution.stopped = True
         self.sfx("victory" if won else "defeat")
         play_music("victory" if won else "defeat")
-        if self._resignation is not None:
-            self.conclude("resigned", self._resignation)
-        else:
-            self.conclude("victory" if won else "defeat")
+        self.conclude("victory" if won else "defeat")
 
     # -- The record of the match -------------------------------------------------------------
 
-    def _recording(self, replay: Replay | None) -> Replay:
-        """The recording of this match: the one a save carried, taken up again, or a fresh one from here."""
-        if replay is None:
-            return Replay.begin(self.world, seed=self.seed, difficulty=self.difficulty, human=self.human)
-        replay.reloaded(self.world)
-        return replay
-
-    def _load_profile(self) -> None:
-        """The profile a rated match is played under; its name is the player's.  An unreadable one is reported at the end."""
-        if not self.ranked:
-            return
-        try:
-            self.profile = Profile.load(self.game.data_dir)
-        except SaveError as error:
-            self.profile, self.profile_error = None, str(error)
-            return
-        self.player.name = self.profile.name
-
     def leaving(self) -> Standing | None:
-        """What leaving the match now would count as, or None when leaving costs nothing: the match is decided or not rated."""
-        if self.replay is None or self.profile is None or self._game_over or self.world.winner is not None or not self.player.alive:
-            return None
-        return standing(self.world, self.human)
+        """The cost a leave confirmation shows for this match, when one is needed."""
+        return None if self._game_over else self.record.leaving(self.world)
 
     def resign(self, where: Standing) -> None:
-        """Concede from *where* the player stands, which is what the resignation will be rated on."""
-        self._resignation = where
-        self.world.resign(self.human)
+        """Concede from the position the player's confirmation described."""
+        self.record.resign(self.world, where)
 
     def conclude(self, outcome: str, where: Standing | None = None) -> RatingChange | None:
-        """Close the record of the match: the replay to disk, the result and its weight to the profile.
-
-        Returns what the result did to the rating, or None when the match is not rated.  A result for a
-        match already rated (a save of it reopened, a match finished after it was left) replaces the old one.
-        """
-        if self.replay is None or self.profile is None:
-            return None
-        world = self.world
-        self.replay.finish(world, outcome)
-        try:
-            ReplayStore(self.game.data_dir).save(self.run_id, self.replay, {
-                "name": self.player.name, "outcome": outcome, "race": self.player.race.value, "difficulty": self.difficulty.value,
-                "players": world.seats, "size": f"{world.width}×{world.height}", "clock": _clock(world.time), "seed": self.seed})
-            kept = True
-        except SaveError as error:
-            kept = False
-            self.say(f"Replay not saved: {error}")
-        weight, reason = (where.weight, where.reason) if where is not None else (1.0, "")
-        result = MatchResult(self.run_id, datetime.now(timezone.utc).isoformat(), outcome, weight, reason, self.difficulty.value,
-                             DIFFICULTY_ELO[self.difficulty], world.seats - 1, self.player.race.value, world.width, world.height,
-                             world.theme.value, world.layout.value, self.seed, int(world.time), kept)
-        try:
-            self.rating_change = self.profile.record(result)
-        except SaveError as error:
-            self.profile_error = str(error)
-            self.say(f"Result not recorded: {error}")
-            return None
-        return self.rating_change
+        """Close the match's durable record and display any persistence failures."""
+        for notice in self.record.conclude(self.world, outcome, where):
+            self.say(notice)
+        return self.record.rating_change
 
     # -- Drawing ---------------------------------------------------------------------------
 
@@ -3779,8 +3709,7 @@ class GameScene(Scene):
     # -- Save / load ------------------------------------------------------------------------
 
     def get_save_state(self) -> dict:
-        return {"version": SAVE_VERSION, "seed": self.seed, "difficulty": self.difficulty.value, "world": self.world.to_dict(),
-                "run_id": self.run_id, "ranked": self.ranked, "replay": self.replay.to_dict() if self.replay is not None else None,
+        return {**self.record.save_state(self.world),
                 "groups": self.groups, "tutorial": self.tutorial.step if self.tutorial is not None else None, "seen": self._memory(),
                 "bookmarks": {str(slot): list(point) for slot, point in self.bookmarks.items()}}
 
@@ -3800,12 +3729,12 @@ class GameScene(Scene):
             self.tutorial = None
         elif state.get("tutorial") is not None and self.tutorial is not None:
             self.tutorial.step = state["tutorial"]
-        self._autosave_at = (self.world.time // AUTOSAVE_EVERY + 1) * AUTOSAVE_EVERY
+        self.record.restore_clock(self.world.time)
 
     def get_save_summary(self) -> dict:
         world = self.world
         size = mapgen.size_name(world.width, world.height, world.seats)
-        return {"map": f"{size} {world.theme.value} {world.layout.value}", "players": world.seats, "difficulty": self.difficulty.value, "clock": _clock(world.time),
+        return {"map": f"{size} {world.theme.value} {world.layout.value}", "players": world.seats, "difficulty": self.record.difficulty.value, "clock": _clock(world.time),
                 "player": f"{self.player.name} ({self.race.name})"}
 
     def load_save_state(self, state: dict) -> None:
@@ -4014,11 +3943,11 @@ class LeaveScene(_Overlay):
 
     def on_enter(self) -> None:
         scene = self.game_scene
-        profile = scene.profile
+        profile = scene.record.profile
         assert profile is not None
         before = profile.rating
-        after = profile.rating_after(scene.run_id, DIFFICULTY_ELO[scene.difficulty], 0.0, self.where.weight)
-        earlier = next((r.outcome for r in profile.results if r.run_id == scene.run_id), None)
+        after = profile.rating_after(scene.record.run_id, DIFFICULTY_ELO[scene.record.difficulty], 0.0, self.where.weight)
+        earlier = next((r.outcome for r in profile.results if r.run_id == scene.record.run_id), None)
         panel = self.panel(f"{self.verb}: leave the match?")
         panel.add(Label("The match is not decided. Leaving counts against your rating" +
                         (f", in place of the {earlier} it already counts." if earlier is not None else "."), text_style="body"))
@@ -4484,7 +4413,6 @@ class GameOverScene(_Overlay):
     def __init__(self, game_scene: GameScene) -> None:
         self.game_scene = game_scene
         self.won = game_scene.world.winner == game_scene.human
-        self.score_error = ""
 
     def on_enter(self) -> None:
         scene = self.game_scene
@@ -4492,8 +4420,8 @@ class GameOverScene(_Overlay):
         points = score_breakdown(world, scene.human)
         panel = self.panel("Victory!" if self.won else "Defeat")
         panel.style = RESULTS_STYLE
-        panel.add(Label(f"{scene.race.name} · {scene.difficulty.value.title()} AI · {world.width}×{world.height} · {world.seats} players · "
-                        f"{world.theme.value.title()} · Seed {scene.seed}", text_style="body"))
+        panel.add(Label(f"{scene.race.name} · {scene.record.difficulty.value.title()} AI · {world.width}×{world.height} · {world.seats} players · "
+                        f"{world.theme.value.title()} · Seed {scene.record.seed}", text_style="body"))
         score = Column(spacing=6, width=420)
         score.add(Label(f"{sum(points.values()):,} points", text_style="banner"))
         for name, value in points.items():
@@ -4518,15 +4446,12 @@ class GameOverScene(_Overlay):
             summary.add(Label("Surrender: no units or queued recruits,\nand no affordable way to train another.", text_style="sub", width=width, wrap=True))
         panel.add(Row(score, summary, spacing=28))
         notice = "Demo battle · not ranked"
-        if scene.ranked:
-            try:
-                rank = HighScores(self.game.data_dir).record(world, player=scene.human, seed=scene.seed, difficulty=scene.difficulty, run_id=scene.run_id)
-                notice = f"Your best finish ranks #{rank} on this local board" if rank else "Outside this board's top 10"
-            except SaveError as error:
-                self.score_error = str(error)
-                notice = "High score could not be saved · open High scores for the error"
+        if scene.record.ranked:
+            rank = scene.record.keep_score(world)
+            notice = ("High score could not be saved · open High scores for the error" if scene.record.score_error else
+                      f"Your best finish ranks #{rank} on this local board" if rank else "Outside this board's top 10")
         panel.add(Label(notice, text_style="body", text_color=GOLD))
-        panel.add(Label(self._rating_text(), text_style="body", text_color=GOLD if scene.rating_change is not None else MUTED, width=880, wrap=True))
+        panel.add(Label(self._rating_text(), text_style="body", text_color=GOLD if scene.record.rating_change is not None else MUTED, width=880, wrap=True))
         panel.add(Row(Button("New game", hotkey="N", on_click=self.new_game, style=ACTION_BUTTON, width=210),
                       Button("High scores", hotkey="B", on_click=self.high_scores, style=GHOST_BUTTON, width=210),
                       Button("Back to title", hotkey="T", on_click=self.back_to_title, style=GHOST_BUTTON, width=210),
@@ -4555,10 +4480,10 @@ class GameOverScene(_Overlay):
 
     def _rating_text(self) -> str:
         scene = self.game_scene
-        change = scene.rating_change
+        change = scene.record.rating_change
         if change is None:
-            return (f"Profile could not be updated · {scene.profile_error}" if scene.profile_error else
-                    "Not rated" if scene.replay is None else "Rating unchanged")
+            return (f"Profile could not be updated · {scene.record.profile_error}" if scene.record.profile_error else
+                    "Not rated" if scene.record.replay is None else "Rating unchanged")
         result = change.result
         weight = f" · {result.reason}" if result.reason else ""
         replaced = " · replaces this match's earlier result" if change.replaced else ""
@@ -4569,8 +4494,8 @@ class GameOverScene(_Overlay):
         from warband.ui.score_scene import HighScoreScene
 
         scene = self.game_scene
-        self.game.push(HighScoreScene(difficulty=scene.difficulty, size=(scene.world.width, scene.world.height),
-                                      players=scene.world.seats, run_id=scene.run_id, error=self.score_error))
+        self.game.push(HighScoreScene(difficulty=scene.record.difficulty, size=(scene.world.width, scene.world.height),
+                                      players=scene.world.seats, run_id=scene.record.run_id, error=scene.record.score_error))
 
     def new_game(self) -> None:
         self.game.clear_and_push(next_game(self.game_scene))
@@ -4582,7 +4507,7 @@ class GameOverScene(_Overlay):
         seats = scene.world.seats
         size = mapgen.size_name(scene.world.width, scene.world.height, seats)
         size = size if size in mapgen.SIZES else (mapgen.sizes_for(seats) or ("Medium",))[0]
-        self.game.clear_and_push(TitleScene(size=size, players=scene.world.seats, difficulty=scene.difficulty, theme=scene.world.theme,
+        self.game.clear_and_push(TitleScene(size=size, players=scene.world.seats, difficulty=scene.record.difficulty, theme=scene.world.theme,
                                            race=scene.player.race, layout=scene.world.layout, settings=scene.settings))
 
     def quit(self) -> None:
@@ -4618,43 +4543,10 @@ def fair_map(seed: int, width: int, height: int, players: int, *, theme: MapThem
 def next_game(scene: GameScene) -> GameScene:
     """A new match with *scene*'s settings and races on the next seed that makes a fair map."""
     world = scene.world
-    seed, fresh = fair_map(scene.seed + 1, world.width, world.height, world.seats, theme=world.theme,
+    seed, fresh = fair_map(scene.record.seed + 1, world.width, world.height, world.seats, theme=world.theme,
                            races=[p.race for p in world.players[:world.seats]], layout=world.layout, magic=world.magic,
                            wilds=world.wilds)
-    return GameScene(fresh, seed, difficulty=scene.difficulty, settings=scene.settings)
-
-
-def check_save(state: dict[str, Any]) -> World:
-    """The world in a save's ``state``, or a SaveError saying what is wrong with it."""
-    if not isinstance(state, dict) or state.get("version") != SAVE_VERSION:
-        raise SaveError(f"this save is from another version of Warband (format {state.get('version') if isinstance(state, dict) else '?'}, expected {SAVE_VERSION})")
-    try:
-        world = World.from_dict(state["world"])
-        Difficulty(state["difficulty"])
-        if "run_id" in state and (not isinstance(state["run_id"], str) or not state["run_id"].strip()):
-            raise ValueError("run_id must be nonempty text")
-        if "ranked" in state and type(state["ranked"]) is not bool:
-            raise ValueError("ranked must be a boolean")
-        _saved_replay(state)
-        if state.get("seen") is not None:  # saves from before the view remembered carry none
-            check_memory(state["seen"], world)
-        if any(type(value) is not int or value < 0 for player in world.players for value in player.stats.values()):
-            raise ValueError("battle statistics must be nonnegative integers")
-    except (KeyError, ValueError, TypeError, IndexError) as exc:
-        raise SaveError(f"the save file is damaged ({type(exc).__name__}: {exc})") from exc
-    if not any(p.human for p in world.players):
-        raise SaveError("the save has no human player")
-    return world
-
-
-def _saved_run_id(state: dict[str, Any]) -> str:
-    # Saves from before scoring carry no match ID; the same old save reopened still counts once.
-    return state["run_id"] if "run_id" in state else str(uuid5(NAMESPACE_URL, "warband:" + json.dumps(state, sort_keys=True)))
-
-
-def _saved_replay(state: dict[str, Any]) -> Replay | None:
-    """The recording a save carries, if it has one (saves from before replays record from where they are loaded)."""
-    return Replay.from_dict(state["replay"]) if state.get("replay") is not None else None
+    return GameScene(fresh, seed, difficulty=scene.record.difficulty, settings=scene.settings)
 
 
 def load_game(state: dict[str, Any], *, settings: dict[str, Any] | None = None) -> GameScene:
@@ -4668,6 +4560,6 @@ def load_game(state: dict[str, Any], *, settings: dict[str, Any] | None = None) 
     else:
         world = check_save(state)
         scene = GameScene(world, state["seed"], difficulty=Difficulty(state["difficulty"]), settings=settings,
-                          run_id=_saved_run_id(state), ranked=state.get("ranked", True), replay=_saved_replay(state))
+                          run_id=saved_run_id(state), ranked=state.get("ranked", True), replay=saved_replay(state))
     scene.restore(state)
     return scene

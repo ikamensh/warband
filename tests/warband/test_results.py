@@ -236,7 +236,7 @@ def test_result_leaderboard_and_loaded_finish_are_one_frozen_record(tmp_path):
         game.clear_and_push(restored)
         game.tick(.1)
         assert isinstance(game.scene, GameOverScene)
-        assert restored.run_id == scene.run_id and restored.world.time == finished
+        assert restored.record.run_id == scene.record.run_id and restored.world.time == finished
         assert HighScores(game.data_dir).load() == records
     finally:
         game.close()
@@ -246,7 +246,8 @@ def test_result_leaderboard_and_loaded_finish_are_one_frozen_record(tmp_path):
 def test_invalid_score_metadata_in_a_match_save_is_rejected(field, value):
     """A broken campaign ID must not silently become a new leaderboard entry."""
     from saga2d import SaveError
-    from warband.ui.scene import GameScene, check_save
+    from warband.ui.scene import GameScene
+    from warband.ui.match_record import check_save
 
     state = GameScene(battlefield(), 1).get_save_state()
     if field == "stats":
@@ -263,15 +264,15 @@ def test_old_saves_get_a_stable_identity_and_demos_stay_unranked():
 
     scene = GameScene(battlefield(), 1, ranked=False)
     state = scene.get_save_state()
-    assert not load_game(state).ranked
+    assert not load_game(state).record.ranked
     del state["run_id"]
     del state["ranked"]
     for player in state["world"]["players"]:
         del player["stats"]
         del player["surrendered"]
     first = load_game(state)
-    assert first.run_id == load_game(state).run_id
-    assert first.ranked and first.stats["destroyed_value"] == 0
+    assert first.record.run_id == load_game(state).record.run_id
+    assert first.record.ranked and first.stats["destroyed_value"] == 0
 
 
 def test_high_scores_written_before_the_difficulties_were_merged_still_load(tmp_path):

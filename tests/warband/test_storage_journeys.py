@@ -38,7 +38,7 @@ scene.resign(standing(scene.world, scene.human))
 for _ in range(90):
     game.tick(1 / 60)
 assert isinstance(game.scene, GameOverScene), type(game.scene).__name__
-print(json.dumps({"run_id": scene.run_id, "name": scene.profile.name, "results": len(scene.profile.results)}))
+print(json.dumps({"run_id": scene.record.run_id, "name": scene.record.profile.name, "results": len(scene.record.profile.results)}))
 game.close()
 '''
 
@@ -141,7 +141,7 @@ def test_a_write_failure_at_match_end_is_said_and_the_game_goes_on(tmp_path) -> 
         game.push(scene)
         for _ in range(10):
             game.tick(1 / 60)
-        assert scene.profile is not None
+        assert scene.record.profile is not None
         (data / "profile").mkdir(parents=True)
         (data / "profile" / "save_1.json").mkdir()  # nothing can be written where the profile goes
         (data / "replays").write_text("in the way", encoding="utf-8")
@@ -149,7 +149,7 @@ def test_a_write_failure_at_match_end_is_said_and_the_game_goes_on(tmp_path) -> 
         for _ in range(90):
             game.tick(1 / 60)
         assert isinstance(game.scene, GameOverScene)
-        assert scene.rating_change is None and "save_1.json" in scene.profile_error, "the failure names the file"
+        assert scene.record.rating_change is None and "save_1.json" in scene.record.profile_error, "the failure names the file"
         assert (data / "profile" / "save_1.json").is_dir(), "nothing was replaced"
     finally:
         game.close()

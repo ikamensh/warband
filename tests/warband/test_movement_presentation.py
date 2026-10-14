@@ -67,7 +67,7 @@ def test_replay_motion_is_smooth_pauses_and_reaches_the_recorded_end(game):
     from warband.ui.replay_scene import ReplayScene
 
     scene, walker = walking_scene(game)
-    replay = Replay.begin(scene.world, seed=0, difficulty=scene.difficulty, human=0)
+    replay = Replay.begin(scene.world, seed=0, difficulty=scene.record.difficulty, human=0)
     for _ in range(100):
         scene.world.step()
         scene.world.take_events()
@@ -142,7 +142,7 @@ def test_right_click_ahead_of_a_moving_enemy_orders_empty_ground(game):
     point = (x + target.radius + 0.36, y)
     assert scene.view.entity_at(point) is None
     assert scene.world.entity_at(point, visible_to=0) is target
-    replay = Replay.begin(scene.world, seed=0, difficulty=scene.difficulty, human=0)
+    replay = Replay.begin(scene.world, seed=0, difficulty=scene.record.difficulty, human=0)
     scene.command_smart(point)
     assert isinstance(walker.order, Move) and walker.order.target == point
     for _ in range(60):

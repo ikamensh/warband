@@ -26,7 +26,7 @@ def test_a_match_played_through_the_loop_records_its_map_run_and_phases(tmp_path
     windows = [w for w in session["windows"] if w["scene"] == "GameScene"]
     assert windows
     last = windows[-1]["context"]
-    assert last["run"] == scene.run_id
+    assert last["run"] == scene.record.run_id
     assert last["map"] == f"{world.width}x{world.height}" and last["seats"] == world.seats
     assert last["tick"] == world.tick > 0 and last["units"] == len(world.units)
     assert last["simulation"] == ("compiled" if request.config.getoption("--compiled") else "source")

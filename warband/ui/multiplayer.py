@@ -1,5 +1,4 @@
 """LAN and online match scenes; authority lives in warband.online.authority."""
-import math
 import time
 from urllib.parse import urlsplit
 
@@ -842,9 +841,8 @@ class NetworkGameScene(GameScene):
         self._interval = SNAPSHOT_INTERVAL  # measured time between snapshots, smoothed
         data = session.state
         world = World.from_dict(data['world'])
-        super().__init__(world, data['seed'], settings=settings, player=session.player, ranked=False, execution=RemoteMatch(world))
+        super().__init__(world, data['seed'], settings=settings, player=session.player, ranked=False, autosave=False, execution=RemoteMatch(world))
         self.tutorial = None
-        self._autosave_at = math.inf
         self._identity_saved: object = None  # last persisted (player_id, profile, result): saved again on change
 
     def on_enter(self):
@@ -1088,7 +1086,7 @@ class NetworkObserverEndScene(_Overlay):
         winner = world.players[world.winner] if world.winner is not None else None
         panel = self.panel(f"{winner.name} wins" if winner is not None else "No winner")
         panel.add(Label(f"{_clock(world.time)} played · {world.width}×{world.height} · "
-                        f"{world.seats} players · {world.theme.value.title()} · Seed {scene.seed}",
+                        f"{world.seats} players · {world.theme.value.title()} · Seed {scene.record.seed}",
                         text_style="body"))
         for player in world.players[:world.seats]:
             status = ("Won" if world.winner == player.id else "Surrendered" if player.surrendered

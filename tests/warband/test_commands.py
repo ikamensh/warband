@@ -518,10 +518,10 @@ def test_a_match_that_used_every_command_replays_to_the_bit(game) -> None:
     press(game, "withdraw")
     for _ in range(40):
         game.tick(0.1)
-    names = {row[1] for row in scene.replay.orders}
+    names = {row[1] for row in scene.record.replay.orders}
     assert {"move", "plan_building", "harvest"} <= names
-    scene.replay.finish(world, "left")
-    playback = Playback(Replay.from_dict(json.loads(json.dumps(scene.replay.to_dict()))))
+    scene.record.replay.finish(world, "left")
+    playback = Playback(Replay.from_dict(json.loads(json.dumps(scene.record.replay.to_dict()))))
     playback.run()
     assert playback.faithful and digest(playback.world) == digest(world)
 

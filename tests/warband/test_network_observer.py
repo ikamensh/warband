@@ -159,7 +159,7 @@ def test_observer_scene_watches_without_authority(tmp_path):
         with pytest.raises(RuleError):
             scene.order('move', [unit.id], (2., 2.))
         assert scene.attempt('move', [unit.id], (2., 2.)) is False
-        assert scene.tutorial is None and scene.replay is None
+        assert scene.tutorial is None and scene.record.replay is None
         game.backend.inject_key('f10')
         game.tick(1 / 30)
         assert isinstance(game.scene, NetworkObserverMenuScene)

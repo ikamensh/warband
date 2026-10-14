@@ -47,7 +47,7 @@ def recorded(game):
     scene.world.resign(1)
     tick(game, 0.5, 0.1)
     assert isinstance(game.scene, GameOverScene)
-    replay = ReplayStore(game.data_dir).load(scene.run_id)
+    replay = ReplayStore(game.data_dir).load(scene.record.run_id)
     assert any(row[1] == "smart" for row in replay.orders)
     return replay
 

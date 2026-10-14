@@ -431,9 +431,9 @@ def test_a_match_that_used_cancel_mode_replays_to_the_bit(game) -> None:
     for _ in range(5):
         game.tick(0.1)
     assert plans(scene) == [ROW[2]] and barracks.queue == [] and barracks.auto == []
-    names = [row[1] for row in scene.replay.orders]
+    names = [row[1] for row in scene.record.replay.orders]
     assert {"cancel_plan", "set_auto_train", "cancel_train"} <= set(names)
-    scene.replay.finish(world, "left")
-    playback = Playback(Replay.from_dict(json.loads(json.dumps(scene.replay.to_dict()))))
+    scene.record.replay.finish(world, "left")
+    playback = Playback(Replay.from_dict(json.loads(json.dumps(scene.record.replay.to_dict()))))
     playback.run()
     assert playback.faithful and digest(playback.world) == digest(world)

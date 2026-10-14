@@ -18,11 +18,12 @@ from saga2d.effects import Banner, Toast
 from warband.sim import mapgen
 from warband.brains.ai import make_brain
 from warband.ui.match import LocalMatch
+from warband.ui.match_record import check_save
 from warband.story.campaign import Campaign, Mission, Progress, ProgressStore, Run, shifted
 from warband.story.dialog import DialogScene
 from warband.sim.model import World
 from warband.sim.rules import BuildingType, Difficulty
-from warband.ui.scene import HUD_TOP, OBJECTIVES_GAP, GameScene, PauseScene, _clock, _Overlay, check_save
+from warband.ui.scene import HUD_TOP, OBJECTIVES_GAP, GameScene, PauseScene, _clock, _Overlay
 from warband.ui.style import ACTION_BUTTON, BAD, GHOST_BUTTON, GOLD, GOOD, MUTED, PANEL_STYLE, RESULTS_STYLE, TEXT
 from warband.ui.view import rgba, to_world
 
@@ -67,7 +68,7 @@ def restart_mission(game, scene: MissionScene) -> str | None:
     """Play *scene*'s mission again from its start, with the choices the campaign's progress holds; the reason it cannot
     when that progress cannot be read.  The campaign screen says why in full and offers to set the file aside."""
     try:
-        progress = current_progress(game, scene.campaign, scene.difficulty)
+        progress = current_progress(game, scene.campaign, scene.record.difficulty)
     except SaveError:
         return "Cannot restart: the campaign progress is unreadable. Campaign says why."
     start_mission(game, scene.campaign, scene.mission, progress, scene.settings, briefing=False)
@@ -231,7 +232,7 @@ class MissionScene(GameScene):
         try:
             progress = store.load()
             if progress is None:
-                progress = Progress(self.campaign.id, self.difficulty)
+                progress = Progress(self.campaign.id, self.record.difficulty)
             progress.complete(self.mission, self.run.remembered())
             store.save(progress)
             self.game.save_manager.delete(CAMPAIGN_SLOT)

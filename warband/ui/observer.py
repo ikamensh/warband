@@ -11,7 +11,6 @@ future network observer reuses the seam and only feeds the world another way
 
 from __future__ import annotations
 
-import math
 from typing import Any
 
 from saga2d import Anchor, Button, Label, Row
@@ -88,12 +87,11 @@ class WatchScene(GameScene):
         only points the inherited machinery at the inspected side.
         """
         super().__init__(world, seed, difficulty=difficulty, settings=settings,
-                         player=viewed, ranked=False,
+                         player=viewed, ranked=False, autosave=False,
                          execution=execution if execution is not None else LocalMatch(world, seed, difficulty=difficulty, player=None))
         self.viewed = viewed
         self.adjutant: Any = _NoAdjutant()
         self.tutorial = None
-        self._autosave_at = math.inf
 
     # -- What the watcher sees -------------------------------------------------
 
@@ -301,12 +299,6 @@ class WatchScene(GameScene):
         """A watcher never concedes: leaving is free (see :meth:`leaving`)."""
         self.warn("Observers don't resign — leave freely from the menu")
 
-    def leaving(self) -> None:
-        return None
-
-    def conclude(self, outcome: str, where: object | None = None) -> None:
-        return None
-
     # -- The match ends only at a winner ------------------------------------------
 
     def _check_game_over(self) -> None:
@@ -314,12 +306,6 @@ class WatchScene(GameScene):
             return
         self._game_over = True
         self.game.push(ObserverEndScene(self))
-
-    def on_background(self) -> None:
-        if (self.auto_pause_on_background and not self.execution.paused and not self._auto_paused
-                and not self._game_over and self.world.winner is None):
-            self._auto_paused = True
-            self.execution.paused = True
 
     def pause_menu(self) -> Scene:
         return ObserverPauseScene(self)
@@ -476,8 +462,8 @@ class ObserverEndScene(_Overlay):
         title = f"{winner.name} wins" if winner is not None else "No winner"
         panel = self.panel(title)
         panel.add(Label(f"{RACES[winner.race].name if winner is not None else '—'} · "
-                        f"{scene.difficulty.value.title()} AI · {world.width}×{world.height} · "
-                        f"{world.seats} players · {world.theme.value.title()} · Seed {scene.seed} · {_clock(world.time)}",
+                        f"{scene.record.difficulty.value.title()} AI · {world.width}×{world.height} · "
+                        f"{world.seats} players · {world.theme.value.title()} · Seed {scene.record.seed} · {_clock(world.time)}",
                         text_style="body"))
         for player in world.players[:world.seats]:
             status = ("Won" if world.winner == player.id else "Surrendered" if player.surrendered
@@ -499,7 +485,7 @@ class ObserverEndScene(_Overlay):
         scene = self.watch_scene
         size = mapgen.size_name(scene.world.width, scene.world.height, scene.world.seats)
         size = size if size in mapgen.SIZES else (mapgen.sizes_for(scene.world.seats) or ("Medium",))[0]
-        self.game.clear_and_push(TitleScene(size=size, players=scene.world.seats, difficulty=scene.difficulty,
+        self.game.clear_and_push(TitleScene(size=size, players=scene.world.seats, difficulty=scene.record.difficulty,
                                             theme=scene.world.theme, race=scene.player.race,
                                             layout=scene.world.layout, settings=scene.settings))
 
@@ -524,10 +510,10 @@ def observe_game(seed: int, width: int = 48, height: int = 40, players: int = 2,
 def next_observer(scene: WatchScene) -> ObserverScene:
     """Another watched match with *scene*'s settings and races, on the next fair seed."""
     world = scene.world
-    seed, fresh = fair_map(scene.seed + 1, world.width, world.height, world.seats, theme=world.theme,
+    seed, fresh = fair_map(scene.record.seed + 1, world.width, world.height, world.seats, theme=world.theme,
                            races=[p.race for p in world.players[:world.seats]], layout=world.layout,
                            magic=world.magic, wilds=world.wilds)
     # fair_map builds played matches (seat 0 leads); watching keeps every seat computer-led.
     for player in fresh.players[:fresh.seats]:
         player.human = False
-    return ObserverScene(fresh, seed, difficulty=scene.difficulty, settings=scene.settings)
+    return ObserverScene(fresh, seed, difficulty=scene.record.difficulty, settings=scene.settings)

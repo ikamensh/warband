@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import math
 from typing import Any
 
 from saga2d import Button, Label, Row
@@ -30,10 +29,9 @@ class ReplayScene(GameScene):
 
     def __init__(self, replay: Replay, *, settings: dict[str, Any] | None = None) -> None:
         execution = ReplayMatch(replay)
-        super().__init__(execution.world, replay.seed, difficulty=replay.difficulty, settings=settings, player=replay.human, ranked=False,
+        super().__init__(execution.world, replay.seed, difficulty=replay.difficulty, settings=settings, player=replay.human, ranked=False, autosave=False,
                          execution=execution)
         self.tutorial = None
-        self._autosave_at = math.inf
         self.reveal = True
         self.over = False
 

@@ -16,7 +16,8 @@ from warband.story.mission_scene import CAMPAIGN_SLOT, MissionPauseScene, Missio
 from warband.story.missions import CAMPAIGN
 from warband.sim.model import tile_center
 from warband.sim.rules import SIM_DT, BuildingType, Difficulty, Race, UnitType
-from warband.ui.scene import AUTOSAVE_EVERY, load_game
+from warband.ui.match_record import AUTOSAVE_EVERY
+from warband.ui.scene import load_game
 from warband.ui.style import build_theme
 from warband.ui.title import TitleScene
 
@@ -346,7 +347,7 @@ def test_a_mission_save_keeps_the_script_where_it_was_and_continue_resumes_it(ga
     assert [p.name for p in loaded.world.players[:loaded.world.seats]] == ["Hollowmere", "Bloodfang Raiders"] and loaded.world.scripted
     past_the_banner(game)
     assert "1. Hollowmere" in texts(game) and "Hold Hollowmere against the raids" in texts(game)
-    assert loaded.AUTOSAVE_SLOT == CAMPAIGN_SLOT and not loaded.ranked
+    assert loaded.AUTOSAVE_SLOT == CAMPAIGN_SLOT and not loaded.record.ranked
 
 
 def test_a_mission_save_from_another_version_costs_the_mission_not_the_campaign(game) -> None:
@@ -417,7 +418,7 @@ def test_a_loaded_mission_keeps_what_the_player_had_seen_their_groups_and_the_au
     press(game, "f9")  # loaded in the match: a new mission scene, as from the title
     loaded = game.scene
     assert isinstance(loaded, MissionScene) and loaded is not scene and "Loaded" in loaded.status
-    assert loaded.groups == {"1": band} and loaded.world.time < loaded.autosave_at <= loaded.world.time + AUTOSAVE_EVERY
+    assert loaded.groups == {"1": band} and loaded.world.time < loaded.record.autosave_at <= loaded.world.time + AUTOSAVE_EVERY
     game.tick(1 / 60)
     seen = loaded.view.sighting(camp.id)
     assert seen is not None and seen.hp == camp.max_hp, "loading the mission showed the player a camp burned out of their sight"
