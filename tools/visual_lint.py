@@ -1437,7 +1437,7 @@ def _undertow_ground_keeper(game: Game, *, campaign: Campaign) -> None:
     scene = MissionScene(campaign, run, difficulty=Difficulty.MEDIUM, settings=dict(QUIET))
     scene.paused = True
     game.push(scene)
-    ticks(game)
+    ticks(game, 30, .1)
     scene.focus_keeper()
     ticks(game)
     assert scene.objectives_body.visible

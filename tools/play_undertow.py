@@ -16,6 +16,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 from typing import Any, Callable
+from weakref import WeakKeyDictionary
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -75,11 +76,13 @@ def _free(unit) -> bool:
     return not unit.hidden and all(isinstance(order, Hold) for order in unit.orders)
 
 
-_LAST: dict[int, dict[str, float]] = {}
+# A completed run must release its driver clock: Python can reuse its numeric id
+# for the next mission, which otherwise inherits delays from the old playthrough.
+_LAST: WeakKeyDictionary[Run, dict[str, float]] = WeakKeyDictionary()
 
 
 def _last(run: Run) -> dict[str, float]:
-    return _LAST.setdefault(id(run), {})
+    return _LAST.setdefault(run, {})
 
 
 def _every(run: Run, key: str, interval: float) -> bool:

@@ -339,7 +339,7 @@ def test_a_mission_save_keeps_the_script_where_it_was_and_continue_resumes_it(ga
     game.save(CAMPAIGN_SLOT, scene=scene)
     game.clear_and_push(TitleScene())
     game.tick(1 / 60)
-    assert any("Continue resumes the campaign mission" in t for t in texts(game))
+    assert any("Continue" in t and CAMPAIGN.title in t for t in texts(game))
     press(game, "c")
     loaded = game.scene
     assert isinstance(loaded, MissionScene) and loaded is not scene
