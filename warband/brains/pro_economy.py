@@ -152,17 +152,29 @@ class _ProBrainEconomy(_ProBrainCore):
                 world.harvest([peasant.id], tree)
 
     def _repairs(self, world: World) -> None:
-        damaged = [b for b in world.player_buildings(self.player, done=True)
-                   if b.hp < b.max_hp * 0.6 and b.info.mine is None]
-        if not damaged or any(isinstance(p.order, Repair) for p in self._peasants(world)):
+        profile = self.profile
+        damaged = sorted((b for b in world.player_buildings(self.player, done=True)
+                          if b.hp < b.max_hp * profile.repair_from and b.info.mine is None),
+                         key=lambda b: b.hp / b.max_hp)
+        peasants = self._peasants(world)
+        mending = int_sum(1 for p in peasants if isinstance(p.order, Repair))
+        if not damaged or mending >= profile.repair_crew:
             return
-        target = min(damaged, key=lambda b: b.hp / b.max_hp)
-        if world._nearest_enemy(self.player, target.center, 8.0, air=False) is not None:  # a flyer overhead does not stop the hammer
-            return
-        spare = [p for p in self._peasants(world) if not p.hidden and p.carrying is None and not isinstance(p.order, Build)
-                 and not self._answering(p)]
-        if spare:
-            world.repair([min(spare, key=lambda p: dist(p.pos, target.center)).id], target.id)
+        spare = [p for p in peasants if not p.hidden and p.carrying is None and not isinstance(p.order, Build)
+                 and not isinstance(p.order, Repair) and not self._answering(p)]
+        for target in damaged:
+            if mending >= profile.repair_crew or not spare:
+                return
+            under_fire = world._nearest_enemy(self.player, target.center, 8.0, air=False) is not None
+            if under_fire and not (profile.repair_under_fire
+                                   and target.type in (BuildingType.TOWER, BuildingType.TOWN_HALL)):
+                if profile.repair_crew <= 1:
+                    return  # one hammer, the old rule: not while they are at the wall
+                continue  # a crew walks past the fight to the next wall that needs it
+            hand = min(spare, key=lambda p: dist(p.pos, target.center))
+            spare.remove(hand)
+            world.repair([hand.id], target.id)
+            mending += 1
 
     def _wish_list(self, world: World) -> list[tuple[BuildingType, Point]]:
         """What to put up next, best first. Nothing here waits on a round number of gold."""
@@ -243,6 +255,13 @@ class _ProBrainEconomy(_ProBrainCore):
         # Magic (WB-067): a vault on our own rift in the mid game, then the tower, then a second vault where it pays.
         if world.magic and profile.magic and world.time >= profile.vault_from and have(BuildingType.BARRACKS):
             wishes.extend(self._magic_wishes(world, have, count, anchor))
+        # A push the towers turned back wants its catapults now, not once production saturates: the smith
+        # and then the workshop jump the optional queue while the want stands (``siege_answer``).
+        if self._siege_wanted(world):
+            if not have(BuildingType.BLACKSMITH):
+                wishes.append((BuildingType.BLACKSMITH, anchor))
+            elif count(BuildingType.WORKSHOP) < 1:
+                wishes.append((BuildingType.WORKSHOP, anchor))
         # A posture built around one branch of the tree — knights, siege, healers —
         # cannot wait for the bank to overflow before it is allowed that branch.
         for tech in set(profile.early_tech):
@@ -604,6 +623,8 @@ class _ProBrainEconomy(_ProBrainCore):
         self.note(world, "rush: over")
 
     def _training(self, world: World) -> None:
+        if self._siege_by and not self._siege_wanted(world):
+            self._siege_by = 0.0  # fielded or forgotten: _choose_unit reads the flag, not the clock
         player = self.player
         army = self._army(world)
         halls = self._halls(world)
@@ -645,7 +666,7 @@ class _ProBrainEconomy(_ProBrainCore):
                 continue
             if building.rally is None and halls:
                 world.set_rally(building.id, self._front_point(world, halls[0]))
-            if building.research is not None or len(building.queue) >= 2:
+            if building.research is not None or len(building.queue) >= self.profile.queue_depth:
                 continue
             own = self.commander.wish(world, player, building, self.remembered()) if self.profile.unique else None
             wish = (UNIQUE_CLAIM, own) if own is not None else self._choose_unit(building, counts, targets)
@@ -710,6 +731,9 @@ class _ProBrainEconomy(_ProBrainCore):
         A scouting posture's workshop makes its one flying machine before anything else."""
         if building.type is BuildingType.WORKSHOP and self.profile.scout and counts.get(UnitType.FLYING_MACHINE, 0) < 1:
             return math.inf, UnitType.FLYING_MACHINE
+        if (building.type is BuildingType.WORKSHOP and self._siege_by > 0.0
+                and counts.get(UnitType.CATAPULT, 0) < self.profile.siege_answer):
+            return 2.0, UnitType.CATAPULT  # the siege answer outranks the plan's shares until it is fielded
         soldiers = int_sum(n for t, n in counts.items() if t is not UnitType.FLYING_MACHINE)
         best: tuple[float, UnitType] | None = None
         for unit_type in targets:

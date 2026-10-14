@@ -84,8 +84,9 @@ class ProBrain(_ProBrainEconomy):
         # base with nothing in it is what an early raid is looking for.
         guards, army = army[:self.profile.guards], army[self.profile.guards:]
         threats = self._threats(world)
-        if threats and not (self.attacking and strength(world, threats)
-                            < self.profile.ignore_raid_ratio * strength(world, army)):
+        if (threats and not (self.attacking and strength(world, threats)
+                             < self.profile.ignore_raid_ratio * strength(world, army))
+                and not self._trade_bases(world, guards, threats)):
             if self.creeping is not None:
                 # Defense takes the whole expedition. An engaged guard attack
                 # must not mask its old camp march while the rest goes home.
@@ -118,18 +119,40 @@ class ProBrain(_ProBrainEconomy):
             # each pass walks the army home the moment a tower comes into view, and
             # then straight back out once it is out of view again; an army that
             # oscillates like that never fights at all.
-            if len(army) < 3 or mine < self.profile.retreat_ratio * self.commit_strength or self._outmatched_at_target(world, army, mine):
+            outmatched = self._outmatched_at_target(world, army, mine)
+            if len(army) < 3 or mine < self.profile.retreat_ratio * self.commit_strength or outmatched:
+                self._intercept_owner = None
                 self.attacking = False
                 self.regroup_until = world.time + self.profile.regroup_seconds
                 self.note(world, f"withdraw at {mine:.0f} of {self.commit_strength:.0f}")
+                if (outmatched and self.profile.siege_answer > 0 and self.target is not None
+                        and self._catapults(world) < self.profile.siege_answer):
+                    # Only a tower's answer is a stone: turned back by soldiers alone, the workshop is a detour.
+                    # Holding the next push hostage to the catapults was priced too, and it cost games — the
+                    # army walks again when it is ready and the stones join it as reinforcements do.
+                    towers = _tower_strength(world, self.player, self.target)
+                    if towers >= 0.4 * self._local_defence(world, self.target)[0]:
+                        self._siege_by = world.time + 240.0
+                        self.note(world, f"siege answer: want {self.profile.siege_answer} catapults")
                 if hall is not None:
                     home = self._front_point(world, hall)
                     for unit in army:
                         world.move([unit.id], self._muster(world, home, unit))
                 return
+            if self._intercept_owner is not None:
+                # The quarry moves: follow its middle while it stays in the open, and give the chase up for a
+                # building once it reaches home or leaves our sight.
+                quarry = [u for u in self._enemies(world) if not u.is_worker and u.player == self._intercept_owner]
+                centre = self._army_centre(world, quarry)
+                buildings = [r.center for r in self._known_enemy_buildings(world) if r.player == self._intercept_owner]
+                if centre is None or (buildings and min(dist(centre, b) for b in buildings) <= 12.0):
+                    self._intercept_owner = None
+                    self.target = None
+                else:
+                    self.target = centre
             targets = self._attack_targets(world)
-            if targets and (self.target is None or not self._still_there(world, self.target)):
-                self.target = min(targets, key=lambda t: dist(t, hall.center if hall is not None else army[0].pos))
+            if targets and self._intercept_owner is None and (self.target is None or not self._still_there(world, self.target)):
+                self.target = self._pick_target(world, targets, hall.center if hall is not None else army[0].pos)
             if self.target is None:
                 return
             # Reinforcements walk to the same place, so the push grows instead of
@@ -152,12 +175,22 @@ class ProBrain(_ProBrainEconomy):
         if world.time < self.regroup_until or self._push_waits(world):
             self._gather(world, army, hall)
             return
+        intercept = self._intercept_point(world, mine, self._caution(world)) if len(army) >= self.profile.min_army else None
+        if intercept is not None:
+            point, quarry_owner = intercept
+            self.attacking = True
+            self._intercept_owner = quarry_owner
+            self.target = point
+            self.commit_strength = mine
+            self.note(world, f"attack {len(army)} strong — intercept their army in the open")
+            world.attack_move([u.id for u in army], point)
+            return
         targets = self._attack_targets(world)
         origin = hall.center if hall is not None else (army[0].pos if army else None)
         if not targets or origin is None:
             self._gather(world, army, hall)
             return
-        target = min(targets, key=lambda t: dist(t, origin))
+        target = self._pick_target(world, targets, origin)
         theirs = self._defenders_near(world, target)
         care = self._caution(world)
         owner = self._owner_of(world, target)
@@ -171,11 +204,16 @@ class ProBrain(_ProBrainEconomy):
         if len(army) < self.profile.min_army * care:
             self._gather(world, army, hall)
             return
-        if mine >= self.profile.attack_ratio * care * theirs:
+        ratio = self.profile.attack_ratio
+        away = self.profile.punish and self._army_away(world, owner, target)
+        if away:
+            ratio *= self.profile.punish_ratio  # their relief has the map to cross; the window is the margin
+        if mine >= ratio * care * theirs:
             self.attacking = True
             self.target = target
             self.commit_strength = mine
-            self.note(world, f"attack {len(army)} strong ({mine:.0f} against {theirs:.0f})")
+            self.note(world, f"attack {len(army)} strong ({mine:.0f} against {theirs:.0f})"
+                             f"{' — their army is away' if away else ''}")
             world.attack_move([u.id for u in army], target)
         else:
             self._gather(world, army, hall)
@@ -377,6 +415,77 @@ class ProBrain(_ProBrainEconomy):
         if not world.stands_at(unit, post) and can_reach_point(world, unit, post):
             world.move([unit.id], post)
 
+    def _local_defence(self, world: World, point: Point) -> tuple[float, int]:
+        """What is actually standing at *point*: visible enemy soldiers within reach of it and the towers
+        covering it, as ``(strength, soldiers)``.  Where :meth:`_defenders_near` prices the owner's whole
+        army (it walks home), this prices the ground itself — the difference between a main base and the
+        expansion nobody is standing on.  Out of sight, the last look at the building there stands in for
+        ninety seconds: from home every unseen expansion would otherwise price at nought."""
+        local = [u for u in self._enemies(world) if not u.is_worker and dist(u.pos, point) <= 14.0]
+        force, count = strength(world, local), len(local)
+        if not local:
+            for record in self._known_enemy_buildings(world):
+                seen = self._building_seen.get(record.id)
+                if seen is not None and dist(record.center, point) <= 3.0 and world.time - seen[0] <= 90.0:
+                    force, count = seen[1], seen[2]
+                    break
+        return force + _tower_strength(world, self.player, point), count
+
+    def _pick_target(self, world: World, targets: list[Point], origin: Point) -> Point:
+        """Which of *targets* to walk at: the nearest, or with ``soft_target`` the weakest-defended first
+        and the nearest of equals — an expansion razed before its army comes home is a mine and a hall
+        the enemy paid for twice."""
+        if not self.profile.soft_target:
+            return min(targets, key=lambda t: dist(t, origin))
+        return min(targets, key=lambda t: (self._local_defence(world, t)[0], dist(t, origin)))
+
+    def _army_away(self, world: World, owner: int | None, target: Point) -> bool:
+        """Their army was seen just now, most of it accounted for, and it is not at *target* (``punish``):
+        what relief the target gets has the whole map to cross first."""
+        if owner is None or owner not in self._army_seen:
+            return False
+        when, middle, seen = self._army_seen[owner]
+        if world.time - when > self.profile.stale_seconds:
+            return False
+        remembered = plain_sum(self.remembered(owner).values())
+        if remembered <= 0.0 or seen < 0.35 * remembered:
+            return False  # a detachment in sight says nothing about where the rest stands
+        return dist(middle, target) > 14.0 and self._local_defence(world, target)[1] <= 0.25 * seen
+
+    def _intercept_point(self, world: World, mine: float, care: float) -> tuple[Point, int] | None:
+        """Where an opponent's army stands in the open, seen fresh and the smaller (``intercept``): a field
+        fight on even ground, without the towers every building push must price in.  The blob otherwise
+        only ever walks at buildings or waits to be walked at."""
+        if not self.profile.intercept:
+            return None
+        best: tuple[float, Point, int] | None = None
+        for owner, (when, middle, seen) in self._army_seen.items():
+            if world.time - when > self.profile.stale_seconds:
+                continue
+            remembered = plain_sum(self.remembered(owner).values())
+            if remembered <= 0.0 or seen < 0.35 * remembered:
+                continue  # a detachment: the army it belongs to is somewhere else
+            buildings = [r.center for r in self._known_enemy_buildings(world) if r.player == owner]
+            if buildings and min(dist(middle, b) for b in buildings) <= 16.0:
+                continue  # at home under its towers is a building push by another name
+            theirs = [u for u in self._enemies(world) if not u.is_worker and u.player == owner]
+            force = strength(world, theirs)
+            if mine >= self.profile.attack_ratio * care * force and (best is None or force < best[0]):
+                best = (force, middle, owner)
+        return (best[1], best[2]) if best is not None else None
+
+    def _trade_bases(self, world: World, guards: list[Unit], threats: list[Unit]) -> bool:
+        """Let home hold itself and walk at theirs instead (``base_trade``): their army is committed at our
+        towers, which with the guard price above what came, so the race is which base falls slower — and
+        the brain that always answers a raid by coming home never starts that race at all."""
+        if not self.profile.base_trade or self.attacking:
+            return False
+        hall = self._hall(world)
+        if hall is None or not self._known_enemy_buildings(world):
+            return False
+        home = _tower_strength_own(world, self.player, hall.center) + strength(world, guards)
+        return home >= 0.9 * strength(world, threats)
+
     def _defenders_near(self, world: World, point: Point, radius: float = 12.0) -> float:
         """What is waiting at *point*: the soldiers we can see, the towers covering it,
         and half of whatever the enemy was last seen with but is currently hidden.
@@ -559,6 +668,14 @@ class ProBrain(_ProBrainEconomy):
             # Circle the enemy base rather than standing in it, so the sighting stays fresh; a flyer at the edge of its
             # sight, out of the reach of a tower at the middle.
             centre = min(targets, key=lambda c: dist(c, scout.pos))
+            if self.profile.soft_target and scout.flying and len(targets) > 1:
+                # A target choice is only as good as its last look at every place it might choose: tour them.
+                ordered = sorted(targets)
+                centre = ordered[self._scout_leg % len(ordered)]
+                if dist(scout.pos, centre) <= scout.info.sight + 1.0 or world.time - self._scout_leg_at > 25.0:
+                    self._scout_leg += 1
+                    self._scout_leg_at = world.time
+                    centre = ordered[self._scout_leg % len(ordered)]
             angle = (world.time / 12.0) % (2 * math.pi)
             reach = scout.info.sight - 1.0 if scout.flying else 7.0
             ring = (centre[0] + reach * math.cos(angle), centre[1] + reach * math.sin(angle))

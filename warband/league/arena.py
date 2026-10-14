@@ -119,6 +119,33 @@ for _profile in ARCHETYPES:
     if _profile.name not in AGENTS:
         register(_profile.name, lambda player, seed, p=_profile: ProBrain(player, p))
 
+from warband.brains.contenders import CONTENDERS  # noqa: E402 - candidates for the rung above Grandmaster
+
+for _profile in CONTENDERS:
+    if _profile.name not in AGENTS:
+        register(_profile.name, lambda player, seed, p=_profile: ProBrain(player, p))
+
+from warband.brains.apex import APEX, APEX_FOR_LAYOUT  # noqa: E402 - the per-race roster bred above Grandmaster
+from warband.brains.pro_ai import RaceBrain  # noqa: E402
+
+register("apex", lambda player, seed: RaceBrain(player, APEX, seed, APEX_FOR_LAYOUT))
+
+from warband.brains.apex2 import APEX2, APEX2_FOR_LAYOUT  # noqa: E402 - round two, bred against apex itself
+
+register("apex2", lambda player, seed: RaceBrain(player, APEX2, seed, APEX2_FOR_LAYOUT))
+
+from warband.brains.apex3 import APEX3, APEX3_FOR_LAYOUT  # noqa: E402 - round three, the enlarged genome
+
+register("apex3", lambda player, seed: RaceBrain(player, APEX3, seed, APEX3_FOR_LAYOUT))
+
+from warband.brains.apex4 import APEX4, APEX4_FOR_LAYOUT  # noqa: E402 - round four
+
+register("apex4", lambda player, seed: RaceBrain(player, APEX4, seed, APEX4_FOR_LAYOUT))
+
+from warband.brains.policy import LEARNED, PolicyBrain  # noqa: E402 - the learned stance policy over apex3
+
+register("policy", lambda player, seed: PolicyBrain(player, APEX3, seed, LEARNED, APEX3_FOR_LAYOUT))
+
 
 # -- Balance variants --------------------------------------------------------------
 

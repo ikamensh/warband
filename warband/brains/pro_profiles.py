@@ -116,6 +116,18 @@ class ProProfile:
     spell_3: Upgrade | None = None    # …level III
     cast_worth: float = 3.0           # the least a level I cast within reach is worth, in bodies as a siege crew weighs them
     far_worth: float = 2.0            # …beyond every vault's reach, this many times as much
+    # Reading the enemy rather than the map (the apex searches): where to walk, and when their absence is the opening.
+    soft_target: bool = False         # walk at the weakest-defended known building, not the nearest
+    punish: bool = False              # their army seen fresh, mostly accounted for, and not at the target: attack now…
+    punish_ratio: float = 0.6         # …on this share of the usual attack terms
+    siege_answer: int = 0             # a push the towers turn back calls for this many catapults before the next one; 0: never
+    base_trade: bool = False          # let the towers hold home alone and walk at their base instead of defending
+    intercept: bool = False           # their army seen fresh in the open and the smaller: fight it there, not at its towers
+    # Keeping what stands standing, and the producers never idle (the apex searches, second batch).
+    repair_crew: int = 1              # peasants on hammers at once; the unmodified brain ever sends one
+    repair_from: float = 0.6          # mend a building below this share of its hit points
+    repair_under_fire: bool = False   # mend towers and halls while they are being hit, not only after
+    queue_depth: int = 2              # how deep a producer's queue may run (the model allows five)
 
 
 PRO: Final = ProProfile("pro")

@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import math
 from warband.brains.pro_profiles import PRO, ProProfile
+from warband.brains.pro_force import strength
 from warband.brains.ai import Hunt, camp_safe_point, fighters, known_enemy_buildings, known_mines
 from warband.brains.magic import Magus
 from warband.brains.unique import Commander
 from warband.sim import mapgen
-from warband.sim.model import Build, Building, Point, Repair, Salvage, Unit, World, dist, tile_center
+from warband.sim.model import Build, Building, Point, Repair, Salvage, Unit, World, dist, int_sum, plain_sum, tile_center
 from warband.sim.rules import BuildingType, UnitType, Upgrade
 from warband.sim.worker_knowledge import KnownMine
 
@@ -40,6 +41,14 @@ class _ProBrainCore:
         self.log: list[tuple[float, str]] = []
         self._seen: dict[int, dict[UnitType, float]] = {}  # per opponent: most of each kind ever seen at once
         self._seen_at: dict[int, float] = {}               # …and when that opponent was last looked at
+        self._army_seen: dict[int, tuple[float, Point, int]] = {}  # per opponent: when, where the middle of its
+        # visible soldiers stood, and how many of them were in sight — where its army is, not only how big
+        self._building_seen: dict[int, tuple[float, float, int]] = {}  # per known enemy building: when last in
+        # sight, the strength of the soldiers standing at it then, and how many — what defends each place
+        self._scout_leg = 0       # which known enemy building the tour flies to next (``soft_target``)
+        self._scout_leg_at = 0.0  # …and when the tour last moved on
+        self._siege_by = 0.0  # catapults are wanted until this many seconds: a towered target turned a push back
+        self._intercept_owner: int | None = None  # the opponent whose army in the open this push is walking at
         self.creeping: int | None = None   # the lair the army is clearing
         self.creep_strength = 0.0          # what the army was worth when it set out to clear it
         self.creep_party: set[int] = set()  # the committed expedition; fresh recruits do not hide its losses
@@ -131,10 +140,23 @@ class _ProBrainCore:
         believes it is always outnumbered never attacks at all.
         """
         current: dict[int, dict[UnitType, float]] = {}
+        soldiers: dict[int, list[Unit]] = {}
         for unit in self._enemies(world):
             if not unit.is_worker:
                 seen = current.setdefault(unit.player, {})
                 seen[unit.type] = seen.get(unit.type, 0.0) + 1.0
+                soldiers.setdefault(unit.player, []).append(unit)
+        for owner, seen_now in soldiers.items():
+            middle = (plain_sum(u.x for u in seen_now) / len(seen_now),
+                      plain_sum(u.y for u in seen_now) / len(seen_now))
+            self._army_seen[owner] = (world.time, middle, len(seen_now))
+        if self.profile.soft_target:
+            # What stands at each known enemy building while it is in sight, remembered for when it is not:
+            # a target choice made from home otherwise prices every unseen expansion at nought.
+            for record in self._known_enemy_buildings(world):
+                if world.is_visible(self.player, (int(record.center[0]), int(record.center[1]))):
+                    local = [u for u in soldiers.get(record.player, ()) if dist(u.pos, record.center) <= 14.0]
+                    self._building_seen[record.id] = (world.time, strength(world, local), len(local))
         fade = 0.99 ** (self.profile.think_every / 0.4)
         for player in world.players[:world.seats]:  # the wilds are no opponent to keep a memory of
             if player.id == self.player or not player.alive:
@@ -161,6 +183,16 @@ class _ProBrainCore:
         if player is not None:
             return self._seen_at.get(player, -math.inf)
         return max(self._seen_at.values(), default=-math.inf)
+
+    def _catapults(self, world: World) -> int:
+        """Catapults standing or on the stocks: what a siege answer counts itself short against."""
+        return (int_sum(1 for u in self._units(world) if u.type is UnitType.CATAPULT)
+                + int_sum(b.queue.count(UnitType.CATAPULT) for b in world.player_buildings(self.player)))
+
+    def _siege_wanted(self, world: World) -> bool:
+        """A towered target turned a push back and the catapults it called for are not there yet."""
+        return (self.profile.siege_answer > 0 and world.time < self._siege_by
+                and self._catapults(world) < self.profile.siege_answer)
 
     def _front_point(self, world: World, hall: Building) -> Point:
         """Where the army waits: between the hall and whoever is coming."""

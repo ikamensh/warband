@@ -783,6 +783,107 @@ time, so there was no efficiency to find in how they fight, only in whom:
 
 No shipped brain below Grandmaster researches Marksmanship, so the settings below it play as they did.
 
+## Reading a match: stories, and the contenders above Grandmaster
+
+The tallies count a match; they do not read it. `warband/league/narrate.py`
+(driven by `tools/replay_report.py match|replay|compare`) watches a world
+the way the telemetry does and tells its story: a five-second timeline per
+seat, the logical episodes the orders add up to (opening, push, defence,
+camp, expansion, supply block, cast), the battles the blows cluster into
+with the value each side lost, twenty-five factors per seat, and a verdict
+that prices the winner's largest edges in gold. Over a pairing it aggregates
+what winning looks like, how often an early lead holds, and how one agent
+loses. It reads a human's kept replay through the same eyes, minus the brain
+logs. (Evidence for everything below: `~/saga/evidence/warband/ai-apex/`.)
+
+Read that way on fresh seeds (24 narrated games a pairing), Grandmaster's
+losses have two shapes. Against Medium (62% taken) it wins in four to six
+minutes or loses long: in the losses it was out-mined 30,900 to 63,350 at
+the median, fifteen workers peak against twenty-two, one hall while Medium
+held up to three, first attack 262 s against 167 s. Against Master, in the
+losses its first attack came at a median 853 s against 194 s with a peak
+army worth 7,250 against 10,400: some postures simply never push. Camps are
+cleared in under half of seat-games and no spells are cast in a decided
+duel at all — creeping and magic are unspent levers at these lengths.
+
+The hand-built answer lives in `brains/contenders.py` as arena agents, each
+varying one diagnosed axis on the Vanguard with the bred behaviours Master
+lacks (reading the fight at the target, prospecting). Pooled over two
+screens (1056 games against Medium, Master and Grandmaster, Medium anchored
+at 1000): `apex-scout` 1328, `apex-rush` 1319, `apex-rush3` 1308,
+Grandmaster 1268, Master 1263, and the expansion/siege/wall variants below
+both. The rush family takes 96.9% from Medium where Grandmaster takes
+65.6%, which is most of its pooled edge; head to head with Grandmaster it
+splits its games. Its losses are the mirror of Grandmaster's: it attacks at
+200 s into a bred army half again its size. Tempo fixes the Medium hole and
+nothing else; per-race timing is what is left, which is what the search is
+for. The search also gained creeping genes (`creep_from`, `creep_army`,
+`creep_ratio`, `creep_reach`) and can seed itself from contenders and bred
+postures by name. By race the screens put Grandmaster-as-elf at 35.3% over
+116 games, so elves were bred first, against Master's postures, Medium,
+Grandmaster and `apex-scout` together — the WB-075 panel, widened.
+
+**The bred roster, confirmed.** Twelve to fourteen generations a race
+(populations of twenty, seeded from the apex contenders and the race's bred
+postures) produced `brains/apex.py`, two postures a race, played by
+`RaceBrain` as the arena agent `apex`. On fresh boards the champions took
+91–100% from Medium and 50–81% from Grandmaster as their race (160 games
+each). The confirming ladder — this section's own protocol, 60 seeds from
+7000, both corners, every pairing, 1800 games, on the maps before the motif
+rewrite — seats it at the top:
+
+| agent | Elo | 90% interval |
+|-------|-----|--------------|
+| `apex` | 1435 | 1396 .. 1481 |
+| Grandmaster | 1372 | 1318 .. 1421 |
+| Master | 1310 | 1271 .. 1351 |
+| Hard | 1109 | 1071 .. 1150 |
+| Medium | 1000 | — |
+| Easy | 774 | 728 .. 815 |
+
+Head to head `apex` takes 99.2% from Easy, 95.8% from Medium, 90.0% from
+Hard, 75.8% from Master and 50.8% from Grandmaster. It is the top of the
+ladder by fixing Grandmaster's leaks (Medium took 26.7% from Grandmaster
+here, 4.2% from `apex`), not by beating Grandmaster itself — so it is a
+better Grandmaster candidate than the table it would replace, and still
+nowhere near a 2000, which on this scale must take nine games in ten from
+Grandmaster. Its remaining losses are the long ones again: out-mined with
+fourteen workers against twenty-two, one hall standing. That is not the
+settled shortcut hiding expansion's value: played out in full,
+expansion-led `apex-boom` scores the same 33% against `apex-rush` as it
+does settled (24 games each way, mean 10.4 minutes played out) — at this
+balance the second mine's payback arrives after the tempo game is decided.
+A second round bred from the apex postures against `apex` itself
+(`brains/apex2.py`) produced fresh-seed trials of 77% (human), 77% (elf),
+78% (orc) and 71% (dwarf) over the panel, and on the same confirming
+protocol (2520 games, seeds from 7100) measures 1447 (1408 .. 1497) to
+`apex`'s 1432 — the two rosters take 49–51% from each other, and the round
+bought the Grandmaster matchup (60.8% against `apex`'s 50.8%) rather than
+pooled rating. Two rounds in, the search is flattening where it flattened
+above Master: a 2000 still wants a different kind of strength.
+Neither roster is shipped as a difficulty yet: both were bred and measured
+on the maps before the motif rewrite, and seating one as Grandmaster wants
+the same ladder run again on the new ground first.
+
+The follow-up added behaviours for the search to recombine — soft-target
+choice over remembered per-building defence, punishing an absent army,
+a tower-triggered siege answer, base-trading behind towers, intercepting
+an army in the open, creeping genes, repair crews under fire, deeper
+production queues — all profile-gated, all priced singly first (neutral to
+a point and a half alone; the siege answer's push-gate priced at −6 and was
+removed). A third round over that enlarged genome (`brains/apex3.py`)
+measures 1541 on the same protocol, dead level with `apex2`, taking 70.0%
+from Grandmaster: three rounds bought ten points each in that matchup and
+the pooled rating has flattened around 1540. The ladder also plays with
+the magic match-option off, as the shipped New Game screen defaults, so
+spells were never a rating lever here. What a fixed posture cannot do at
+all is change its mind mid-match; `brains/policy.py` is the distillation
+target for learning that choice — a linear stance policy (press, hold,
+boom, creep, siege, as bred) over fog-honest features, trained by
+evolution strategies in `tools/learn.py` and shipped as a table of weights
+with a plain-Python forward pass. With the placeholder weights it is
+`apex3` untouched, which is the baseline any learned table must beat.
+
 ## What each change was worth
 
 Every number below is a measured ladder result, and several of them

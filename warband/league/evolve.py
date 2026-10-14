@@ -144,6 +144,16 @@ GENES: tuple[Gene, ...] = (
     _g("mine_floor", "expansion", 2000, 20000, "int"),
     _g("prospect.on", "expansion", 0, 1, "bool"),
     _g("prospect_floor", "expansion", 6000, 30000, "int"),
+    _g("soft_target", "engagement", 0, 1, "bool"),
+    _g("punish", "engagement", 0, 1, "bool"),
+    _g("punish_ratio", "engagement", 0.4, 1.0),
+    _g("siege_answer", "engagement", 0, 4, "int"),
+    _g("base_trade", "engagement", 0, 1, "bool"),
+    _g("intercept", "engagement", 0, 1, "bool"),
+    _g("repair_crew", "economy", 1, 4, "int"),
+    _g("repair_from", "economy", 0.35, 0.95),
+    _g("repair_under_fire", "economy", 0, 1, "bool"),
+    _g("queue_depth", "economy", 1, 5, "int"),
     _g("attack_ratio", "engagement", 0.5, 2.0),
     _g("retreat_ratio", "engagement", 0.2, 0.8),
     _g("regroup_seconds", "engagement", 10, 90),
@@ -167,6 +177,13 @@ GENES: tuple[Gene, ...] = (
     _g("scout", "harass", 0, 1, "bool"),
     _g("scout_from", "harass", 20, 120),
     _g("rush_towers", "harass", 0, 2, "int"),
+    # Creeping was PRO's fixed habit while the stories showed camps cleared in under half of seat-games
+    # and every long loss short of gold: when to start, with how much, and how far to walk are searchable.
+    _g("creep", "creeping", 0, 1, "bool"),
+    _g("creep_from", "creeping", 60, 360),
+    _g("creep_army", "creeping", 3, 14, "int"),
+    _g("creep_ratio", "creeping", 1.1, 2.2),
+    _g("creep_reach", "creeping", 18, 50),
     _g("plan.on", "army", 0, 1, "bool"),
     *(_g(f"plan.{t.value}", "army", 0.0, 1.0) for t in _PLAN_TYPES),
     _g("strict_plan", "army", 0, 1, "bool"),
@@ -582,9 +599,22 @@ class State:
 
 
 def _known_profile(name: str) -> ProProfile:
+    from warband.brains.apex import APEX
+    from warband.brains.apex2 import APEX2
+    from warband.brains.apex3 import APEX3
+    from warband.brains.apex4 import APEX4
+    from warband.brains.bred import BRED, BRED_FOR_LAYOUT
+    from warband.brains.contenders import BY_NAME as CONTENDERS_BY_NAME
     from warband.league.archetypes import BY_NAME
 
-    return PRO_PROFILES[name] if name in PRO_PROFILES else BY_NAME[name]
+    bred = {p.name: p
+            for postures in (*BRED.values(), *BRED_FOR_LAYOUT.values(), *APEX.values(), *APEX2.values(),
+                             *APEX3.values(), *APEX4.values())
+            for p in postures}
+    for table in (PRO_PROFILES, BY_NAME, CONTENDERS_BY_NAME, bred):
+        if name in table:
+            return table[name]
+    raise KeyError(f"unknown profile {name!r}")
 
 
 def _name(state: State, tag: str) -> str:
