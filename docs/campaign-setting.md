@@ -12,8 +12,9 @@ Deviations from this blueprint, each forced by a reproduced engine behaviour
 rather than taste: idle/attack-move acquisition fights any hostile body in
 sight, so the Mill pylon stands across the river on the north bank (not
 beside the vault), Pell's crew strikes camp and withdraws at the parley
-(resign; the mill stands empty), the whole-grove choice is made by mustering
-at the Moon Hall landmark, and the kneeling Guardian retires off-map and
+(resign; the mill stands empty), the grove's cut/whole plan is chosen in
+dialogue before cutting or mustering at Moon Hall (the initial garrison must
+never make that choice for the player), and the kneeling Guardian retires off-map and
 returns as a player unit at the Maw. Salvage alone cannot fund the mesa camp
 (hall + three farms costs more than the ruins yield), so stripping the Old
 Camp also unpacks the caravan's packed stores. M4/M5 enemies are finite
@@ -1235,7 +1236,6 @@ cap/rate, spell grants via upgrades, sapper blast vs. buildings, treant
 forest-walking and tree-regen, repair pro-rata, scripted-side resign,
 `ProBrain` casting, `World.lay_rifts`) was read in the code or its design
 notes during writing, with the uncertain ones isolated above as probes.
-
 
 
 

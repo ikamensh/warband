@@ -3,8 +3,12 @@
 The second Warband campaign (`warband/story/new_campaign.py`, id `undertow`, the catalogue's
 default; *The Thornwood War* remains playable beside it). Five hand-authored missions descend
 Vesskar Hollow's Five Steps — Humans, Orcs, Elves, Dwarves, Humans — each with a different verb,
-an on-map choice made with ordinary orders, and flags the next Steps and the finale read back.
+choices fulfilled through ordinary orders, and flags the next Steps and the finale read back.
 World and story design: `docs/campaign-setting.md`. This note records what shipped.
+
+Each playable keeper has a named map tag and an authored portrait in dialogue, the selection
+card and the army grid. **F3** selects and centres the current keeper; that link follows a rescue
+or saved mission. Detailed orders appear in dialogue; the HUD keeps the objectives compact.
 
 ## The missions
 
@@ -12,14 +16,15 @@ World and story design: `docs/campaign-setting.md`. This note records what shipp
 |---|---|---|---|---|
 | 1 | Millfield (`undertow_mill`) | Humans | Hold the straining vault through two surges, or shutter it and clear the fields | Destroy the hostile lock-pylon on the north bank → vault shuttered (`undertow_mill_vault`) |
 | 2 | The Salt Caravan (`undertow_caravan`) | Orcs | Salvage the Old Camp, raise a hall + three farms on the Broken Tooth mesa, bring ≥5 drovers up | Blast the rockfall with a sapper or walk the south ford; optionally blast the mill-dam pylon, sweeping the Open Hand camp (`undertow_dam`) |
-| 3 | The Grove That Drinks (`undertow_grove`) | Elves | Fell 6 of the 8 marked firebreak trees, or muster at the Moon Hall and weather both bloom waves | Cut/whole (`undertow_grove_cut`); the Ancient Guardian: Wrenna alone in peace (`undertow_guardian_ally`) or bring it down (`undertow_guardian_core`) |
+| 3 | The Grove That Drinks (`undertow_grove`) | Elves | Choose cut/whole in dialogue, then fell 6 of the 8 marked firebreak trees, or muster at the Moon Hall and weather both bloom waves | Cut/whole (`undertow_grove_cut`); the Ancient Guardian: Wrenna alone in peace (`undertow_guardian_ally`) or bring it down (`undertow_guardian_core`) |
 | 4 | The Weight (`undertow_weight`) | Dwarves | Raze the Open Hand hall, or raze their workshop and break all three engineer bands — and settle the seam | Cap the seam's throat-rift with a vault (`undertow_seam_capped`), haul 300 gold out of it (`undertow_seam_mined`), or post soldiers on the seam landmark and close the face |
 | 5 | The Maw (`undertow_maw`) | Humans | One committed ending (below) | The first ending act — repairing the Keystone, felling a seal-pylon, finishing a Maw vault — locks the others out |
 
 ## The three endings
 
 - **RESEAL** — repair the Keystone (a player Mage Tower at 25 % in the crater) to full, then break
-  Sella's final assault on it. A rebuilt tower on the same footprint counts.
+  Sella's final assault on it. It must still stand fully repaired at victory; a rebuilt tower on
+  the same footprint counts.
 - **OPEN** — destroy the three hostile seal-pylons (south, west, east gates). Sella stands her side
   down; ride out one bloom wave of wild elementals and wolves.
 - **GROUND** — a finished vault on each of the three Maw rifts, held until the aether store reaches

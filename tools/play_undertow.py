@@ -363,6 +363,8 @@ def solve_grove(run: Run, *, cut: bool, guardian: str | None = None) -> float:
     # Wrenna parleys alone, as with the Guardian: a formed band idling by the camp would start the fight itself.
     world.move([run.get("wrenna")], (29.5, 27.5))  # parley hails her en route; she stops outside bowshot of the mill
     play_until(run, lambda r: "parley" in r.fired, seconds=420, what="parley at the woodcutters' camp")
+    play_until(run, lambda r: "grove_plan" in r.fired, seconds=2, what="grove decision offered")
+    answer(run, "grove_intent", "cut" if cut else "whole")
 
     if cut:
         def fell(r: Run) -> None:

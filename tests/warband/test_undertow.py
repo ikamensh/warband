@@ -9,9 +9,7 @@ which is why they cannot be fast.
 
 from __future__ import annotations
 
-import importlib.util
 import json
-from pathlib import Path
 
 import pytest
 
@@ -20,11 +18,7 @@ from warband.story.catalog import CAMPAIGNS, DEFAULT_CAMPAIGN, find_mission, get
 from warband.story.mission_scene import build_world
 from warband.story.new_campaign import CAMPAIGN
 from warband.sim.rules import BuildingType as B, SIM_DT, Terrain, UnitType as U
-
-_SOLVER_PATH = Path(__file__).resolve().parents[2] / "tools" / "play_undertow.py"
-_spec = importlib.util.spec_from_file_location("play_undertow", _SOLVER_PATH)
-solver = importlib.util.module_from_spec(_spec)
-_spec.loader.exec_module(solver)
+from tools import play_undertow as solver
 
 
 def mission(mission_id: str):
