@@ -112,7 +112,7 @@ def test_progress_this_version_cannot_read_is_never_written_over(game, kind) -> 
     store = ProgressStore(game.data_dir)
     store.saves.save(1, UNREADABLE[kind], "WarbandCampaign")
     kept = store.path.read_bytes()
-    game.push(CampaignScene())
+    game.push(CampaignScene(campaign=CAMPAIGN))
     game.tick(1 / 60)
     assert "Campaign progress unavailable" in texts(game)
     assert not {"Begin the campaign", "Continue", "Restart mission"} & set(texts(game))
@@ -176,6 +176,7 @@ def begin_campaign(game: Game) -> MissionScene:
     game.tick(1 / 60)
     press(game, "a")
     assert isinstance(game.scene, CampaignScene)
+    game.scene.select_campaign(CAMPAIGN)
     press(game, "return")
     assert isinstance(game.scene, DialogScene)
     press(game, "escape")  # skip the briefing
@@ -354,7 +355,7 @@ def test_a_mission_save_from_another_version_costs_the_mission_not_the_campaign(
     store.save(Progress(CAMPAIGN.id, Difficulty.EASY, completed=["hollowmere"], flags={"truce": True}))
     game.save_manager.save(CAMPAIGN_SLOT, {"version": 0, "seed": 1, "difficulty": "easy", "world": {}, "mission": {"id": "greywater"}}, "MissionScene",
                            summary={"mission": "2. Greywater Ford"})
-    game.push(CampaignScene())
+    game.push(CampaignScene(campaign=CAMPAIGN))
     game.tick(1 / 60)
     scene = game.scene
     assert isinstance(scene, CampaignScene) and scene.next_mission.id == "greywater" and scene.difficulty is Difficulty.EASY
@@ -425,7 +426,7 @@ def test_a_loaded_mission_keeps_what_the_player_had_seen_their_groups_and_the_au
 
 def test_start_over_asks_twice_and_then_erases(game) -> None:
     ProgressStore(game.data_dir).save(Progress(CAMPAIGN.id, Difficulty.MEDIUM, completed=["hollowmere"]))
-    game.push(CampaignScene())
+    game.push(CampaignScene(campaign=CAMPAIGN))
     game.tick(1 / 60)
     scene = game.scene
     scene.start_over()
@@ -492,10 +493,11 @@ import json, sys
 from pathlib import Path
 from saga2d import Game
 from warband.story.campaign_scene import CampaignScene
+from warband.story.missions import CAMPAIGN
 from warband.ui.style import build_theme
 data = Path(sys.argv[1])
 game = Game("Warband Campaign", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=data / "saves")
-game.push(CampaignScene())
+game.push(CampaignScene(campaign=CAMPAIGN))
 game.tick(1 / 60)
 scene = game.scene
 print(json.dumps({"next": scene.next_mission.id, "flags": scene.progress.flags, "difficulty": scene.difficulty.value}))

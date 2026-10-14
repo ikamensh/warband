@@ -1287,7 +1287,7 @@ def campaign_fresh(game: Game) -> None:
 @screen
 def campaign_under_way(game: Game) -> None:
     ProgressStore(game.data_dir).save(Progress(CAMPAIGN.id, Difficulty.HARD, completed=["hollowmere", "greywater"], flags={"truce": True}))
-    game.push(CampaignScene())
+    game.push(CampaignScene(campaign=CAMPAIGN))
     ticks(game)
 
 
