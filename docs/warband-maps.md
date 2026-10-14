@@ -7,17 +7,29 @@ Design note, 2026-09-15, implemented the same day in `warband/sim/mapgen.py`
 tests are `tests/warband/test_mapgen.py` and `tests/warband/test_maps.py`,
 the numbers over many seeds come from `tools/map_report.py`.
 
-## Optional encounters (2026-10-01)
+<a id="optional-encounters-2026-10-01"></a>
 
-Neutral encounters are side expeditions rather than gates on every expansion. Small maps try
-one **Raid** per seat; Medium adds one **Stronghold**; Large and larger maps also try one
-**Ancient**. Three- and four-seat Large maps try one **shared central Ancient** instead of
-one per cell, making its defeat a contested multiplayer achievement. Those are maximum counts:
-a cramped cell omits an arena instead of putting a boss on its only road. Wolf Dens and Spider Nests alternate within Raid; Troll Mounds and Stone
-Cairns alternate within Stronghold. The Ancient Sanctum is the final tier. Klondike uses the
-same optional side-site search, so its creatures no longer depend on having third mines.
-Mother Lodes and Gold Seams also keep their resource placement independently of encounters;
-neither prize guarantees a creature gate beside it.
+## Optional encounters (2026-10-01; roles 2026-10-12)
+
+Neutral encounters hold map jobs, not just side ground. Each catalogue entry names a **role**
+besides its tier (`warband/assets/constants/encounters.toml`): an **expansion** guard is a weak
+Raid beside one contested mine, watching the deposit itself, so taking the expansion means
+clearing its outpost first; a **choke** is a Stronghold on a proven shortcut, with the long
+way round left open, so breaking it buys shorter marches; **wilds** are side expeditions
+anywhere. Small maps try one Raid slot, Medium adds a Stronghold slot, Large and larger maps
+also try an Ancient; three- and four-seat Large maps try one **shared central Ancient** instead
+of one per cell, making its defeat a contested multiplayer achievement. Those are maximum
+counts: a slot whose role proves nowhere omits the whole symmetric orbit instead of forcing a
+PvE toll, falling back to a side expedition of its tier where the ground has safe room.
+In crowded multiplayer cells, the natural and contested-mine searches prefer a fair deal
+that leaves physical room for an independent guard den. They retain ordinary placement when
+no such deal fits; reserving room never overrides the final opening and bypass certificates.
+Within a role and tier the identity is a seeded catalogue choice -- Wolf Outpost or Venom
+Hollow for an expansion guard, Troll Toll or Sentry Cairn for a choke -- so rosters and sites
+vary across seeds. Klondike may guard its far-corner consolation mine where that bonus exists,
+while the required pit economy remains open. Mother Lodes and Gold Seams keep their resource placement independently of
+encounters; neither prize guarantees a creature gate beside it. One encounter guards one
+expansion: a guard's single watch covers every legal mining mouth of its deposit.
 
 Every arena and short approach is drawn from a separate seeded stream **after** deposits,
 roads and ley rifts. Its symmetric clearings are prepared with `wilds=True` or `False`; only the
@@ -26,18 +38,37 @@ mines and rifts. Three-seat maps prepare all four cells symmetrically but place 
 in the three occupied cells.
 
 The search reserves the actual routes between halls and to their main mines and naturals,
-including every mirrored image. An arena's watch stays off those routes, its centre stays at
-least fourteen tiles from a hall and ten and a half from the safe mines, and separate arenas
-keep at least 16 tiles between them, or two watch radii plus two tiles if larger. A player can
-follow the safe opening and reach another player without awakening an encounter. A shared Ancient may displace the
-shortest central road; the generator certifies tree-only bypasses outside every encounter watch
-first. Its centre remains nearly equidistant from the seats. Klondike keeps its required central
-pit free of an Ancient. A camp can still be reached by a short side approach. Arena clearings remove trees only; protected gates, rock walls and rivers
-keep their layout's job.
+including every mirrored image. A guard's mine watch keeps every safe mouth outside aggro;
+any other den stays at least fourteen tiles from a hall and ten and a half from the safe
+mines, and separate camps keep at least 16 tiles between them, or two watch radii plus two
+tiles if larger. A player can follow the safe opening and reach another player without
+awakening an encounter. A choke earns its role only where at least three tiles of the actual
+short inter-hall route fall inside its watch **and** the local watch-free crossing costs at
+least 15% more than its cleared shortcut. Entry and exit are the finished route's tiles
+immediately outside the production-padded watch, mirrored to each congruent encounter;
+every camp must offer a real bypass and shorten that crossing when it alone is cleared.
+The finished crossing must also retain a physical neck: two consecutive road tiles inside
+the tripwire have trees, rock or water on opposing sides within three tiles. Monster avoidance
+in an otherwise open field earns no choke role.
+The rest of a long march cannot dilute a useful local shortcut. Searches try the next
+crossing when an arena fails this proof, restoring unsuccessful carving. Roles are re-proved on the finished ground
+after every carving, and the opening network is re-certified outside every remaining watch
+with production's own avoidance padding; whatever drops, drops as a whole orbit, never a seat.
+Either removal can invalidate the other, so roles re-prove after every opening repair until
+nothing more drops. A guard orbit's own mines stand two watches apart and every den stands
+two watches off every other seat's mine: different encounters have independent, nonoverlapping watches.
+A shared Ancient may displace the shortest central road; the generator certifies tree-only
+bypasses outside every encounter watch first. Its centre remains nearly equidistant from the
+seats. Klondike keeps its required central pit free of an Ancient. A camp can still be reached
+by a short side approach. Arena clearings remove trees only; protected gates, rock walls and
+rivers keep their layout's job. Guard posts mirror across cells roster-first, so every seat's
+mixed camp lands on congruent ground.
 
 `tests/warband/test_encounter_maps.py` checks reachable optional encounters, safe routes,
 per-seat roster symmetry, the ordinary Large Forest Ancient, and unchanged strategic geometry
-when wilds are disabled. The ordinary whole-map fairness matrix remains the generation gate.
+when wilds are disabled; `tests/warband/test_camps.py` holds the watch/site split (a siege
+beyond the den still rouses a mine watch; a seat that only sees the mine learns nothing of
+the lair or its fall). The ordinary whole-map fairness matrix remains the generation gate.
 
 ## Ground you can read (2026-10-13)
 
@@ -477,16 +508,13 @@ Everything the layouts have in common, in the order the generator does it.
 4. **Thirds.** 30 000 gold in the contested middle, equidistant to the two
    nearest halls within 3 tiles. Two players: two; three: two plus the empty
    seat's; four: four. Small drops one, Large adds one.
-4b. **Camps.** A creature den beside every contested deposit — the thirds and
-   the endless seam, never a seat's own mine and never its natural (2026-09-21).
-   One canonical site per deposit, copied a cell at a time like the deposit
-   itself, four to nine tiles from it, with its own tighter spacing (a den that
-   kept a mine's distance from the dig it guards would not be guarding it) and
-   40 open tiles around it for an army to fight in. A camp is a **wish**, not a
-   fault: a layout whose own walls leave no room beside a dig gets an unguarded
-   deposit rather than a refused seed, and Klondike gets none at all because its
-   expansion gold is already inside a rock ring. `mapgen.build(..., wilds=False)`
-   draws the same maps unguarded. See `docs/warband-monsters.md`.
+4b. **Camps.** Creatures hold map jobs (2026-10-12): one weak guard beside a
+   contested third where one proves, stronger camps on proven shortcuts, side
+   expeditions elsewhere -- never a seat's own mine and never its natural. See
+   *Optional encounters* above for the roles and their proofs. A slot whose role
+   proves nowhere leaves its deposit open rather than refusing the seed.
+   `mapgen.build(..., wilds=False)` draws the same maps unguarded.
+   See `docs/warband-monsters.md`.
 5. **Layout pass.** The layout's own terrain on the wedge, before the copy.
 6. **Routes.** Layouts build their paths deliberately (Forest cuts them,
    Crossings leaves fords, Klondike and Bastion leave gates). Carving stays
@@ -1223,9 +1251,9 @@ time (`tests/warband/test_mother_lode.py`, 2 000 seeds). Seeds 8 to 20 all deal
 a lode, and that is a fair coin's luck: one set of 2 000 tosses in five holds a
 run of thirteen or longer.
 
-Both prizes are five tiles on the site `_prize_site` finds, with the big camp
-beside it (`_guard(..., "lair")`), so **a seed draws the same ground either
-way**: terrain, every other deposit, every camp, every rift and the number of
+Both prizes are five tiles on the site `_prize_site` finds, with no camp placed
+on the prize itself -- position contests it already -- so **a seed draws the same
+ground either way**: terrain, every other deposit, every camp, every rift and the number of
 retries are the seed's whatever it deals (`tests/warband/test_mother_lode.py`,
 three sizes and layouts; the survey below). The audit needs nothing new: a
 prize is copied a cell at a time like every deposit, and its door is on the

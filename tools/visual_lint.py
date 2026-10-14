@@ -267,6 +267,14 @@ def codex_wilds(game: Game) -> None:
 
 
 @screen
+def codex_wilds_open(game: Game) -> None:
+    """The wilds catalogue's second half: the open wilds behind the guards-and-chokes toggle."""
+    from warband.ui.scene import codex_world
+    game.push(CodexScene(codex_world(Race.HUMAN), 0, 6, in_match=False, wilds="wilds"))
+    ticks(game)
+
+
+@screen
 def title(game: Game) -> None:
     game.push(TitleScene())
     ticks(game)

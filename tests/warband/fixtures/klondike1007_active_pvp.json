@@ -1,0 +1,911 @@
+{
+  "provenance": {
+    "seed": 1007,
+    "layout": "klondike",
+    "agent": "pro",
+    "seat": 1,
+    "tick": 4915,
+    "time": 245.75000000002163,
+    "source_key": "be69c4ee4d0bcc6331dc",
+    "original_report": "python tools/creep_report.py --agents pro,pro --seeds 12 --details",
+    "reproduction": "python -m pytest -q tests/warband/test_ai_pvp_cohort.py",
+    "reduction": "Exact pre-launch terrain, six own prepared units and their real orders, six visible rivals, own hall, outpost and seat memory. Rival orders are stripped as in an honest online snapshot; unrelated actors and structures removed."
+  },
+  "terrain": [
+    "tggggggggggttttttttttttttttttttttttttttttttttttttttttttttttttttt",
+    "gggggggggggggggttttttttggggggttttttttttttttttttttttttggrrrgttggt",
+    "gggggggggggggggttttttttggggggtttgggtttttttttggtttttgggggrggggggt",
+    "gggggggggggggggggggrrggggggggggggggtttgggggggggtttgggggggggrrggt",
+    "gggggggggggggggggggrrrgggggggwwwrggtttgrrggggggtttggggggggrrrrgt",
+    "ggggggggggggggggtgggggggggggwwwwwgggttgggggggggtttgggggggggrrggt",
+    "ggggggggggggggggtttggggggggggwwwwggggggggggggggtttgggggggggggtgt",
+    "ggggggggggggggggtgtgggggggggggwgggggggggtggggggggggggggggggggggt",
+    "ggggggggggggggggggtgggggggggggggggggggggttggggggrggttggggggggggt",
+    "gggggggggggggggggggggggggggttggggggggggggggggggggggggggggggggggt",
+    "ggggggggggggggggggtgggggggttttggggggggggggggggggtggggggggggggggt",
+    "tgggggggggggggggggggggggggtttttgggggggggrrrgggtttggggggwwtttrttt",
+    "tggggggggggggggggggrrgggggtttrrrrrrgrrrrrrrrrttttggggggggtttrttt",
+    "tgggggggggggggggggggggggggggrrrrrrrrrrgrrrrgggtttggggggggtttrttt",
+    "tgggggggggggggggggggggggggggrrrrrrrrrrrggggggggttggggggggtttrttt",
+    "ttttggggrggggggggggggggggggggggttttrrrrrggggwwwgttggggggttgggttt",
+    "ttttggggrggggggggggggggrrgggggggggggtrrrrgggwwwgtggggggtttgggttt",
+    "ttttttttggggggggggggggrrrrgggggggggggtrrrrgggwgggggggggggggggttt",
+    "ttttttgggggggggggggggrrrrggggggggggggggrrrrggggggggggggggggggttt",
+    "tttttgggggggggggtggggrrrtgggggggggggggggrrrggggggggggggwwwwwgttt",
+    "tttttgggggggrgttttgggrrrggggggggggggggggrrrgggggggggggwwwwwwgttt",
+    "tttggggggggggggtttggrrrggggggggggggggggggrrrggggggggggwwwwwwgtgt",
+    "tttgggggggggggggtgggrrrggggggggggggggggggrrrgggggggggggggggggggt",
+    "tttgggggggggggggggggrrrggggggggggggggggggrrrggggtggggggggggttttt",
+    "tttttggggggggggtggggrrrggggggggggggggggggrrrgggggggggggggggggttt",
+    "tgggggggggggggggggggrrrggggggggggggggggggrrrgggtgggggggggggggttt",
+    "tgtgwwwwwwggggggggggrrrggggggggggggggggggrrrggtttggggggggggggttt",
+    "tttgwwwwwwgggggggggggrrrggggggggggggggggrrrgggttttgrgggggggttttt",
+    "tttgwwwwwggggggggggggrrrgggggggggggggggtrrrggggggggggggggggttttt",
+    "tttggggggggggggggggggrrrrggggggggggggggrrrrgggggggggggggggtttttt",
+    "tttgggggggggggggggwgggrrrrtgggggggggggrrrrgggggggggggggttttttttt",
+    "tttgggtttggggggtgwwwgggrrrrtgggggggggggrrggggggggggggggrgggttttt",
+    "tttgggttggggggttgwwwggggrrrrrttttggggggggggggggggggggggrggggtttt",
+    "tttrtttggggggggttggggggggrrrrrrrrrrrgggggggggggggggggggggggggttt",
+    "tttrtttggggggggtttgggrrrrgrrrrrrrrrrgggggggggggggggggggggggggggt",
+    "tttrtttggggggggttttrrrrrrrrrgrrrrrrtttgggggrrggggggggggggggggggt",
+    "tttrtttwwggggggtttgggrrrgggggggggtttttgggggggggggggggggggggggggg",
+    "tggggggggggggggtggggggggggggggggggttttgggggggggggggggggggggggggg",
+    "tggggggggggggggggggggggggggggggggggttggggggggggggggggggggggggggg",
+    "tggggggggggttggrggggggttgggggggggggggggggggggggggggggggggggggggg",
+    "tggggggggggggggggggggggtgggggggggwgggggggggggggggggggggggggggggg",
+    "tgtgggggggggggtttggggggggggggggwwwwggggggggggggggggggggggggggggg",
+    "tggrrgggggggggtttgggggggggttgggwwwwwgggggggggggggggggggggggggggg",
+    "tgrrrrggggggggtttggggggrrgtttggrwwwgggggggrrrggggggggggggggggggg",
+    "tggrrgggggggggtttgggggggggtttggggggggggggggrrggggggggggggggggggt",
+    "tggggggrgggggtttttggtttttttttgggtttggggggttttttggggggggggggggggg",
+    "tggttgrrrggttttttttttttttttttttttttggggggttttttttgggggggggggggtt",
+    "tttttttttttttttttttttttttttttttttttttttttttttttttttttttggggggttt"
+  ],
+  "units": [
+    {
+      "id": 18,
+      "type": "wolf",
+      "player": 2,
+      "x": 57.33847763108503,
+      "y": 10.338477631085023,
+      "hp": 90,
+      "facing": 0.7853981633974483,
+      "orders": [],
+      "cooldown": 0.0,
+      "windup": 0.0,
+      "vx": 0.0,
+      "vy": 0.0,
+      "worker_orders": [],
+      "carrying": null,
+      "carry": 0,
+      "timer": 0.0,
+      "inside": null,
+      "constructing": null,
+      "home": null,
+      "state": "idle",
+      "ease": null,
+      "charge": 0.0,
+      "auto_work": true,
+      "commanded": null,
+      "struck": -1000.0,
+      "conditions": [],
+      "expires": 0,
+      "slam_point": null
+    },
+    {
+      "id": 19,
+      "type": "wolf",
+      "player": 2,
+      "x": 53.66152236891497,
+      "y": 6.6615223689149765,
+      "hp": 90,
+      "facing": 3.9269908169872414,
+      "orders": [],
+      "cooldown": 0.0,
+      "windup": 0.0,
+      "vx": 0.0,
+      "vy": 0.0,
+      "worker_orders": [],
+      "carrying": null,
+      "carry": 0,
+      "timer": 0.0,
+      "inside": null,
+      "constructing": null,
+      "home": null,
+      "state": "idle",
+      "ease": null,
+      "charge": 0.0,
+      "auto_work": true,
+      "commanded": null,
+      "struck": -1000.0,
+      "conditions": [],
+      "expires": 0,
+      "slam_point": null
+    },
+    {
+      "id": 73,
+      "type": "archer",
+      "player": 0,
+      "x": 38.8782609018932,
+      "y": 31.92312522425651,
+      "hp": 38,
+      "facing": 2.7829493031555694,
+      "orders": [],
+      "cooldown": 0.0,
+      "windup": 0.0,
+      "vx": -1.884788472232799,
+      "vy": -0.6550540391543791,
+      "worker_orders": [],
+      "carrying": null,
+      "carry": 0,
+      "timer": 0.0,
+      "inside": null,
+      "constructing": null,
+      "home": [
+        35.08426168826602,
+        30.022092262259427
+      ],
+      "state": "move",
+      "ease": null,
+      "charge": 0.0,
+      "auto_work": true,
+      "commanded": 222.55000000001635,
+      "struck": -1000.0,
+      "conditions": [],
+      "expires": 0,
+      "slam_point": null
+    },
+    {
+      "id": 76,
+      "type": "footman",
+      "player": 1,
+      "x": 41.066121534773465,
+      "y": 32.67452618338571,
+      "hp": 59,
+      "facing": -2.6838215870758595,
+      "orders": [
+        {
+          "kind": "Attack",
+          "target": 86,
+          "auto": true
+        },
+        {
+          "kind": "AttackMove",
+          "target": [
+            2.5,
+            2.5
+          ],
+          "pace": 1.85,
+          "offset": [
+            -0.2972226965719007,
+            0.40206799007447463
+          ]
+        }
+      ],
+      "cooldown": 0.0,
+      "windup": 0.0,
+      "vx": -1.6595236330518048,
+      "vy": -0.8176070641465571,
+      "worker_orders": [],
+      "carrying": null,
+      "carry": 0,
+      "timer": 0.0,
+      "inside": null,
+      "constructing": null,
+      "home": [
+        43.054246934798286,
+        30.263058273206106
+      ],
+      "state": "move",
+      "ease": null,
+      "charge": 0.0,
+      "auto_work": true,
+      "commanded": 219.35000000001563,
+      "struck": 243.000000000021,
+      "conditions": [],
+      "expires": 0,
+      "slam_point": null
+    },
+    {
+      "id": 79,
+      "type": "archer",
+      "player": 0,
+      "x": 37.412345259305766,
+      "y": 31.107232254852292,
+      "hp": 19,
+      "facing": -2.554347674555436,
+      "orders": [],
+      "cooldown": 0.0,
+      "windup": 0.0,
+      "vx": -2.1227992904171344,
+      "vy": -1.4128776212414351,
+      "worker_orders": [],
+      "carrying": null,
+      "carry": 0,
+      "timer": 0.0,
+      "inside": null,
+      "constructing": null,
+      "home": [
+        34.50154590463822,
+        28.655359481741232
+      ],
+      "state": "move",
+      "ease": null,
+      "charge": 0.0,
+      "auto_work": true,
+      "commanded": 222.55000000001635,
+      "struck": 245.70000000002162,
+      "conditions": [],
+      "expires": 0,
+      "slam_point": null
+    },
+    {
+      "id": 80,
+      "type": "footman",
+      "player": 1,
+      "x": 39.77060815121623,
+      "y": 32.73943019274253,
+      "hp": 49,
+      "facing": -2.245515921239192,
+      "orders": [
+        {
+          "kind": "Move",
+          "target": [
+            43.57827925233431,
+            29.46316608487539
+          ],
+          "pace": null,
+          "offset": null
+        },
+        {
+          "kind": "AttackMove",
+          "target": [
+            2.5,
+            2.5
+          ],
+          "pace": 1.85,
+          "offset": [
+            0.2972226965719007,
+            -0.40206799007447463
+          ]
+        }
+      ],
+      "cooldown": 0.0,
+      "windup": 0.0,
+      "vx": -1.1556549985546383,
+      "vy": -1.444631968466581,
+      "worker_orders": [],
+      "carrying": null,
+      "carry": 0,
+      "timer": 0.0,
+      "inside": null,
+      "constructing": null,
+      "home": [
+        43.57827925233431,
+        29.46316608487539
+      ],
+      "state": "move",
+      "ease": null,
+      "charge": 0.0,
+      "auto_work": true,
+      "commanded": 219.35000000001563,
+      "struck": 244.7000000000214,
+      "conditions": [],
+      "expires": 0,
+      "slam_point": null
+    },
+    {
+      "id": 81,
+      "type": "footman",
+      "player": 0,
+      "x": 38.04739175942968,
+      "y": 33.501748431482525,
+      "hp": 23,
+      "facing": -0.3899880846494523,
+      "orders": [],
+      "cooldown": 0.0,
+      "windup": 0.0,
+      "vx": 1.98856421822029,
+      "vy": -0.817381398133108,
+      "worker_orders": [],
+      "carrying": null,
+      "carry": 0,
+      "timer": 0.0,
+      "inside": null,
+      "constructing": null,
+      "home": [
+        35.74826289191825,
+        30.96101278147026
+      ],
+      "state": "move",
+      "ease": null,
+      "charge": 0.0,
+      "auto_work": true,
+      "commanded": 222.55000000001635,
+      "struck": 244.85000000002142,
+      "conditions": [],
+      "expires": 0,
+      "slam_point": null
+    },
+    {
+      "id": 82,
+      "type": "archer",
+      "player": 1,
+      "x": 41.914012774489926,
+      "y": 31.775714763371038,
+      "hp": 35,
+      "facing": -0.5499598123659291,
+      "orders": [
+        {
+          "kind": "Attack",
+          "target": 81,
+          "auto": true
+        },
+        {
+          "kind": "AttackMove",
+          "target": [
+            2.5,
+            2.5
+          ],
+          "pace": 1.85,
+          "offset": null
+        }
+      ],
+      "cooldown": 0.09999999999999946,
+      "windup": 0.0,
+      "vx": 1.8597614371338977,
+      "vy": 1.2664072792548353,
+      "worker_orders": [],
+      "carrying": null,
+      "carry": 0,
+      "timer": 0.0,
+      "inside": null,
+      "constructing": null,
+      "home": [
+        43.42115075525618,
+        30.21778304250214
+      ],
+      "state": "move",
+      "ease": null,
+      "charge": 0.0,
+      "auto_work": true,
+      "commanded": 219.35000000001563,
+      "struck": 244.55000000002136,
+      "conditions": [],
+      "expires": 0,
+      "slam_point": null
+    },
+    {
+      "id": 86,
+      "type": "footman",
+      "player": 0,
+      "x": 39.74843612078576,
+      "y": 32.11475748150813,
+      "hp": 27,
+      "facing": 2.845640525707506,
+      "orders": [],
+      "cooldown": 0.0,
+      "windup": 0.0,
+      "vx": -2.056528507376356,
+      "vy": 0.6270490398274831,
+      "worker_orders": [],
+      "carrying": null,
+      "carry": 0,
+      "timer": 0.0,
+      "inside": null,
+      "constructing": null,
+      "home": [
+        35.89536134056875,
+        30.04252013401998
+      ],
+      "state": "move",
+      "ease": null,
+      "charge": 0.0,
+      "auto_work": true,
+      "commanded": 222.55000000001635,
+      "struck": 245.00000000002146,
+      "conditions": [],
+      "expires": 0,
+      "slam_point": null
+    },
+    {
+      "id": 90,
+      "type": "knight",
+      "player": 1,
+      "x": 38.80534224754646,
+      "y": 31.014987070970783,
+      "hp": 94,
+      "facing": 3.07511630095528,
+      "orders": [
+        {
+          "kind": "Attack",
+          "target": 79,
+          "auto": true
+        },
+        {
+          "kind": "AttackMove",
+          "target": [
+            2.5,
+            2.5
+          ],
+          "pace": 1.85,
+          "offset": null
+        }
+      ],
+      "cooldown": 0.95,
+      "windup": 0.0,
+      "vx": -3.2428215977220987,
+      "vy": 0.21588905796065205,
+      "worker_orders": [],
+      "carrying": null,
+      "carry": 0,
+      "timer": 0.0,
+      "inside": null,
+      "constructing": null,
+      "home": [
+        43.67618988037098,
+        28.70479043667954
+      ],
+      "state": "move",
+      "ease": null,
+      "charge": 0.0,
+      "auto_work": true,
+      "commanded": 219.35000000001563,
+      "struck": -1000.0,
+      "conditions": [],
+      "expires": 0,
+      "slam_point": null
+    },
+    {
+      "id": 91,
+      "type": "footman",
+      "player": 0,
+      "x": 38.1769336268664,
+      "y": 31.73150085209785,
+      "hp": 49,
+      "facing": -2.444849310672696,
+      "orders": [],
+      "cooldown": 0.0,
+      "windup": 0.0,
+      "vx": 0.0,
+      "vy": 0.0,
+      "worker_orders": [],
+      "carrying": null,
+      "carry": 0,
+      "timer": 0.0,
+      "inside": null,
+      "constructing": null,
+      "home": [
+        35.35490251416091,
+        29.68417116681567
+      ],
+      "state": "attack",
+      "ease": null,
+      "charge": 0.0,
+      "auto_work": true,
+      "commanded": 222.55000000001635,
+      "struck": 243.000000000021,
+      "conditions": [],
+      "expires": 0,
+      "slam_point": null
+    },
+    {
+      "id": 92,
+      "type": "knight",
+      "player": 0,
+      "x": 38.82039182199605,
+      "y": 32.9684385737113,
+      "hp": 86,
+      "facing": -0.30614889274269164,
+      "orders": [],
+      "cooldown": 0.0,
+      "windup": 0.3,
+      "vx": 0.0,
+      "vy": 0.0,
+      "worker_orders": [],
+      "carrying": null,
+      "carry": 0,
+      "timer": 0.0,
+      "inside": null,
+      "constructing": null,
+      "home": [
+        35.66428316093691,
+        29.852791676491726
+      ],
+      "state": "attack",
+      "ease": null,
+      "charge": 0.0,
+      "auto_work": true,
+      "commanded": 226.95000000001735,
+      "struck": -1000.0,
+      "conditions": [],
+      "expires": 0,
+      "slam_point": null
+    },
+    {
+      "id": 97,
+      "type": "archer",
+      "player": 1,
+      "x": 43.99733822543625,
+      "y": 29.76219386116516,
+      "hp": 42,
+      "facing": 2.634418590951662,
+      "orders": [
+        {
+          "kind": "Attack",
+          "target": 86,
+          "auto": true
+        },
+        {
+          "kind": "AttackMove",
+          "target": [
+            41.139670013416925,
+            32.840889097139474
+          ],
+          "pace": null,
+          "offset": null
+        }
+      ],
+      "cooldown": 0.19999999999999946,
+      "windup": 0.0,
+      "vx": 0.0,
+      "vy": 0.0,
+      "worker_orders": [],
+      "carrying": null,
+      "carry": 0,
+      "timer": 0.0,
+      "inside": null,
+      "constructing": null,
+      "home": [
+        44.50102584396841,
+        28.228411078727436
+      ],
+      "state": "attack",
+      "ease": null,
+      "charge": 0.0,
+      "auto_work": true,
+      "commanded": 240.15000000002036,
+      "struck": -1000.0,
+      "conditions": [],
+      "expires": 0,
+      "slam_point": null
+    },
+    {
+      "id": 105,
+      "type": "footman",
+      "player": 1,
+      "x": 43.435717463390596,
+      "y": 34.018922578974774,
+      "hp": 63,
+      "facing": -2.6632315169057392,
+      "orders": [
+        {
+          "kind": "Attack",
+          "target": 86,
+          "auto": true
+        },
+        {
+          "kind": "AttackMove",
+          "target": [
+            40.38258063098458,
+            32.96741317303043
+          ],
+          "pace": null,
+          "offset": null
+        }
+      ],
+      "cooldown": 0.0,
+      "windup": 0.0,
+      "vx": -1.6423384697955612,
+      "vy": -0.8516010513319827,
+      "worker_orders": [],
+      "carrying": null,
+      "carry": 0,
+      "timer": 0.0,
+      "inside": null,
+      "constructing": null,
+      "home": [
+        45.85769418488313,
+        35.23463938069575
+      ],
+      "state": "move",
+      "ease": null,
+      "charge": 0.0,
+      "auto_work": true,
+      "commanded": 241.35000000002063,
+      "struck": -1000.0,
+      "conditions": [],
+      "expires": 0,
+      "slam_point": null
+    }
+  ],
+  "players": [
+    {
+      "id": 0,
+      "name": "Azure",
+      "human": false,
+      "race": "elf",
+      "gold": 100,
+      "lumber": 2300,
+      "aether": 0,
+      "aether_charge": 0,
+      "alive": true,
+      "neutral": false,
+      "surrendered": false,
+      "stats": {
+        "units_killed": 2,
+        "units_lost": 1,
+        "buildings_razed": 0,
+        "buildings_lost": 0,
+        "destroyed_value": 950,
+        "camps_cleared": 0,
+        "bounty_gold": 0,
+        "bounty_lumber": 0
+      },
+      "last_alert": 239.40000000002019,
+      "last_hit": 245.70000000002162,
+      "upgrades": [
+        "arrows_1",
+        "longbows",
+        "regrowth"
+      ],
+      "cooldowns": {},
+      "assembly": null
+    },
+    {
+      "id": 1,
+      "name": "Crimson",
+      "human": false,
+      "race": "dwarf",
+      "gold": 100,
+      "lumber": 1700,
+      "aether": 0,
+      "aether_charge": 0,
+      "alive": true,
+      "neutral": false,
+      "surrendered": false,
+      "stats": {
+        "units_killed": 1,
+        "units_lost": 2,
+        "buildings_razed": 0,
+        "buildings_lost": 0,
+        "destroyed_value": 400,
+        "camps_cleared": 0,
+        "bounty_gold": 0,
+        "bounty_lumber": 0
+      },
+      "last_alert": 244.3500000000213,
+      "last_hit": 244.7000000000214,
+      "upgrades": [
+        "arrows_1",
+        "keep"
+      ],
+      "cooldowns": {},
+      "assembly": null
+    },
+    {
+      "id": 2,
+      "name": "Wilds",
+      "human": false,
+      "race": "human",
+      "gold": 1000,
+      "lumber": 500,
+      "aether": 0,
+      "aether_charge": 0,
+      "alive": true,
+      "neutral": true,
+      "surrendered": false,
+      "stats": {
+        "units_killed": 0,
+        "units_lost": 0,
+        "buildings_razed": 0,
+        "buildings_lost": 0,
+        "destroyed_value": 0,
+        "camps_cleared": 0,
+        "bounty_gold": 0,
+        "bounty_lumber": 0
+      },
+      "last_alert": -1000.0,
+      "last_hit": -1000.0,
+      "upgrades": [],
+      "cooldowns": {},
+      "assembly": null
+    }
+  ],
+  "buildings": [
+    {
+      "id": 2,
+      "type": "town_hall",
+      "player": 1,
+      "x": 54,
+      "y": 38,
+      "hp": 1500,
+      "max_hp": 1500,
+      "progress": 60.0,
+      "queue": [],
+      "train_progress": 0.0,
+      "rally": null,
+      "gold": 0,
+      "builder": null,
+      "cooldown": 0.0,
+      "research": null,
+      "research_progress": 0.0,
+      "abandoned": false,
+      "auto": []
+    },
+    {
+      "id": 17,
+      "type": "lair",
+      "player": 2,
+      "x": 51,
+      "y": 11,
+      "hp": 250,
+      "max_hp": 250,
+      "progress": 0.0,
+      "queue": [],
+      "train_progress": 0.0,
+      "rally": null,
+      "gold": 800,
+      "builder": null,
+      "cooldown": 0.0,
+      "research": null,
+      "research_progress": 0.0,
+      "abandoned": false,
+      "auto": []
+    }
+  ],
+  "camps": [
+    {
+      "lair": 17,
+      "kinds": [
+        "wolf",
+        "wolf"
+      ],
+      "posts": [
+        [
+          57.33847763108503,
+          10.338477631085023
+        ],
+        [
+          53.66152236891497,
+          6.6615223689149765
+        ]
+      ],
+      "guards": [
+        18,
+        19
+      ],
+      "origin": [
+        52.5,
+        12.5
+      ],
+      "watch": [
+        55.5,
+        8.5
+      ],
+      "struck": -1000.0,
+      "roused": false,
+      "quiet_since": 0.25,
+      "encounter": "wolf_outpost",
+      "gold": 800,
+      "lumber": 100,
+      "cleared": false,
+      "credit": {}
+    }
+  ],
+  "time": 245.75000000002163,
+  "tick": 4915,
+  "next_id": 114,
+  "known_terrain": [
+    "????????????????????????????????????????????????????????????????",
+    "????????????????????????????????????????????????????????????????",
+    "????????????????????????????????????????????????????????????????",
+    "????????????????????????????????????????????????????????????????",
+    "????????????????????????????????????????????????????????????????",
+    "????????????????????????????????????????????????????????????????",
+    "????????????????????????????????????????????????????????????????",
+    "??????????????gtttt?????????????????????????????????????????????",
+    "?????????????ggggttgg???????????????????????????????????????????",
+    "????????????gggggtgggggggg??????????????????????????????????????",
+    "????????????gggggttgggggggt?????????????????????????????????????",
+    "????????????ggggggggggggggtt????????????????????tgggg???????????",
+    "????????????gggggggrrgggggttt?????????????????tttgggggg?????????",
+    "????????????ggggggggggggggggrr???????????????gtttggggggg????????",
+    "?????????????gggggggggggggggrrr????????????ggggttggggggg????????",
+    "??????????????gggggggggggggggggt??????????ggwwwgttggggggt???????",
+    "???????????????ggggggggrrgggggggg?????????ggwwwgtggggggtt???????",
+    "????????????????ggggggrrrrgggggggg???????rgggwggggggggggg???????",
+    "??????????????????????rrrgggggggggg?????rrrgggggggggggggg???????",
+    "???????????????????????rtgggggggggg????grrrggggggggggggww???????",
+    "????????????????????????ggggggggggg????grrrgggggggggggwww???????",
+    "?????????????????????????gggggggggg???gggrrrggggggggggwww???????",
+    "??????????????????????????ggggggggg???gggrrrgggggggggggggg??????",
+    "??????????????????????????gggggggggg??gggrrrggggtgggggggggg?????",
+    "??????????????????????????ggggggggggg?gggrrrggggggggggggggg?????",
+    "??????????????????????????gggggggggggggggrrrgggtgggggggggggg????",
+    "??????????????????????????gggggggggggggggrrrggtttggggggggggg????",
+    "???????????????????????????gggggggggggggrrrgggttttgrgggggggt????",
+    "????????????????????????????gggggggggggtrrrggggggggggggggggtt???",
+    "?????????????????????????????ggggggggggrrrrgggggggggggggggtttt??",
+    "??????????????????????????????ggggggggrrrrgggggggggggggtttttttt?",
+    "???????????????????????????????ggggggggrrggggggggggggggrgggttttt",
+    "????????????????????????????????tggggggggggggggggggggggrggggtttt",
+    "????????????????????????????????rrrrgggggggggggggggggggggggggttt",
+    "?????????????????????????????????rrrgggggggggggggggggggggggggggt",
+    "?????????????????????????????????rrtttgggggrrggggggggggggggggggt",
+    "??????????????????????????????????ttttgggggggggggggggggggggggggg",
+    "???????????????????????????????????tttgggggggggggggggggggggggggg",
+    "????????????????????????????????????tggggggggggggggggggggggggggg",
+    "?????????????????????????????????????????ggggggggggggggggggggggg",
+    "?????????????????????????????????????????ggggggggggggggggggggggg",
+    "??????????????????????????????????????????gggggggggggggggggggggg",
+    "?????????????????????????????????????????ggggggggggggggggggggggg",
+    "?????????????????????????????????????????grrrggggggggggggggggggg",
+    "?????????????????????????????????????????ggrrggggggggggggggggggt",
+    "?????????????????????????????????????????ttttttggggggggggggggggg",
+    "?????????????????????????????????????????ttttttttgggggggggggggtt",
+    "??????????????????????????????????????????tttttttttttttggggggttt"
+  ],
+  "knowledge": {
+    "width": 64,
+    "height": 48,
+    "encounters": [
+      [
+        17,
+        [
+          52.5,
+          12.5
+        ]
+      ]
+    ],
+    "watches": [
+      [
+        17,
+        [
+          55.5,
+          8.5
+        ]
+      ]
+    ],
+    "cleared_encounters": [],
+    "fallen_guards": [],
+    "guard_warnings": [
+      [
+        31,
+        [
+          41.33847763108503,
+          44.33847763108503
+        ]
+      ],
+      [
+        30,
+        [
+          41.33847763108503,
+          40.66152236891497
+        ]
+      ]
+    ]
+  },
+  "known_buildings": [
+    {
+      "id": 2,
+      "x": 54,
+      "y": 38,
+      "size": 3,
+      "player": 1,
+      "threat_range": 0.0,
+      "ruin": false,
+      "type": "town_hall"
+    },
+    {
+      "id": 17,
+      "x": 51,
+      "y": 11,
+      "size": 3,
+      "player": 2,
+      "threat_range": 0.0,
+      "ruin": false,
+      "type": "lair"
+    }
+  ]
+}

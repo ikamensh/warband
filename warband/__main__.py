@@ -72,6 +72,7 @@ def cli_parser() -> argparse.ArgumentParser:
     parser.add_argument("--race", choices=[r.value for r in Race], default="human", help="your race; the computer players' are drawn from the seed")
     parser.add_argument("--layout", choices=[each.value for each in Layout] + ["any"], default="any", help="the map's shape; any draws one from the seed")
     parser.add_argument("--magic", action="store_true", help="enable ley rifts, magical buildings and spells (off by default)")
+    parser.add_argument("--no-wilds", dest="wilds", action="store_false", help="leave neutral creature camps off the map (same terrain and deposits)")
     parser.add_argument("--fullscreen", action="store_true")
     parser.add_argument("--rated", action="store_true", help="host a rated online room (with --online-host only; joins follow the host)")
     parser.add_argument("--version", action="version", version="Warband " + running_build(), help="name this build and exit")
@@ -133,10 +134,11 @@ def _run_with_args(args: argparse.Namespace, parser: argparse.ArgumentParser) ->
     if args.seed is not None:
         width, height = mapgen.dimensions(args.size, args.players)
         game.run(new_game(args.seed, width=width, height=height, players=args.players, difficulty=Difficulty(args.difficulty), theme=MapTheme(args.theme),
-                          settings=settings, races=[Race(args.race)] + [None] * (args.players - 1), layout=layout, magic=args.magic))
+                          settings=settings, races=[Race(args.race)] + [None] * (args.players - 1), layout=layout, magic=args.magic,
+                          wilds=args.wilds))
     else:
         game.run(TitleScene(size=args.size, players=args.players, difficulty=Difficulty(args.difficulty), theme=MapTheme(args.theme), race=Race(args.race),
-                            layout=layout, settings=settings, magic=args.magic))
+                            layout=layout, settings=settings, magic=args.magic, wilds=args.wilds))
 
 
 def multiplayer_lobby(args: argparse.Namespace, parser: argparse.ArgumentParser, game, settings):
@@ -280,10 +282,10 @@ def lobby_options(args: argparse.Namespace, players: int = 2) -> dict[str, Any]:
         raise ValueError(f"Layout {args.layout} cannot seat {seats} on {args.size}.")
     seed = args.seed if args.seed is not None else fair_map(mapgen.fresh_seed(), width, height, seats, theme=MapTheme(args.theme),
                                                             races=[Race(args.race)] + [None] * (seats - 1),
-                                                            layout=layout, magic=args.magic)[0]
+                                                            layout=layout, magic=args.magic, wilds=args.wilds)[0]
     return {"seed": seed, "width": width, "height": height, "theme": args.theme,
             "players": seats, "races": [args.race] + [None] * (seats - 1),
-            "layout": args.layout, "magic": args.magic}
+            "layout": args.layout, "magic": args.magic, "wilds": args.wilds}
 
 
 def selftest(png: str) -> None:

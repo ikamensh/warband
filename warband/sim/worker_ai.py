@@ -98,7 +98,7 @@ def _navigation(world: World, player: int) -> bytearray:
         if info.damage:
             # An observed creature signals a defended area even before its lair is scouted.
             # Use only its visible position, never the hidden camp's true anchor.
-            radius = (camps.CAMP_WATCH + camps.CAMP_POST + 1.0
+            radius = (camps.GUARD_WARNING
                       if unit.player == world.neutral and unit.id not in known_guards else max(2.5, info.range + 1.5))
             units.append((unit.x, unit.y, radius))
     # Only a footprint the remembered grid does not already block still needs stamping, which is usually none.
@@ -135,7 +135,7 @@ def _navigation(world: World, player: int) -> bytearray:
 
 
 def _stamp_structures(world: World, player: int, footprints: frozenset[tuple[int, int, int]]) -> bytearray:
-    """The remembered grid with *footprints* blocked and the ground under every known enemy tower forbidden."""
+    """The remembered grid with footprints, tower fire and observed creature warnings forbidden."""
     knowledge = world.worker_knowledge[player]
     blocked = bytearray(knowledge.blocked)
     width, height = world.width, world.height
@@ -146,13 +146,8 @@ def _stamp_structures(world: World, player: int, footprints: frozenset[tuple[int
         if building.player != player:
             for index in _tower_ground(building, width, height):
                 blocked[index] = 1
-    # Remembered guard warnings are stamped here as :meth:`World._movement_ground` stamps
-    # them: the visible-unit pass in _navigation alone forgets a guard the moment its
-    # observer retreats out of sight, so a gatherer's route reopened through the watch it
-    # had just fled, closed again on approach, and the gatherer paced the sight boundary
-    # forever (fuzz seed 81, an Ancient beside a contested mine's road).
-    warnings = tuple((x, y, camps.CAMP_WATCH + camps.CAMP_POST + 1.0)
-                     for x, y in knowledge.guard_warnings.values())
+    warnings = tuple((point[0], point[1], camps.GUARD_WARNING)
+                     for point in knowledge.guard_warnings.values())
     return camps.navigation(world, player, blocked, set(), 1.0, warnings)
 
 

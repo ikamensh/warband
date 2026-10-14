@@ -53,9 +53,11 @@ class _ProBrainCore:
         self.creep_strength = 0.0          # what the army was worth when it set out to clear it
         self.creep_party: set[int] = set()  # the committed expedition; fresh recruits do not hide its losses
         self.creep_until = 0.0             # …and when it gives that camp up whatever it has left
-        self.camp_seen: dict[int, float] = {}   # per lair: the most its guards were ever seen to be worth
+        self.camp_seen: dict[int, float] = {}   # per lair: remembered guard power, bounding unscouted custom camps
         self.camp_retry: dict[int, float] = {}  # …and when a camp that beat the army off is worth trying again
         self.camp_failed: dict[int, float] = {}  # the force whose assault failed: a retry must improve on it
+        self.camp_at_launch: dict[int, float] = {}  # …and what the camp priced when it set out, for watched falls since
+        self.camp_escape: dict[int, float] = {}  # escaper id -> when its walk out stops sheltering it from tasking
         self.commander = Commander()  # the race's own unit: when to buy it and what it is for (WB-068)
         self.unique_first: tuple[Upgrade, ...] = ()  # …and what it waits for that is researched ahead of all else
         self.magus = Magus(profile)  # its vaults, its spells and its casts (WB-067)
@@ -87,7 +89,7 @@ class _ProBrainCore:
         return [u for u in self._units(world) if u.is_worker]
 
     def _army(self, world: World) -> list[Unit]:
-        return fighters(self._units(world))
+        return [unit for unit in fighters(self._units(world)) if unit.id not in self._hurt]
 
     def _halls(self, world: World) -> list[Building]:
         return world.player_buildings(self.player, BuildingType.TOWN_HALL, done=True)

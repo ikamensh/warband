@@ -103,3 +103,50 @@ def test_discovering_the_visible_guards_lair_replaces_the_broad_warning_with_the
     assert guard.id not in world.worker_knowledge[0].guard_warnings
     assert not world.worker_knowledge[1].encounters
     assert not world.worker_knowledge[1].guard_warnings
+
+
+def test_only_watched_guard_deaths_are_remembered_and_only_by_the_watcher():
+    """A witnessed casualty count needs a discovered lair and a visible death; fog learns nothing."""
+    from warband.sim import camps
+
+    world = World(50, 40, [[Terrain.GRASS] * 50 for _ in range(40)], 2, scripted=True)
+    camp = camps.place(world, (21, 18), [UnitType.WOLF, UnitType.WOLF, UnitType.WOLF], 1200)
+    lair = world.buildings[camp.lair]
+    slayers = [world.spawn_unit(1, UnitType.KNIGHT, (24.5 + i, 21.5)) for i in range(4)]
+
+    def kill(guard_id):
+        world.attack([slayer.id for slayer in slayers if slayer.id in world.units], guard_id)
+        for _ in range(round(30 / SIM_DT)):
+            world.step()
+            if guard_id not in world.units:
+                break
+        assert guard_id not in world.units
+        world.move([slayer.id for slayer in slayers if slayer.id in world.units], (44.5, 30.5))
+        advance(world, 20)
+
+    # The killer watches its own kill; the seat that never scouted the lair learns nothing.
+    kill(camp.guards[0])
+    assert world.worker_knowledge[0].fallen_guards == {}
+    assert world.worker_knowledge[1].fallen_guards == {camp.lair: {"wolf": 1}}
+    scout = world.spawn_unit(0, UnitType.FLYING_MACHINE, (lair.center[0], lair.center[1] + 4))
+    world.update_vision()
+    assert camp.lair in world.worker_knowledge[0].encounters
+    # A death at a known lair but out of sight is not witnessed either.
+    world.move([scout.id], (44.5, 30.5))
+    advance(world, 15)
+    assert not world.is_visible(0, (int(lair.center[0]), int(lair.center[1])))
+    kill(camp.guards[1])
+    assert world.worker_knowledge[0].fallen_guards == {}
+    assert world.worker_knowledge[1].fallen_guards == {camp.lair: {"wolf": 2}}
+    # Watching the site learns the fall, by kind rather than by unit id.
+    world.move([scout.id], (lair.center[0], lair.center[1] + 4))
+    advance(world, 5)
+    kill(camp.guards[2])
+    assert world.worker_knowledge[0].fallen_guards == {camp.lair: {"wolf": 1}}
+    assert world.worker_knowledge[1].fallen_guards == {camp.lair: {"wolf": 3}}
+    restored = World.from_dict(world.to_dict())
+    assert restored.worker_knowledge[0].fallen_guards == {camp.lair: {"wolf": 1}}
+    legacy = world.to_dict()
+    for knowledge in legacy["worker_knowledge"]:
+        knowledge.pop("fallen_guards", None)
+    assert World.from_dict(legacy).worker_knowledge[0].fallen_guards == {}

@@ -7,14 +7,15 @@ that breaks off half way paid for nothing; and tearing the lair down stops all o
 out the hoard.
 """
 
+import math
 import random
 
 import pytest
 
 from warband.brains.ai import guarded, known_camps, known_enemy_buildings
 from warband.sim import camps, mapgen
-from warband.sim.model import Attack, Move, World, dist, tile_center
-from warband.sim.rules import (CAMP_CALM, CAMP_HOLD, CAMP_WATCH, REGEN_CALM, SIM_DT, BuildingType, Terrain,
+from warband.sim.model import Attack, Move, World, dist, hypot, tile_center
+from warband.sim.rules import (CAMP_CALM, CAMP_HOLD, CAMP_WATCH, REGEN_CALM, SIM_DT, BuildingType, Layout, Terrain,
                                UnitType)
 
 
@@ -29,6 +30,26 @@ def run(world: World, seconds: float) -> None:
 
 def a_camp(world: World, at=(20, 16), roster=(UnitType.WOLF, UnitType.WOLF, UnitType.WOLF), hoard=500):
     return camps.place(world, at, list(roster), hoard)
+
+
+def a_shifted_watch_camp(world: World):
+    """A guard camp whose watch stands ten tiles off its den, scouted and undisturbed.
+
+    Seat 0's unarmed scout lays eyes on the den without rousing it, so the encounter is
+    remembered; the guards fall with neutral credit, so no payout or clear follows and the
+    marches below cross no living interference -- only remembered ground.
+    """
+    camp = camps.place(world, (20, 18), [UnitType.WOLF, UnitType.WOLF], 500, watch=(21.5, 29.5))
+    site = camps.centre(world, camp)
+    world.spawn_unit(0, UnitType.FLYING_MACHINE, (site[0], site[1] - 7.5))
+    world.update_vision()
+    assert camp.lair in world.worker_knowledge[0].encounters
+    lair = world.buildings[camp.lair]
+    for uid in list(camp.guards):
+        world._hit(world.units[uid], 10000, player=world.neutral, source=lair.id,
+                    source_type=BuildingType.LAIR.value)
+    assert not camp.cleared
+    return camp, site
 
 
 # -- The neutral seat ------------------------------------------------------------------
@@ -266,6 +287,47 @@ def test_the_gatherer_policy_keeps_its_workers_out_of_a_camp() -> None:
     assert grid[int(guard.y) * world.width + int(guard.x)] == 1
 
 
+# -- Mirror-congruent orbits ------------------------------------------------------------
+
+
+def test_an_orbit_mirrors_posts_species_and_facing_across_seats() -> None:
+    """A mixed roster lands on congruent ground: the same species at mirrored posts, facing mirrored."""
+    world = flat_world()
+    first, second = camps.place_orbit(world, [(8, 8), (28, 8)], "cairn_watch", [(False, False), (True, False)])
+    assert [camp.kinds for camp in (first, second)] == [["golem", "troll", "spider"]] * 2
+    a = world.buildings[first.lair].center
+    b = world.buildings[second.lair].center
+    for (px, py), (qx, qy) in zip(first.posts, second.posts):
+        assert (qx - b[0], qy - b[1]) == pytest.approx((-(px - a[0]), py - a[1]))
+    for uid, vid in zip(first.guards, second.guards):
+        assert world.units[vid].facing == pytest.approx(math.pi - world.units[uid].facing)
+
+
+def test_an_orbit_mirrors_a_blocked_canonical_post_fallback() -> None:
+    """One seat's blocked post resolves once, canonically; the images mirror the resolution."""
+    world = flat_world()
+    world.place_building(0, BuildingType.FARM, (22, 18))  # sits on a post of a lair at (20, 16)
+    first, second = camps.place_orbit(world, [(20, 16), (8, 8)], "cairn_watch", [(False, False), (False, False)])
+    lair = world.buildings[first.lair]
+    assert all(post != lair.center for post in first.posts)  # the blocked post fell back, not into the lair
+    a = lair.center
+    b = world.buildings[second.lair].center
+    for (px, py), (qx, qy) in zip(first.posts, second.posts):
+        assert (qx - b[0], qy - b[1]) == pytest.approx((px - a[0], py - a[1]))
+    assert [camp.kinds for camp in (first, second)] == [["golem", "troll", "spider"]] * 2
+    for uid, vid in zip(first.guards, second.guards):
+        assert world.units[vid].facing == pytest.approx(world.units[uid].facing)
+
+
+def test_an_orbit_refuses_uncountable_inputs() -> None:
+    """No silent seat drops: empty and ragged orbits fail loudly."""
+    world = flat_world()
+    with pytest.raises(ValueError):
+        camps.place_orbit(world, [], "wolf_den", [])
+    with pytest.raises(ValueError):
+        camps.place_orbit(world, [(8, 8), (28, 8)], "wolf_den", [(False, False)])
+
+
 # -- The online authority ---------------------------------------------------------------
 
 
@@ -294,6 +356,49 @@ def test_a_seats_snapshot_shows_the_creatures_it_sees_and_none_of_the_wilds_own_
             assert (uid in shown) == match.world.is_visible(0, unit.tile)
 
 
+def test_a_seat_that_only_sees_the_mine_learns_nothing_of_the_lair_or_its_fall() -> None:
+    """Completion news is earned, never leaked through a watched mine: a seat whose scout sees the
+    guarded deposit while the den beside it stays in fog gets no camp row for the mine it sees --
+    and when a rival clears that camp out of its sight, its picture does not move while the
+    contributor's records its earned clear."""
+    from warband.online.authority import WarbandMatch
+
+    match = WarbandMatch(seed=5, width=64, height=48, players=2, layout=Layout.PLAINS)
+    world = match.world
+    camp = next(c for c in world.camps if c.watch is not None)
+    lair = world.buildings[camp.lair]
+    site = camps.centre(world, camp)
+    watch = camps.watch_of(world, camp)
+    assert site != watch  # the test needs a guard's shifted watch, not a den watch
+    mine = next(b for b in world.buildings.values()
+                if b.type is not BuildingType.LAIR and dist(b.center, watch) < 0.5)
+    # An unarmed scout perches past the deposit, seeing it but not the den beside it: its
+    # nine-tile sight still reaches the mine eight tiles off while the den sits four further on.
+    dx, dy = watch[0] - site[0], watch[1] - site[1]
+    length = hypot(dx, dy)
+    world.spawn_unit(1, UnitType.FLYING_MACHINE, (watch[0] + dx / length * 8.0, watch[1] + dy / length * 8.0))
+    world.update_vision()
+    assert world.is_visible(1, mine.pos) and not world.is_visible(1, lair.pos)
+    before = match.snapshot(1)
+    assert all(row["lair"] != camp.lair for row in before["world"]["camps"])
+    assert any(b["id"] == mine.id for b in before["world"]["buildings"])
+    assert all(b["id"] != camp.lair for b in before["world"]["buildings"])
+    # Seat 0 clears the camp under its own eyes; the rival learns nothing, the clearer everything.
+    witness = world.spawn_unit(0, UnitType.KNIGHT, (site[0] + 3.0, site[1]))
+    world.update_vision()
+    for uid in list(camp.guards):
+        world._hit(world.units[uid], 10000, player=0, source=witness.id, source_type=UnitType.KNIGHT.value)
+    world._hit(lair, 10000, player=0, source=witness.id, source_type=UnitType.KNIGHT.value)
+    run(world, 2.0)
+    assert camp.cleared
+    own = match.snapshot(0)
+    assert [row["cleared"] for row in own["world"]["camps"] if row["lair"] == camp.lair] == [True]
+    assert camp.lair in world.worker_knowledge[0].cleared_encounters
+    rival = match.snapshot(1)
+    assert all(row["lair"] != camp.lair for row in rival["world"]["camps"])
+    assert camp.lair not in world.worker_knowledge[1].cleared_encounters
+
+
 def test_a_lone_guard_cannot_be_pulled_out_of_its_camp() -> None:
     """A creature picks no fight of its own: only the camp does, and only within its watch.  A guard that
     answered whatever wandered into its own sight could be pulled out one at a time from beyond that."""
@@ -318,6 +423,87 @@ def test_a_camp_shot_at_from_beyond_its_watch_goes_after_the_shooter() -> None:
     world._hit(guard, 5, player=0, source=crew.id, source_type=UnitType.CATAPULT.value)
     run(world, 0.5)
     assert any(isinstance(u.order, Attack) and u.order.target == crew.id for u in camps.guards(world, camp))
+
+
+def test_a_siege_beyond_the_lair_still_rouses_a_watch_on_the_mine() -> None:
+    """A shifted watch defends the deposit, not the den: a catapult shelling from beyond the lair's
+    own reach -- farther than a struck camp would even look -- but inside the mine's watch still
+    brings every guard, because the watch is a defended point like the site."""
+    world = flat_world(width=60, height=40)
+    camp = camps.place(world, (20, 18), [UnitType.WOLF, UnitType.WOLF], 500, watch=(21.5, 29.5))
+    site = camps.centre(world, camp)
+    crew = world.spawn_unit(0, UnitType.CATAPULT, (21.5, 34.0))
+    assert dist(crew.pos, site) > CAMP_HOLD + camps.CHASE_SLACK  # past even the answer radius from the den
+    assert dist(crew.pos, camps.watch_of(world, camp)) < CAMP_WATCH  # but inside the mine's watch
+    run(world, 0.5)
+    assert camp.roused
+    assert any(isinstance(u.order, Attack) and u.order.target == crew.id for u in camps.guards(world, camp))
+
+
+def test_an_ordinary_move_into_the_den_names_its_encounter() -> None:
+    """Deliberate movement chooses the union: a move onto ground inside the den but outside the
+    mine watch walks in, instead of stalling at a circle nobody chose."""
+    world = flat_world(width=60, height=40)
+    camp, site = a_shifted_watch_camp(world)
+    watch = camps.watch_of(world, camp)
+    goal = (site[0] + 2.5, site[1])
+    assert dist(goal, site) < CAMP_WATCH and dist(goal, watch) > CAMP_WATCH
+    knight = world.spawn_unit(0, UnitType.KNIGHT, (10.0, site[1]))
+    world.move([knight.id], goal)
+    for _ in range(int(round(20.0 / 0.5))):
+        run(world, 0.5)
+        if dist(world.units[knight.id].pos, goal) < 1.5:
+            break
+    assert dist(world.units[knight.id].pos, goal) < 1.5
+
+
+def test_a_formation_move_into_the_den_names_its_encounter() -> None:
+    """Every slot chooses the union with its unit: a formation ordered into the den walks in
+    together, instead of stalling each slot at a circle nobody chose."""
+    world = flat_world(width=60, height=40)
+    camp, site = a_shifted_watch_camp(world)
+    watch = camps.watch_of(world, camp)
+    goal = (site[0] + 2.5, site[1])
+    assert dist(goal, site) < CAMP_WATCH and dist(goal, watch) > CAMP_WATCH
+    party = [world.spawn_unit(0, UnitType.KNIGHT, (10.0 + i * 0.8, site[1])).id for i in range(5)]
+    world.move(party, goal)
+    for _ in range(int(round(25.0 / 0.5))):
+        run(world, 0.5)
+        if all(dist(world.units[uid].pos, goal) < 3.0 for uid in party):
+            break
+    assert all(dist(world.units[uid].pos, goal) < 3.0 for uid in party)
+
+
+def test_an_attack_move_beside_the_den_names_its_encounter() -> None:
+    """Explicit intent reaches the den's circle through the union: an attack-move onto ground
+    inside the den but outside the mine watch is the encounter's business, and walks in."""
+    world = flat_world(width=60, height=40)
+    camp, site = a_shifted_watch_camp(world)
+    watch = camps.watch_of(world, camp)
+    goal = (site[0] - 3.5, site[1])
+    assert dist(goal, site) < CAMP_WATCH and dist(goal, watch) > CAMP_WATCH
+    knight = world.spawn_unit(0, UnitType.KNIGHT, (10.0, site[1]))
+    world.attack_move([knight.id], goal)
+    entered = False
+    for _ in range(int(round(20.0 / 0.5))):
+        run(world, 0.5)
+        entered = entered or dist(world.units[knight.id].pos, site) < CAMP_WATCH
+        if dist(world.units[knight.id].pos, goal) < 1.5:
+            break
+    assert dist(world.units[knight.id].pos, goal) < 1.5
+    assert entered
+
+
+def test_a_brain_calls_ground_held_by_either_circle() -> None:
+    """Ordinary safety is the union: a mine mouth inside the mine watch counts as held ground
+    even ten tiles off the den, and open ground far from both does not."""
+    world = flat_world(width=60, height=40)
+    camp, site = a_shifted_watch_camp(world)
+    watch = camps.watch_of(world, camp)
+    mouth = (watch[0], watch[1] + 3.0)
+    assert dist(mouth, watch) < CAMP_WATCH and dist(mouth, site) > 10.0
+    assert guarded(world, 0, mouth)
+    assert not guarded(world, 0, (10.0, 10.0))
 
 
 def test_a_creatures_card_names_it_and_says_what_it_wears(tmp_path) -> None:

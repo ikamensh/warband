@@ -89,8 +89,10 @@ class WorkerKnowledge:
         self.blocked = bytearray([1]) * (width * height)
         self.mines: dict[int, KnownMine] = {}
         self.buildings: dict[int, KnownBuilding] = {}  # last-observed footprint of every structure ever seen
-        self.encounters: dict[int, tuple[float, float]] = {}  # discovered encounter anchors survive a fallen lair
+        self.encounters: dict[int, tuple[float, float]] = {}  # discovered encounter sites survive a fallen lair
+        self.watches: dict[int, tuple[float, float]] = {}  # the watched point per discovered lair: its den, or a guard's mine
         self.cleared_encounters: set[int] = set()  # only completion news this seat witnessed
+        self.fallen_guards: dict[int, dict[str, int]] = {}  # witnessed guard deaths by lair and kind
         self.guard_warnings: dict[int, tuple[float, float]] = {}  # last visible armed neutral positions before their lair is known
         self.threats: tuple[KnownBuilding, ...] = ()  # the armed ones among them; callers filter out their own
         self._terrain_blocked = bytearray([1]) * (width * height)  # the grid without any footprint stamped on it
@@ -189,7 +191,13 @@ class WorkerKnowledge:
                 changed = True
         for building in observed.values():
             if building.type is BuildingType.LAIR and building.id not in self.encounters:
+                # Discovery needs the lair itself: only its sighting records the site for
+                # completion, and the watch alongside it — the den, or the mine a guard
+                # holds, for navigation.  Seeing the mine alone records nothing.
                 self.encounters[building.id] = building.center
+                camp = world.camp_for(building.id)
+                watch = camp.watch if camp is not None else None
+                self.watches[building.id] = watch if watch is not None else building.center
                 changed = True
             info = building.info
             threat_range = info.range + 1.5 if building.done and info.damage and not building.abandoned else 0.0  # a ruin shoots nothing
@@ -276,7 +284,9 @@ class WorkerKnowledge:
                 "buildings": [{**asdict(building), "type": None if building.type is None else building.type.value}
                               for building in self.buildings.values()],
                 "encounters": [[lair, list(point)] for lair, point in self.encounters.items()],
+                "watches": [[lair, list(point)] for lair, point in self.watches.items()],
                 "cleared_encounters": sorted(self.cleared_encounters),
+                "fallen_guards": [[lair, sorted(kills.items())] for lair, kills in self.fallen_guards.items()],
                 "guard_warnings": [[uid, list(point)] for uid, point in self.guard_warnings.items()],
                 "mines": [asdict(mine) for mine in self.mines.values()]}
 
@@ -292,10 +302,16 @@ class WorkerKnowledge:
             knowledge.buildings[item["id"]] = KnownBuilding(**{**item, "type": None if kind is None else BuildingType(kind)})
         knowledge.encounters = {int(lair): (float(point[0]), float(point[1]))
                                 for lair, point in data.get("encounters", [])}
+        knowledge.watches = {int(lair): (float(point[0]), float(point[1]))
+                             for lair, point in data.get("watches", [])}
         for building in knowledge.buildings.values():
             if building.type is BuildingType.LAIR:
                 knowledge.encounters.setdefault(building.id, building.center)
+                knowledge.watches.setdefault(building.id, knowledge.encounters[building.id])
         knowledge.cleared_encounters = set(data.get("cleared_encounters", []))
+        # Saves from before witnessed casualties remember none.
+        knowledge.fallen_guards = {int(lair): {kind: int(count) for kind, count in kills}
+                                   for lair, kills in data.get("fallen_guards", [])}
         knowledge.guard_warnings = {int(uid): (float(point[0]), float(point[1]))
                                     for uid, point in data.get("guard_warnings", [])}
         knowledge.mines = {item["id"]: KnownMine(**item) for item in data["mines"]}
