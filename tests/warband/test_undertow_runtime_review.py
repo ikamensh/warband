@@ -1,7 +1,7 @@
 """Public-order regressions for the Undertow review's ordinary-player deviations.
 
-These walk authored mission boards, fight real units and build real camps. They are
-slow because each scenario advances a substantial part of a campaign mission.
+These walk authored mission boards, fight real units and build real camps. Whole
+mission scenarios are slow; the keeper death/rescue combat fits the fast tier.
 """
 
 import pytest
@@ -74,6 +74,7 @@ def test_caravan_cannot_win_with_drovers_who_already_left_the_mesa():
     """Slow: real salvage/crossing/build orders expose a historical arrival tick at later victory."""
     run, _ = caravan_camp_with_departed_drovers()
     assert sum(on_mesa(worker) for worker in run.units(0, U.PEASANT)) < 5
+    assert run.state["drovers"] == "open"
     assert not run.won, "the settlement still needs five living drovers on the mesa"
     run.world.move([worker.id for worker in run.units(0, U.PEASANT)], tuple(run.get("mesa_center")))
     advance(run, 120, until=lambda run: run.won)
@@ -93,7 +94,7 @@ def test_caravan_cannot_win_with_a_camp_that_was_already_destroyed():
     advance(run, 15, until=lambda run: farm.id not in world.buildings)
     world.move([worker.id for worker in run.units(0, U.PEASANT)], tuple(run.get("mesa_center")))
     advance(run, 120, until=lambda run: sum(on_mesa(worker) for worker in run.units(0, U.PEASANT)) >= 5)
-    assert run.state["camp"] == "done"
+    assert run.state["camp"] == "open"
     assert not run.won, "the settlement needs its three farms standing now"
 
 
@@ -116,3 +117,21 @@ def test_caravan_loses_after_the_last_straggler_dies_without_worker_production()
     assert len(sent) == 9 and run.unit("brakk") is not None and world.players[0].alive
     assert run.hall(0) is None
     assert run.lost is not None, "no living builder or worker producer can finish the camp"
+
+
+@pytest.mark.parametrize("mission_id, keeper", [("undertow_mill", "issa"), ("undertow_weight", "dagna")])
+def test_a_keeper_returns_from_the_first_death_but_the_second_death_loses(mission_id, keeper):
+    """The hall rescues a keeper once; a second real combat death must end their mission."""
+    run = build_world(CAMPAIGN.mission(mission_id), flags={})
+    world = run.world
+    original = run.unit(keeper)
+    enemies = run.spawn(1, [U.TROLL] * 2, original.pos)
+    world.attack([unit.id for unit in enemies], original.id)
+    advance(run, 10, until=lambda run: (rescued := run.unit(keeper)) is not None and rescued.id != original.id)
+    rescued = run.unit(keeper)
+    assert run.lost is None and rescued.hp == rescued.max_hp // 2
+    enemies = run.spawn(1, [U.TROLL] * 2, rescued.pos)
+    world.attack([unit.id for unit in enemies], rescued.id)
+    advance(run, 10, until=lambda run: run.unit(keeper) is None)
+    assert run.hall(0) is not None
+    assert run.lost is not None, "a dead keeper cannot keep leading the story"

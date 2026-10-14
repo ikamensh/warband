@@ -419,13 +419,18 @@ def solve_weight(run: Run, *, seam: str) -> float:
         answer(r, "seam_intent", seam)
         if seam != "cap" or r.get("seam_settled") or r.world.players[0].gold >= 850:
             train(r, B.BARRACKS, U.FOOTMAN, 12)  # before the cap, never train away the vault's own price
-        mend_wounded(r)
+        visible = [unit for unit in r.units(1) if r.world.is_visible(0, unit.tile)]
+        if visible:
+            cast_at(r, Upgrade.FLAME_STRIKE, visible[0].pos)
         damaged = [b for b in r.buildings(0, B.VAULT) + r.buildings(0, B.TOWN_HALL) if b.hp < b.max_hp]
         free = [w for w in workers(r) if _free(w)]
         if damaged and free:
             r.world.repair([free[0].id], damaged[0].id)
+        dagna = r.unit("dagna")
+        if dagna is not None and _idle(dagna):
+            r.world.move([dagna.id], (8.5, 22.5))  # behind the western works, clear of the siege and shedding rifts
         if engage:
-            fight(r, tuple(r.get("weight_target")))
+            fight(r, tuple(r.get("weight_target")), exclude=(dagna.id,) if dagna is not None else ())
 
     if seam == "cap":
         ensure_buildings(run, [(B.VAULT, tuple(run.get("seam_rift")))], seconds=900, act=defend)
@@ -446,9 +451,11 @@ def solve_weight(run: Run, *, seam: str) -> float:
         near = [u for u in r.units(1) if r.world.is_visible(0, u.tile)
                 and any(dist(u.pos, w.pos) < 9 for w in r.soldiers(0))]
         if near:
-            fight(r, near[0].pos)
+            dagna = r.unit("dagna")
+            fight(r, near[0].pos, exclude=(dagna.id,) if dagna is not None else ())
         elif _every(r, f"assault:{target}", 10.0):
-            r.world.attack([u.id for u in r.soldiers(0) if r.world.can_strike(u, building)], building.id)
+            r.world.attack([u.id for u in r.soldiers(0)
+                            if u.id != r.get("dagna") and r.world.can_strike(u, building)], building.id)
 
     play_until(run, lambda r: bool(r.get("siege_broken")), seconds=1800, act=besiege, what="siege broken")
 
