@@ -117,7 +117,8 @@ class LandmarkView:
         for id, record in records.items():
             state, kind = record["state"], record["kind"]
             key = f"landmark.{kind}.{state}"
-            scene.game.assets.image_from_pil(key, art.image(kind, state))
+            if not scene.game.assets.has_image(key):
+                scene.game.assets.image_from_pil(key, art.image(kind, state))
             if id not in self._sprites:
                 self._sprites[id] = scene.add_sprite(Sprite(key, size=art.SIZE, anchor=SpriteAnchor.BOTTOM_CENTER,
                                                            layer=RenderLayer.UNITS, y_sort=True, ground=art.DROP))
