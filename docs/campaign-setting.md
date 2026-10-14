@@ -1,10 +1,29 @@
 # The Undertow — world and story design for a second Warband campaign
 
-**Status: phase 1, design only (2026-10-14). No code in this phase.**
-Implementation home (phase 2): `warband/story/new_campaign.py`, exporting a
-`CAMPAIGN` constant of type `warband.story.campaign.Campaign`, sitting beside
-*The Thornwood War* (`warband/story/missions.py`) in a campaign catalog. This
-campaign **adds to** Thornwood; it does not replace, deprecate, or renumber it.
+**Status: implemented (phase 2).** The playable campaign lives in
+`warband/story/new_campaign.py`, exporting `CAMPAIGN`
+(`id='undertow'`, `cover='campaign/undertow.png'`), registered first and as
+the default in `warband/story/catalog.py` beside *The Thornwood War*
+(`warband/story/missions.py`), which stays fully playable. This document
+remains the world/story design record; `docs/undertow-campaign.md` is the
+player/design guide to what shipped, with solver-measured durations.
+
+Deviations from this blueprint, each forced by a reproduced engine behaviour
+rather than taste: idle/attack-move acquisition fights any hostile body in
+sight, so the Mill pylon stands across the river on the north bank (not
+beside the vault), Pell's crew strikes camp and withdraws at the parley
+(resign; the mill stands empty), the whole-grove choice is made by mustering
+at the Moon Hall landmark, and the kneeling Guardian retires off-map and
+returns as a player unit at the Maw. Salvage alone cannot fund the mesa camp
+(hall + three farms costs more than the ruins yield), so stripping the Old
+Camp also unpacks the caravan's packed stores. M4/M5 enemies are finite
+scripted bands on one hostile seat (two "Open Hand" seats would fight each
+other; Sella does not cast). Seam gold is counted per haul trip into a saved
+variable with a 300 threshold, plus a third settle act (post a guard).
+GROUND reads an explicit 450-aether threshold, and the first committed
+ending locks the other two resolutions out. Solver mission-time for a full
+run is roughly 15–25 minutes across all forks, well under the 50–65 below —
+the blueprint's rosters and timers were compressed, not padded.
 Every mechanic, file, and seam named below was checked against the code as it
 stands: `warband/story/{campaign,missions,mission_scene,dialog}.py`,
 `docs/warband-{campaign,magic,races,maps}.md`, `docs/controls.md`,

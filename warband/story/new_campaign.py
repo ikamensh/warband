@@ -21,7 +21,7 @@ from typing import Any
 
 from warband.story.campaign import (
     Campaign, Choice, Line, Mission, Objective, Option, Run, Side, Speaker, Trigger,
-    after, all_of, any_of, at, objective_done, side_out, var,
+    after, all_of, any_of, at, objective_done, var,
 )
 from warband.sim.model import Building, Point, Pos, World, dist, tile_center
 from warband.sim.rules import (
@@ -215,6 +215,11 @@ def _mill_shutter(run: Run) -> None:
     run.toast("The vault is shuttered", "Clear the beasts still in Millfield")
 
 
+def _mill_reserve(run: Run) -> None:
+    run.spawn(0, [U.FOOTMAN] * 2, run.home(0))
+    run.toast("Millfield's reserve musters", "Two footmen at the hall. There are no more.")
+
+
 def _mill_hold(run: Run) -> None:
     run.set("mill_decided", True)
     run.set("undertow_mill_vault", True)
@@ -284,8 +289,7 @@ MILL = Mission(
         Trigger("issa_rescue", lambda run: run.unit("issa") is None and run.hall(0) is not None,
                 _hero_rescue("issa", U.KNIGHT, "Captain Renn")),
         Trigger("reserve", all_of(at(20), lambda run: not run.soldiers(0), lambda run: not run.get("mill_resolved")),
-                lambda run: (run.spawn(0, [U.FOOTMAN] * 2, run.home(0)),
-                             run.toast("Millfield's reserve musters", "Two footmen at the hall. There are no more."))),
+                _mill_reserve),
     ),
     win=var("mill_resolved", True),
     remember=("undertow_mill_vault",),
@@ -382,6 +386,16 @@ def _caravan_flood(run: Run) -> None:
     )
 
 
+def _caravan_stragglers(run: Run) -> None:
+    run.spawn(0, [U.PEASANT] * 3, (3.5, 33.5))
+    run.toast("Stragglers catch up", "Three more drovers from the pans. Mesa or bust.")
+
+
+def _caravan_resolved(run: Run) -> None:
+    run.set("caravan_resolved", True)
+    _landmark_state(run, "mesa", "open")
+
+
 CARAVAN = Mission(
     id="undertow_caravan", title="The Salt Caravan", act=ACT_1,
     sides=(Side("The Saltmarches", Race.ORC), Side("The Open Hand", Race.HUMAN), Side("The Old Camp", Race.ORC)),
@@ -424,11 +438,9 @@ CARAVAN = Mission(
                 _wave(1, [U.FOOTMAN] * 3 + [U.ARCHER], (38.5, 9.5), "ford_east", "harry_1_band")),
         Trigger("harry_2", all_of(at(420), lambda run: run.world.players[1].alive),
                 _wave(1, [U.FOOTMAN] * 4 + [U.ARCHER] * 2, (38.5, 9.5), "ford_east", "harry_2_band")),
-        Trigger("stragglers", all_of(at(30), lambda run: len(run.units(0, U.PEASANT)) < 5),
-                lambda run: (run.spawn(0, [U.PEASANT] * 3, (3.5, 33.5)),
-                             run.toast("Stragglers catch up", "Three more drovers from the pans. Mesa or bust."))),
+        Trigger("stragglers", all_of(at(30), lambda run: len(run.units(0, U.PEASANT)) < 5), _caravan_stragglers),
         Trigger("resolved", all_of(objective_done("strip"), objective_done("camp"), objective_done("drovers")),
-                lambda run: (run.set("caravan_resolved", True), _landmark_state(run, "mesa", "open"))),
+                _caravan_resolved),
     ),
     win=var("caravan_resolved", True),
     remember=("undertow_dam",),
@@ -698,7 +710,7 @@ def _weight_confession(run: Run) -> None:
                 Option("Post a guard and close the face", "guard"))),
         Line("Dagna", "Then do it with your hands, where I can witness it. North-east, and no more not-saying.", when="seam_intent"),
     )
-    run.look(tuple(run.world.buildings[run.get("seam_id")].center))
+    run.look(run.world.buildings[run.get("seam_id")].center)
 
 
 def _weight_shed(origin_rift: Pos):
@@ -726,6 +738,11 @@ def _weight_settle(kind: str):
         _landmark_state(run, "seam", "open")
 
     return do
+
+
+def _weight_siege_broken(run: Run) -> None:
+    run.set("siege_broken", True)
+    run.toast("The siege is broken", "Now settle the seam — cap it, work it, or close its face")
 
 
 WEIGHT = Mission(
@@ -777,9 +794,7 @@ WEIGHT = Mission(
         Trigger("shed_1", lambda run: _weights_standing(run) < 3, _weight_shed(WEIGHT_RIFTS[0])),
         Trigger("shed_2", lambda run: _weights_standing(run) < 2 or int(run.get("seam_gold", 0)) >= 150,
                 _weight_shed(WEIGHT_RIFTS[1])),
-        Trigger("siege_broken", any_of(objective_done("raze"), objective_done("powder")),
-                lambda run: (run.set("siege_broken", True),
-                             run.toast("The siege is broken", "Now settle the seam — cap it, work it, or close its face"))),
+        Trigger("siege_broken", any_of(objective_done("raze"), objective_done("powder")), _weight_siege_broken),
         Trigger("settle_cap", objective_done("seam_cap"), _weight_settle("cap")),
         Trigger("settle_mine", objective_done("seam_work"), _weight_settle("mine")),
         Trigger("settle_guard", all_of(objective_done("seam_guard"), lambda run: bool(run.get("siege_broken"))),
@@ -954,6 +969,12 @@ def _maw_resolve(path: str):
     return do
 
 
+def _maw_relief(run: Run) -> None:
+    run.spawn(0, [U.FOOTMAN] * 4 + [U.ARCHER] * 2, tuple(run.get("camp_center")))
+    run.world.players[0].gold += 400
+    run.toast("The Steps' muster arrives", "Six soldiers and 400 gold. The valley remembers it was needed.")
+
+
 MAW = Mission(
     id="undertow_maw", title="The Maw", act=ACT_3,
     sides=(Side("The Keepers", Race.HUMAN), Side("The Open Hand", Race.HUMAN), Side("The Bloom", Race.ORC)),
@@ -1036,9 +1057,7 @@ MAW = Mission(
                                               and not run.get("undertow_seam_capped")), _maw_bloom_hazard(i))
           for i in range(5)),
         Trigger("relief", all_of(at(60), lambda run: len(run.soldiers(0)) <= 1, lambda run: not run.get("maw_resolved")),
-                lambda run: (run.spawn(0, [U.FOOTMAN] * 4 + [U.ARCHER] * 2, tuple(run.get("camp_center"))),
-                             setattr(run.world.players[0], "gold", run.world.players[0].gold + 400),
-                             run.toast("The Steps' muster arrives", "Six soldiers and 400 gold. The valley remembers it was needed."))),
+                _maw_relief),
     ),
     win=lambda run: bool(run.get("maw_resolved")),
     remember=("undertow_ending_sealed", "undertow_ending_open", "undertow_ending_ground"),

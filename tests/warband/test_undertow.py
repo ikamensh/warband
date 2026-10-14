@@ -202,6 +202,7 @@ def test_the_grove_can_stay_whole_and_weather_the_bloom() -> None:
 def test_the_grove_loses_wrenna_and_the_mission() -> None:
     run = build_world(mission("undertow_grove"), flags={})
     wrenna = run.unit("wrenna")
+    assert wrenna is not None
     band = run.spawn(2, [U.TROLL, U.TROLL], wrenna.pos, attack=wrenna.pos)
     run.world.attack([u.id for u in band], wrenna.id)
     solver.play_until(run, lambda r: r.lost is not None, seconds=300)
@@ -279,6 +280,7 @@ def test_a_full_campaign_of_flags_flows_into_the_maw(tmp_path) -> None:
         progress.complete(m, {})
     store.save(progress)
     loaded = store.load()
+    assert loaded is not None
     run = build_world(mission("undertow_maw"), flags=loaded.flags)
     assert any(u.type is U.ANCIENT_GUARDIAN for u in run.units(0))
     solver.solve_maw(run, ending="ground")
@@ -334,3 +336,38 @@ def test_a_committed_ending_at_the_maw_cannot_be_overwritten_by_another_work() -
     solver.solve_maw(run, ending="sealed")
     assert run.won and run.remembered()["undertow_ending_sealed"] is True
     assert run.remembered()["undertow_ending_ground"] is False
+
+
+@pytest.fixture
+def game(tmp_path):
+    from saga2d import Game
+    from warband.ui.style import build_theme
+
+    g = Game("Warband Undertow", backend="mock", resolution=(1280, 800), theme=build_theme(),
+             save_dir=tmp_path / "saves")
+    yield g
+    g.close()
+
+
+@pytest.mark.slow
+def test_an_undertow_save_loads_through_the_standard_loader(game) -> None:
+    """Slow: a real mission scene on the mock backend, saved mid-phase and restored by the same
+    ``load_game`` every save uses — the authored world, fired triggers and landmarks intact."""
+    from warband.story.mission_scene import MissionScene, campaign_save_slot
+    from warband.sim.rules import Difficulty
+    from warband.ui.scene import load_game
+
+    run = build_world(mission("undertow_mill"), flags={})
+    scene = MissionScene(CAMPAIGN, run, difficulty=Difficulty.MEDIUM)
+    game.push(scene)
+    game.tick(1 / 60)
+    solver.play_until(run, lambda r: "wave_2" in r.fired, seconds=420,
+                      act=lambda r: solver.fight(r, tuple(r.get("mill_vault_center"))))
+    slot = campaign_save_slot(CAMPAIGN)
+    game.save(slot, scene=scene)
+    state = game.save_manager.load(slot)["state"]
+    loaded = load_game(state)
+    assert isinstance(loaded, MissionScene) and loaded.campaign is CAMPAIGN
+    assert loaded.run.fired == run.fired and loaded.run.state == run.state
+    assert loaded.run.vars["landmarks"] == run.vars["landmarks"]
+    assert loaded.world.width == 48 and loaded.world.scripted and loaded.AUTOSAVE_SLOT == slot

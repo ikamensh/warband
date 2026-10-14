@@ -75,11 +75,11 @@ def _free(unit) -> bool:
     return not unit.hidden and all(isinstance(order, Hold) for order in unit.orders)
 
 
+_LAST: dict[int, dict[str, float]] = {}
+
+
 def _last(run: Run) -> dict[str, float]:
-    state = getattr(run, "_solver_last", None)
-    if state is None:
-        state = run._solver_last = {}
-    return state
+    return _LAST.setdefault(id(run), {})
 
 
 def _every(run: Run, key: str, interval: float) -> bool:
@@ -189,7 +189,8 @@ def ensure_buildings(run: Run, plans: list[tuple[B, tuple[int, int]]], *, second
             if not free:
                 continue
             centre = (pos[0] + 1.0, pos[1] + 1.0)
-            worker = builders.get(pos) and world.units.get(builders[pos]) or min(free, key=lambda w: dist(w.pos, centre))
+            assigned = world.units.get(builders[pos]) if pos in builders else None
+            worker = assigned if assigned is not None else min(free, key=lambda w: dist(w.pos, centre))
             builders[pos] = worker.id
             if world.can_place(btype, pos, 0) is None and world.can_afford(0, BUILDINGS[btype].cost) is None:
                 if _idle(worker) or _every(r, f"build:{pos}", 6.0):
@@ -450,9 +451,13 @@ def solve_weight(run: Run, *, seam: str) -> float:
     play_until(run, lambda r: bool(r.get("siege_broken")), seconds=1800, act=besiege, what="siege broken")
 
     if seam == "guard":
-        ids = [u.id for u in run.soldiers(0)]
-        world.move(ids, seam_building.center)
-        play_until(run, lambda r: bool(r.get("seam_settled")), seconds=600, act=defend, what="seam guard posted")
+        def post(r: Run) -> None:
+            defend(r, engage=False)
+            ids = [u.id for u in r.soldiers(0) if _idle(u)]
+            if ids:
+                r.world.move(ids, seam_building.center)
+
+        play_until(run, lambda r: bool(r.get("seam_settled")), seconds=600, act=post, what="seam guard posted")
     play_until(run, lambda r: r.won, seconds=900, act=besiege if seam == "mine" else defend, what="Tarnlock won")
     return world.time - start
 
