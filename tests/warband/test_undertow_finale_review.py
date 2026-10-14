@@ -8,6 +8,18 @@ from warband.story.mission_scene import build_world
 from warband.story.new_campaign import CAMPAIGN
 
 
+@pytest.mark.parametrize("mill_held", [False, True])
+def test_the_heart_stone_muster_reports_the_aether_that_fits_the_camp(mill_held) -> None:
+    """The core's advertised grant agrees with the purse in either camp-capacity branch."""
+    mission = CAMPAIGN.mission("undertow_maw")
+    baseline = build_world(mission, flags={"undertow_mill_vault": mill_held})
+    core = build_world(mission, flags={"undertow_mill_vault": mill_held, "undertow_guardian_core": True})
+    grant = core.world.players[0].aether - baseline.world.players[0].aether
+    assert core.get("maw_core_aether") == grant
+    solver.play_until(core, lambda run: "muster" in run.fired, seconds=2, what="core muster")
+    assert any(f"(+{grant} aether)" in line for _, lines in core.notes for line in lines)
+
+
 def test_open_release_accepts_an_open_hand_already_eliminated() -> None:
     """A side already out before release cannot be asked to resign a second time."""
     run = build_world(CAMPAIGN.mission("undertow_maw"), flags={})

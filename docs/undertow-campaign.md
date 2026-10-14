@@ -47,7 +47,8 @@ leaving at the result screen never skips one.
 - Mill vault held → a second north vault already drawing, +60 aether. Shuttered → Brakk's band
   (4 footmen, 2 archers) in the player's colours.
 - Dam blown → one farm fewer, +800 gold of salvaged millstones.
-- Guardian ally → a player-owned Ancient Guardian at the camp. Heart-stone → +120 starting aether.
+- Guardian ally → a player-owned Ancient Guardian at the camp. Heart-stone → up to +120 starting aether, limited by the camp’s vault capacity; the muster
+  reports the actual grant.
 - Seam mined → +2000 gold and a wild-elemental bloom immediately on ending commitment, then
   further blooms at 200, 300, 400 and 500 seconds; all arrived pressure bands must be defeated;
   also capped → half the gold and no blooms. Capped alone → quiet rifts.

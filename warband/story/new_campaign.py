@@ -877,7 +877,7 @@ def _setup_maw(run: Run) -> None:
     band = run.spawn(0, [U.KNIGHT, U.CLERIC] + [U.FOOTMAN] * 5 + [U.ARCHER] * 3 + [U.KNIGHT] * 2 + [U.CATAPULT],
                      (39.5, 13.5))
     run.spawn(0, [U.PEASANT] * 5, (37.5, 11.5))
-    gold, aether = 2000, 90
+    gold, aether, core_aether = 2000, 90, 0
     if run.get("undertow_mill_vault"):
         _put(run, 0, B.VAULT, (56, 6))                              # the mill-vault's crew, drawing already
         aether += 60
@@ -888,6 +888,8 @@ def _setup_maw(run: Run) -> None:
     if run.get("undertow_guardian_ally"):
         run.spawn(0, [U.ANCIENT_GUARDIAN], (35.5, 16.5))
     if run.get("undertow_guardian_core"):
+        capacity = world.aether_cap(0)
+        core_aether = min(capacity, aether + 120) - min(capacity, aether)
         aether += 120
     if run.get("undertow_seam_mined"):
         gold = gold + 1000 if run.get("undertow_seam_capped") else gold + 2000
@@ -896,7 +898,7 @@ def _setup_maw(run: Run) -> None:
     _defaults(run, issa=band[0].id, keystone_pos=list(KEYSTONE_POS), keystone_hp=keystone_hp,
               pylon_pos=[list(p) for p in PYLON_POS], maw_rifts=[list(r) for r in MAW_RIFTS],
               keystone_center=list(keystone.center), camp_center=list(hall.center),
-              sella_tower=sella_tower.id, relief_sluice=list(RELIEF_SLUICE))
+              sella_tower=sella_tower.id, relief_sluice=list(RELIEF_SLUICE), maw_core_aether=core_aether)
     _landmark(run, "keystone", "The Keystone (repair it)", keystone.center, kind="bell", radius=4, state="active")
     for i, pylon in enumerate(pylons):
         _landmark(run, f"seal_pylon_{i + 1}", f"Seal-pylon {'I II III'.split()[i]} (destroy it)", pylon.center,
@@ -955,7 +957,8 @@ def _maw_muster(run: Run) -> None:
     if run.get("undertow_guardian_ally"):
         notes.append("The Ancient Guardian walks with you")
     if run.get("undertow_guardian_core"):
-        notes.append("The heart-stone hums in its crate (+120 aether)")
+        grant = f" (+{run.get('maw_core_aether')} aether)" if "maw_core_aether" in run.vars else " (aether reserves)"
+        notes.append("The heart-stone hums in its crate" + grant)
     if run.get("undertow_seam_mined") and not run.get("undertow_seam_capped"):
         notes.append("Seam-gold in the purse — and the rifts will bloom for it")
     if run.get("undertow_seam_capped"):

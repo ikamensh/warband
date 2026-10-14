@@ -146,7 +146,7 @@ MAW_BRIEFING: Dialog = (
     Line("Issa", "The first work chooses our course: peasants repairing the Keystone commit us to RESEAL. "
                  "Mend heals people, not buildings. The first pylon destroyed commits OPEN; the first Maw vault completed commits GROUND."),
     Line("Dagna", "Issa, stand at the marked Relief Sluice to open it to my corrected seam measure. "
-                  "It sheds the Weight's load safely; do that before destroying the last pylon."),
+                  "It sheds the Weight's load safely; the Maw cannot release until that setting is made."),
     Line("Wrenna", "GROUND needs the whole grove, or the Guardian, living or as heart-stone. Our grove stands whole. "
                    "Three drinking vaults, and keepers tending them every day.", unless="undertow_grove_cut"),
     Line("Wrenna", "With the grove cut, GROUND needs the Guardian or its heart-stone. "
@@ -174,9 +174,9 @@ MAW_COMMIT_OPEN: Dialog = (
 
 
 MAW_RELIEF_OPENED: Dialog = (
-    Line("Dagna", "The relief is taking the Weight's load. Now the three seal-pylons can fall without forcing it through Tarnlock."),
+    Line("Dagna", "The relief is taking the Weight's load. With all three seal-pylons disabled, the Maw can release without forcing that load through Tarnlock."),
     Line("Sella", "The gauges agree. Give every crew the true margin and a road out. Tools are replaceable."),
-    Line("Issa", "Hands clear of the ring. Last seals down, then soldiers back to the camp. We defend people while it vents."),
+    Line("Issa", "Hands clear of the ring. Disable any remaining seal-pylons, then soldiers back to the camp. We defend people while it vents."),
 )
 
 
@@ -232,7 +232,7 @@ MAW_DEBRIEF: Dialog = (
 EPILOGUE: Dialog = (
     Line("", "The Chain was resealed. Public gauges now govern its spell quotas, and each downstream keeper can refuse a vent. "
              "The Compact survives by accepting limits it once imposed only on other people.", when="undertow_ending_sealed"),
-    Line("", "The Relief Sluice opened before the seals. The lower works went under violet weather; the warned valley had a road out. "
+    Line("", "The Relief Sluice relieved the Weight before the Maw released. The lower works went under violet weather; the warned valley had a road out. "
              "Magic is free and wild, but the Hollow has mills, homes and livelihoods to rebuild.", when="undertow_ending_open"),
     Line("", "Root, stone and three drinking vaults ground the Maw's breath. The locks remain as plumbing, tended every day by all four peoples. "
              "Spell-light is dearer: the surplus that once bought it now keeps their valley habitable.", when="undertow_ending_ground"),
