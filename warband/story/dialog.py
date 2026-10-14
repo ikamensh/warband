@@ -81,10 +81,10 @@ class DialogScene(Scene):
                            KeyHints([("Esc", "skip")]), spacing=14))
         else:
             column.add(Label(item.prompt, text_style="body", wrap=True, width=text_width))
-            answers = Row(spacing=10)
+            answers = Column(spacing=8, width=text_width)
             for number, option in enumerate(item.options, 1):
                 answers.add(Button(option.label, shortcut=str(number), on_click=lambda value=option.value: self.choose(value),
-                                   style=ACTION_BUTTON if number == 1 else GHOST_BUTTON, width=max(180, (text_width - 10 * (len(item.options) - 1)) // len(item.options))))
+                                   style=ACTION_BUTTON if number == 1 else GHOST_BUTTON, width=text_width))
             column.add(answers)
         key = speaker_portrait(self.game, speaker) if speaker is not None else None
         if key is not None:
