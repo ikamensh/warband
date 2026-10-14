@@ -286,3 +286,50 @@ def test_a_full_campaign_of_flags_flows_into_the_maw(tmp_path) -> None:
     loaded.complete(run.mission, run.remembered())
     assert loaded.next_mission(CAMPAIGN) is None
     assert loaded.flags["undertow_ending_ground"] is True
+
+
+@pytest.mark.slow
+def test_the_kneeling_guardian_leaves_the_ring_and_no_escort_can_fight_it() -> None:
+    """Slow: Wrenna's solo approach is a walk down the grove's east arm.  After it kneels, the Ancient
+    retires into the trees: an escort on ordinary move orders walks through the empty ring, nobody
+    fights by acquisition, and ally/core stay exclusive."""
+    run = build_world(mission("undertow_grove"), flags={})
+    run.world.move([run.get("wrenna")], (47.5, 14.5))
+    solver.play_until(run, lambda r: bool(r.get("undertow_guardian_ally")), seconds=300)
+    assert run.get("guardian") not in run.world.units
+    escort = [u.id for u in run.soldiers(0)]
+    run.world.move(escort, tuple(run.get("guardian_pos")))
+    solver.play_until(run, lambda r: any(u.x > 50 for u in r.soldiers(0)), seconds=300)
+    assert run.unit("wrenna") is not None
+    assert run.get("undertow_guardian_core") is False and run.lost is None
+    assert all(u.hp == u.max_hp or u.id != run.get("wrenna") for u in run.soldiers(0))
+
+
+@pytest.mark.slow
+def test_a_committed_ending_at_the_maw_cannot_be_overwritten_by_another_work() -> None:
+    """Slow: repair the Keystone until RESEAL is committed, stop, then build all three Maw vaults and
+    fill the store to 450 — the mission must not resolve as GROUND; finishing the reseal then wins
+    as sealed only.  Whole-mission geometry and economy: the slow tier."""
+    run = build_world(mission("undertow_maw"), flags={})
+    world = run.world
+    keystone_pos = tuple(run.get("keystone_pos"))
+
+    def repair(r) -> None:
+        solver.fight(r, tuple(r.get("keystone_center")), sides=(1, 2))
+        keystone = solver.building_at(r, 0, B.MAGE_TOWER, keystone_pos)
+        free = [w.id for w in solver.workers(r) if not w.orders][:3]
+        if keystone is not None and keystone.hp < keystone.max_hp and free:
+            world.repair(free, keystone.id)
+
+    solver.play_until(run, lambda r: r.get("ending_path") == "sealed", seconds=600, act=repair)
+    plans = [(B.VAULT, tuple(p)) for p in run.get("maw_rifts")]
+    solver.ensure_buildings(run, plans, seconds=1200,
+                            act=lambda r: solver.fight(r, tuple(r.get("keystone_center")), sides=(1, 2)))
+    solver.play_until(run, lambda r: r.world.players[0].aether >= 450, seconds=900,
+                      act=lambda r: solver.fight(r, tuple(r.get("keystone_center")), sides=(1, 2)))
+    assert not run.won and not run.get("maw_resolved")
+    assert run.remembered() == {"undertow_ending_sealed": False, "undertow_ending_open": False,
+                                 "undertow_ending_ground": False}
+    solver.solve_maw(run, ending="sealed")
+    assert run.won and run.remembered()["undertow_ending_sealed"] is True
+    assert run.remembered()["undertow_ending_ground"] is False

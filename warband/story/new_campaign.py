@@ -183,8 +183,8 @@ def _setup_mill(run: Run) -> None:
     _put(run, 0, B.FARM, (15, 10)); _put(run, 0, B.FARM, (26, 10)); _put(run, 0, B.FARM, (15, 15))
     _put(run, 0, B.BARRACKS, (26, 14))
     vault = _put(run, 0, B.VAULT, (20, 16))
-    pylon = _put(run, 1, B.FARM, (28, 20))               # bloom-choked, hostile-held, down the mill-race: attackable,
-    # and far enough from the vault that idle defenders never fell it by accident
+    pylon = _put(run, 1, B.FARM, (23, 2))                # bloom-choked, hostile-held, at the race-head on the north bank:
+    # attackable, and across the river from every beast-fight, so only a deliberate march fells it
     _mine(run, B.GOLD_MINE, (7, 12))
     band = run.spawn(0, [U.KNIGHT, U.CLERIC] + [U.FOOTMAN] * 3 + [U.ARCHER] * 2, (21.5, 14.5))
     run.spawn(0, [U.PEASANT] * 4, (19.5, 12.5))
@@ -248,7 +248,7 @@ MILL = Mission(
         Objective("hold", "Hold the straining vault through two more surges",
                   lambda run: bool(run.get("undertow_mill_vault")),
                   shown=lambda run: "wave_2" in run.fired, optional=True),
-        Objective("shutter", "Or shutter it: destroy the lock-pylon down the mill-race (east)",
+        Objective("shutter", "Or shutter it: destroy the lock-pylon on the north bank",
                   lambda run: run.get("mill_pylon") not in run.world.buildings,
                   shown=lambda run: "wave_2" in run.fired, optional=True),
         Objective("clear", "Clear the last beasts from Millfield",
@@ -260,7 +260,8 @@ MILL = Mission(
     triggers=(
         Trigger("wave_1", at(4), _wave(1, [U.WOLF] * 3, MILL_WAVE_ORIGINS["sw"], "mill_farm_center", "wave_1_band",
                                         Line("Issa", "Wolves in the south fields — and not hunting sheep. Soldiers, to me!"))),
-        Trigger("wave_2", all_of(any_of(objective_done("wave_1"), at(180)), lambda run: not run.get("mill_decided")),
+        Trigger("wave_2", all_of(after("wave_1", 25), any_of(objective_done("wave_1"), at(180)),
+                                 lambda run: not run.get("mill_decided")),
                 _wave(1, [U.SPIDER] * 2 + [U.WOLF] * 2, MILL_WAVE_ORIGINS["se"], "mill_vault_center", "wave_2_band",
                       Line("Hasp", "Captain — they went past my farm. Past it! They're at the vault, not at us!"),
                       Line("Issa", "Then the vault is bait whether we like it or not. Hold it through what's coming — "
@@ -269,7 +270,7 @@ MILL = Mission(
                              (Option("Hold it through the surges", True), Option("Shutter it at the pylon", False))),
                       Line("Issa", "Hold it, then. Two more surges. Mend who you can.", when="mill_intent"),
                       Line("Issa", "Shutter it, then. Steel on the pylon — and be sure.", unless="mill_intent"))),
-        Trigger("wave_3", all_of(any_of(_band_cleared("wave_2_band"), after("wave_2", 150)),
+        Trigger("wave_3", all_of(after("wave_2", 60), any_of(_band_cleared("wave_2_band"), after("wave_2", 180)),
                                  lambda run: not run.get("mill_decided")),
                 _wave(1, [U.WOLF] * 3 + [U.SPIDER] * 2, MILL_WAVE_ORIGINS["s"], "mill_vault_center", "wave_3_band",
                       Line("Issa", "Last surge. Everything the low ground has, coming at the vault. Hold the line!"))),
@@ -303,7 +304,7 @@ def _setup_caravan(run: Run) -> None:
     terrain = _terrain(64, 48)
     _fill(terrain, 30, 0, 33, 47, Terrain.WATER)                       # the Sorrow, running south
     for row in FORDS.values():
-        _fill(terrain, 31, row, 32, row + 1, Terrain.GRASS)            # three narrow fords
+        _fill(terrain, 30, row, 33, row + 1, Terrain.GRASS)            # three narrow fords, bank to bank
     _fill(terrain, 42, 14, 60, 14, Terrain.ROCK)                       # the Broken Tooth mesa's rim
     _fill(terrain, 42, 32, 60, 32, Terrain.ROCK)
     _fill(terrain, 42, 14, 42, 32, Terrain.ROCK)
@@ -337,8 +338,9 @@ def _setup_caravan(run: Run) -> None:
 
 
 def _caravan_rockfall(run: Run) -> None:
-    rock = run.world.place_building(1, B.FARM, (31, FORDS["middle"]))
-    run.set("rockfall", rock.id)
+    # Two farm-sized tumbles side by side seal the four-wide ford bank to bank.
+    rocks = [run.world.place_building(1, B.FARM, (x, FORDS["middle"])) for x in (30, 32)]
+    run.set("rockfall", [rock.id for rock in rocks])
     _landmark_state(run, "middle_ford", "ruined")
     run.say(
         Line("Ugga", "Rockfall! Right across the causeway — and pennants stuck in it. Somebody signed that."),
@@ -435,8 +437,8 @@ CARAVAN = Mission(
 
 # -- 3. The Grove That Drinks (undertow_grove) ------------------------------------
 
-STRIP: tuple[Pos, ...] = tuple((x, 27) for x in range(40, 50))  # the marked firebreak line
-STRIP_NEEDED = 8
+STRIP: tuple[Pos, ...] = tuple((x, 27) for x in range(40, 48))  # the marked firebreak line
+STRIP_NEEDED = 6
 
 
 def _felled(run: Run) -> int:
@@ -452,27 +454,29 @@ def _setup_grove(run: Run) -> None:
     _disc(terrain, 30, 38, 6, Terrain.GRASS)
     _disc(terrain, 52, 14, 5, Terrain.GRASS)                    # the Guardian's ring
     _fill(terrain, 38, 25, 52, 26, Terrain.GRASS)               # working ground north of the strip
+    _fill(terrain, 44, 24, 45, 24, Terrain.GRASS)               # the ride joining it to the path
     world = _authored(run, terrain, theme=MapTheme.SUMMER, races=(Race.ELF, Race.HUMAN, Race.ORC),
                       rifts=((23, 17),), seed=2303)
     hall = _put(run, 0, B.TOWN_HALL, (13, 10))
     _put(run, 0, B.CHURCH, (19, 9))                             # the Moonwell
     _put(run, 0, B.FARM, (10, 16)); _put(run, 0, B.FARM, (14, 17)); _put(run, 0, B.FARM, (24, 10))
+    _put(run, 0, B.BARRACKS, (20, 19))
     _put(run, 0, B.VAULT, (23, 17))                             # the grown Third Lock
     _mine(run, B.GOLD_MINE, (8, 8))
     band = run.spawn(0, [U.CLERIC] + [U.TREANT] * 2 + [U.FOOTMAN] * 4 + [U.ARCHER] * 3, (17.5, 14.5))
     run.spawn(0, [U.PEASANT] * 3, (15.5, 12.5))
     mill = _put(run, 1, B.LUMBER_MILL, (28, 36))
     cutters = run.spawn(1, [U.PEASANT] * 4, (30.5, 41.5))
-    guard = run.spawn(1, [U.FOOTMAN] * 3, (27.5, 34.5), hold=True)
+    guard = run.spawn(1, [U.FOOTMAN] * 3, (33.5, 41.5), hold=True)  # south of the mill: a parley from the north stays out of idle bowshot
     for cutter, tile in zip(cutters, [(25, 42), (27, 45), (30, 45), (33, 45)]):
         world.harvest([cutter.id], tile)
     guardian = world.spawn_unit(world.neutral, U.ANCIENT_GUARDIAN, tile_center((52, 14)))
-    guardian.hp = 900  # bloom-sick and old: a hard fight for two treants, not an impossible one
+    guardian.hp = 700  # bloom-sick and old: a hard fight for two treants, not an impossible one
     world.players[0].upgrades.add(Upgrade.ENTANGLE)
     _purse(run, 0, 700, 300, 45)
     _defaults(run, wrenna=band[0].id, pell=guard[0].id, mill_id=mill.id, guardian=guardian.id,
-              guardian_hp=900, guardian_pos=[52.5, 14.5], cutter_camp=[29.5, 37.5],
-              moonwell_center=[20.5, 10.5], strip_tiles=[list(t) for t in STRIP])
+              guardian_hp=700, guardian_pos=[52.5, 14.5], cutter_camp=[29.5, 37.5],
+              moonwell_center=[20.5, 10.5], moon_hall_center=list(hall.center), strip_tiles=[list(t) for t in STRIP])
     _landmark(run, "moon_hall", "Moon Hall", hall.center, kind="bell", state="active")
     _landmark(run, "firebreak", "The marked firebreak line", (44.5, 27.5), kind="gate", radius=5, state="active")
     _landmark(run, "cutter_camp", "Woodcutters' camp", mill.center, kind="anchor", state="active")
@@ -487,13 +491,14 @@ def _grove_parley(run: Run) -> None:
                      "Captain Renn's standing order, signed and sealed. I'd rather be sawing than fighting, Warden."),
         Line("Wrenna", "Issa's order. Of course it is. The grove drinks the bloom, Sergeant — that's what it's for. "
                        "Cut its throat to save its heart, or trust it to drink at full strength?"),
-        Line("Pell", "Your wood, your call. Finish the marked line with us, or drive us off and take the bloom whole."),
+        Line("Pell", "Your wood, your call. We strike camp and keep the south road — armed men can't work saw-to-saw "
+                     "with your guard anyway. Finish the marked line, or muster at your hall and take the bloom whole."),
     )
-    run.toast("Parley at the woodcutters' camp", "Fell the marked line, or drive your own side off")
-    # Pell's crew lends its saws to the strip; the guard keeps the camp.
-    for cutter in run.units(1, U.PEASANT):
-        tile = next((t for t in STRIP if run.world.terrain_at(t) is Terrain.TREES), STRIP[0])
-        run.world.harvest([cutter.id], tile)
+    run.toast("Parley at the woodcutters' camp", "Fell the marked line, or muster at the Moon Hall and weather the bloom")
+    # The crew strikes camp and withdraws for good; the mill stands empty behind them.
+    run.world.resign(1)
+    run.world.take_events()
+    _landmark_state(run, "cutter_camp", "ruined")
 
 
 def _grove_bloom(run: Run) -> None:
@@ -501,7 +506,7 @@ def _grove_bloom(run: Run) -> None:
     run.set("undertow_grove_cut", cut)
     run.set("bloom_started", True)
     _landmark_state(run, "firebreak", "open" if cut else "ruined")
-    roster = [U.WOLF] * 3 if cut else [U.WOLF] * 4 + [U.SPIDER] * 2
+    roster = [U.WOLF] * 3 if cut else [U.WOLF] * 3 + [U.SPIDER] * 2
     band = run.spawn(2, roster, (55.5, 22.5), attack=tuple(run.get("moonwell_center")))
     run.set("bloom_1_band", [u.id for u in band])
     run.say(
@@ -512,7 +517,7 @@ def _grove_bloom(run: Run) -> None:
 
 
 def _grove_bloom_2(run: Run) -> None:
-    band = run.spawn(2, [U.AETHER_ELEMENTAL] * 3 + [U.SPIDER] * 2, (45.5, 22.5),
+    band = run.spawn(2, [U.AETHER_ELEMENTAL] * 2 + [U.SPIDER] * 2, (45.5, 22.5),
                      attack=tuple(run.get("moonwell_center")))
     run.set("bloom_2_band", [u.id for u in band])
     run.say(Line("Wrenna", "The rift is shedding elementals — pressure with nowhere to go. Hold the Moonwell!"))
@@ -520,10 +525,13 @@ def _grove_bloom_2(run: Run) -> None:
 
 def _grove_guardian_ally(run: Run) -> None:
     run.set("undertow_guardian_ally", True)
+    # The Ancient leaves the ring for the deep trees until the Maw: an ally that stayed on the map as a
+    # neutral body would be fought by accident by the first escort to walk through (no bounty, no core).
+    run.world.clear_player(run.world.neutral)
     _landmark_state(run, "guardian_ring", "open")
     run.say(
-        Line("Wrenna", "Easy, old one. Nobody's raising a blade. …There. Do you see? It kneels. "
-                       "When we go down to the Maw, Captain, the grove sends its eldest with us."),
+        Line("Wrenna", "Easy, old one. Nobody's raising a blade. …There. Do you see? It kneels — and goes into the deep "
+                       "trees to wait. When we go down to the Maw, Captain, the grove sends its eldest with us."),
     )
     run.toast("The Ancient Guardian kneels", "It will walk with the Keepers at the Maw")
 
@@ -555,15 +563,14 @@ GROVE = Mission(
     ),
     setup=_setup_grove,
     objectives=(
-        Objective("parley_or_rout", "Deal with the woodcutters in the south: parley, or drive them off",
-                  lambda run: bool(run.get("parleyed")) or run.get("mill_id") not in run.world.buildings
-                  or not run.soldiers(1)),
+        Objective("parley_or_rout", "Deal with the woodcutters in the south: parley, or raze their mill",
+                  lambda run: bool(run.get("parleyed")) or run.get("mill_id") not in run.world.buildings),
         Objective("cut", f"Finish the firebreak: fell {STRIP_NEEDED} of the marked trees (gatherers, harvest order)",
                   lambda run: _felled(run) >= STRIP_NEEDED, shown=objective_done("parley_or_rout"), optional=True),
-        Objective("weather", "Or keep the grove whole and weather the bloom at the Moonwell",
+        Objective("weather", "Or keep the grove whole: muster your soldiers at the Moon Hall to face the bloom now",
                   lambda run: bool(run.get("grove_resolved")) and not run.get("undertow_grove_cut"),
                   shown=objective_done("parley_or_rout"), optional=True),
-        Objective("guardian", "The Ancient in the stone ring: bring Wrenna to it, or bring it down",
+        Objective("guardian", "The Ancient in the stone ring: bring Wrenna to it alone, or bring it down",
                   lambda run: bool(run.get("undertow_guardian_ally") or run.get("undertow_guardian_core")),
                   optional=True),
         Objective("survive_bloom", "Weather the bloom-front", lambda run: bool(run.get("grove_resolved")),
@@ -574,14 +581,16 @@ GROVE = Mission(
                   failed=lambda run: run.hall(0) is None, optional=True),
     ),
     triggers=(
-        Trigger("parley", all_of(lambda run: any(dist(u.pos, tuple(run.get("cutter_camp"))) <= 9 for u in run.units(0)),
+        Trigger("parley", all_of(lambda run: any(dist(u.pos, tuple(run.get("cutter_camp"))) <= 11 for u in run.units(0)),
                                  lambda run: not run.get("grove_first_blood")), _grove_parley),
         Trigger("first_blood", lambda run: any(u.hp < u.info.hp for u in run.units(1)) and "parley" not in run.fired,
                 lambda run: run.set("grove_first_blood", True)),
         Trigger("bloom", any_of(
             all_of(objective_done("parley_or_rout"), lambda run: _felled(run) >= STRIP_NEEDED),
-            all_of(at(10), lambda run: run.get("mill_id") not in run.world.buildings or not run.soldiers(1)),
-            after("parley", 240)), _grove_bloom),
+            all_of(at(10), lambda run: run.get("mill_id") not in run.world.buildings,
+                   lambda run: "parley" not in run.fired),
+            all_of(after("parley", 15), lambda run: _occupied(run, "moon_hall")),
+            after("parley", 360)), _grove_bloom),
         Trigger("bloom_2", all_of(_band_cleared("bloom_1_band"), lambda run: not run.get("undertow_grove_cut"),
                                   lambda run: bool(run.get("bloom_started"))), _grove_bloom_2),
         Trigger("resolved", all_of(lambda run: bool(run.get("bloom_started")),
@@ -589,6 +598,9 @@ GROVE = Mission(
                                    lambda run: run.get("undertow_grove_cut") or "bloom_2" in run.fired),
                 lambda run: run.set("grove_resolved", True)),
         Trigger("guardian_approach", all_of(lambda run: run.near("wrenna", tuple(run.get("guardian_pos")), 6.0),
+                                            lambda run: not any(u.id != run.get("wrenna")
+                                                                and dist(u.pos, tuple(run.get("guardian_pos"))) <= 9
+                                                                for u in run.soldiers(0)),
                                             lambda run: (g := run.world.units.get(run.get("guardian"))) is not None
                                             and g.hp >= run.get("guardian_hp")), _grove_guardian_ally),
         Trigger("guardian_slain", all_of(lambda run: run.get("guardian") not in run.world.units,
@@ -1005,13 +1017,19 @@ MAW = Mission(
         Trigger("ground_warned", all_of(lambda run: _maw_vaults(run) >= 1, lambda run: not _ground_eligible(run)),
                 lambda run: run.say(Line("Wrenna", "Those vaults will draw, but they cannot ground the Maw alone — the grove was cut and no Guardian "
                                                    "stands with us, living or as stone. Reseal or open it instead."))),
-        Trigger("keystone_full", lambda run: (k := _keystone(run)) is not None and k.hp >= k.max_hp, _maw_final_sealed),
-        Trigger("pylons_down", lambda run: _pylons_standing(run) == 0, _maw_opened),
-        Trigger("resolve_sealed", all_of(lambda run: "keystone_full" in run.fired, _band_cleared("final_band")),
+        Trigger("keystone_full", all_of(lambda run: run.get("ending_path") == "sealed",
+                                        lambda run: (k := _keystone(run)) is not None and k.hp >= k.max_hp),
+                _maw_final_sealed),
+        Trigger("pylons_down", all_of(lambda run: run.get("ending_path") == "open",
+                                      lambda run: _pylons_standing(run) == 0), _maw_opened),
+        Trigger("resolve_sealed", all_of(lambda run: run.get("ending_path") == "sealed",
+                                         lambda run: "keystone_full" in run.fired, _band_cleared("final_band")),
                 _maw_resolve("sealed")),
-        Trigger("resolve_open", all_of(lambda run: "pylons_down" in run.fired, _band_cleared("final_band")),
+        Trigger("resolve_open", all_of(lambda run: run.get("ending_path") == "open",
+                                       lambda run: "pylons_down" in run.fired, _band_cleared("final_band")),
                 _maw_resolve("open")),
-        Trigger("resolve_ground", all_of(lambda run: _ground_eligible(run), lambda run: _maw_vaults(run) == 3,
+        Trigger("resolve_ground", all_of(lambda run: run.get("ending_path") == "ground",
+                                         lambda run: _ground_eligible(run), lambda run: _maw_vaults(run) == 3,
                                          lambda run: run.world.players[0].aether >= GROUND_AETHER),
                 _maw_resolve("ground")),
         *(Trigger(f"bloom_hazard_{i}", all_of(at(100 + 100 * i), lambda run: bool(run.get("undertow_seam_mined"))

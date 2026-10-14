@@ -22,8 +22,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from warband.story.campaign import Choice, Run  # noqa: E402
 from warband.story.mission_scene import build_world  # noqa: E402
 from warband.story.new_campaign import CAMPAIGN  # noqa: E402
-from warband.sim.model import RuleError, dist  # noqa: E402
-from warband.sim.rules import BuildingType as B, SIM_DT, Terrain, UnitType as U, Upgrade  # noqa: E402
+from warband.sim.model import dist  # noqa: E402
+from warband.sim.rules import BUILDINGS, BuildingType as B, SIM_DT, Terrain, UnitType as U, Upgrade  # noqa: E402
 
 CHUNK = int(round(1.0 / SIM_DT))  # one simulated second between solver decisions
 
@@ -85,16 +85,17 @@ def _every(run: Run, key: str, interval: float) -> bool:
     return False
 
 
-def fight(run: Run, point, *, sides: tuple[int, ...] = (1,)) -> None:
+def fight(run: Run, point, *, sides: tuple[int, ...] = (1,), exclude: tuple[int, ...] = ()) -> None:
     """Soldiers attack-move to the nearest visible enemy's ground, or to *point* when the field is clear.
 
     Orders are re-issued only to idle soldiers, plus a slow refresh for soldiers not mid-blow, so a
     fight in progress is never interrupted by the solver's own bookkeeping."""
     world = run.world
-    soldiers = [u for u in run.soldiers(0) if not u.hidden]
+    soldiers = [u for u in run.soldiers(0) if not u.hidden and u.id not in exclude]
     if not soldiers:
         return
-    enemies = [u for side in sides for u in run.units(side) if not u.hidden]
+    enemies = [u for side in sides for u in run.units(side)
+               if not u.hidden and world.is_visible(0, u.tile)]  # what the player can actually see
     if enemies:
         cx = sum(u.x for u in soldiers) / len(soldiers)
         cy = sum(u.y for u in soldiers) / len(soldiers)
@@ -108,15 +109,16 @@ def fight(run: Run, point, *, sides: tuple[int, ...] = (1,)) -> None:
 
 
 def attack_building(run: Run, building_id: int) -> None:
-    """Idle soldiers are set on a building; soldiers already marching or fighting keep their orders."""
-    if building_id not in run.world.buildings:
+    """Idle soldiers who can strike a building are set on it; the rest follow the fight to its walls."""
+    building = run.world.buildings.get(building_id)
+    if building is None:
         return
-    ids = [u.id for u in run.soldiers(0) if _idle(u)]
-    if ids:
-        try:
-            run.world.attack(ids, building_id)
-        except RuleError:
-            pass
+    idle = [u for u in run.soldiers(0) if _idle(u)]
+    strikers = [u.id for u in idle if run.world.can_strike(u, building)]
+    if strikers:
+        run.world.attack(strikers, building_id)
+    elif idle:
+        run.world.attack_move([u.id for u in idle], building.center)
 
 
 def train(run: Run, building_type: B, unit_type: U, want_soldiers: int) -> None:
@@ -168,12 +170,15 @@ def ensure_buildings(run: Run, plans: list[tuple[B, tuple[int, int]]], *, second
             site = next((b for b in r.buildings(0, btype, done=None) if b.pos == pos), None)
             if site is not None:
                 helpers = [w for w in workers(r) if _idle(w)][:2]
-                if helpers:
-                    try:
-                        world.repair([w.id for w in helpers], site.id)
-                    except RuleError:
-                        pass
+                if helpers and not site.done:  # helping raise a site is the repair order's other half
+                    world.repair([w.id for w in helpers], site.id)
                 continue
+            # A bystander on the footprint is moved off it, as a player would: otherwise it blocks the site for good.
+            size = BUILDINGS[btype].size
+            bystanders = [u.id for u in r.units(0) if _idle(u)
+                          and pos[0] <= int(u.x) < pos[0] + size and pos[1] <= int(u.y) < pos[1] + size]
+            if bystanders:
+                world.move(bystanders, (pos[0] + size / 2, pos[1] + size + 2.0))
             taken = set(builders.values())
             free = [w for w in workers(r) if w.id not in taken]
             if not free:
@@ -181,12 +186,9 @@ def ensure_buildings(run: Run, plans: list[tuple[B, tuple[int, int]]], *, second
             centre = (pos[0] + 1.0, pos[1] + 1.0)
             worker = builders.get(pos) and world.units.get(builders[pos]) or min(free, key=lambda w: dist(w.pos, centre))
             builders[pos] = worker.id
-            if world.can_place(btype, pos, 0) is None:
+            if world.can_place(btype, pos, 0) is None and world.can_afford(0, BUILDINGS[btype].cost) is None:
                 if _idle(worker) or _every(r, f"build:{pos}", 6.0):
-                    try:
-                        world.build(worker.id, btype, pos)
-                    except RuleError:
-                        pass
+                    world.build(worker.id, btype, pos)
             elif _idle(worker):
                 world.move([worker.id], centre)  # walk there first: unexplored ground cannot be built on
 
@@ -219,8 +221,9 @@ def solve_mill(run: Run, *, shutter: bool) -> float:
         train(r, B.BARRACKS, U.FOOTMAN, 10)
         mend_wounded(r)
         if shutter and "wave_2" in r.fired and r.get("mill_pylon") in r.world.buildings:
-            attack_building(r, r.get("mill_pylon"))
-            fight(r, tuple(r.get("mill_vault_center")))
+            # The whole band marches on the pylon at once: the shutter choice is an expedition, not a side errand.
+            if _every(r, "pylon_march", 10.0) and (pylon := r.world.buildings.get(r.get("mill_pylon"))) is not None:
+                r.world.attack([u.id for u in r.soldiers(0) if r.world.can_strike(u, pylon)], pylon.id)
         else:
             fight(r, tuple(r.get("mill_vault_center")))
 
@@ -233,7 +236,8 @@ def solve_caravan(run: Run, *, blast_dam: bool) -> float:
     start = world.time
 
     def guard(r: Run) -> None:
-        enemies = [u for u in r.units(1) if any(dist(u.pos, w.pos) < 16 for w in r.units(0))]
+        enemies = [u for u in r.units(1) if r.world.is_visible(0, u.tile)
+                   and any(dist(u.pos, w.pos) < 16 for w in r.units(0))]
         if enemies:
             fight(r, enemies[0].pos)
         else:
@@ -257,30 +261,24 @@ def solve_caravan(run: Run, *, blast_dam: bool) -> float:
 
     def blast(r: Run) -> None:
         guard(r)
-        rock = r.get("rockfall")
+        rocks = [i for i in r.get("rockfall", []) if i in r.world.buildings]
         sappers = r.units(0, U.SAPPER)
-        if rock in r.world.buildings:
+        if rocks:
             if sappers and _every(r, "sapper_blast", 5.0):
-                try:
-                    r.world.attack([sappers[0].id], rock)
-                except RuleError:
-                    pass
-            attack_building(r, rock)
+                r.world.attack([sappers[0].id], rocks[0])
+            attack_building(r, rocks[0])
 
-    play_until(run, lambda r: r.get("rockfall") not in r.world.buildings, seconds=600, act=blast,
-               what="causeway reopened")
+    play_until(run, lambda r: not any(i in r.world.buildings for i in r.get("rockfall", [])), seconds=600,
+               act=blast, what="causeway reopened")
 
     if blast_dam:
         def dam(r: Run) -> None:
-            enemies = [u for u in r.units(1) if u.y < 20]
+            enemies = [u for u in r.units(1) if u.y < 20 and r.world.is_visible(0, u.tile)]
             if enemies:
                 fight(r, enemies[0].pos)
             sappers = r.units(0, U.SAPPER)
-            if sappers and _every(r, "dam_blast", 5.0):
-                try:
-                    r.world.attack([sappers[0].id], r.get("dam_pylon"))
-                except RuleError:
-                    pass
+            if sappers and _every(r, "dam_blast", 5.0) and r.get("dam_pylon") in r.world.buildings:
+                r.world.attack([sappers[0].id], r.get("dam_pylon"))
             attack_building(r, r.get("dam_pylon"))
 
         soldiers = [u.id for u in run.soldiers(0)] + [u.id for u in run.units(0, U.SAPPER)]
@@ -293,7 +291,8 @@ def solve_caravan(run: Run, *, blast_dam: bool) -> float:
                what="drovers on the mesa")
 
     def camp_guard(r: Run) -> None:
-        enemies = [u for u in r.units(1) if any(dist(u.pos, w.pos) < 18 for w in r.units(0))]
+        enemies = [u for u in r.units(1) if r.world.is_visible(0, u.tile)
+                   and any(dist(u.pos, w.pos) < 18 for w in r.units(0))]
         if enemies:
             fight(r, enemies[0].pos)
 
@@ -314,7 +313,9 @@ def solve_grove(run: Run, *, cut: bool, guardian: str | None = None) -> float:
     """The Grove That Drinks: answer the Ancient first, then parley — and cut the strip or rout the crew."""
     world = run.world
     start = world.time
-    _hold_workers(run)
+    mine = next(b for b in world.mines())
+    for w in workers(run):  # the grove's purse: gold for replacements while the story walks east and south
+        world.harvest([w.id], mine.id)
 
     if guardian == "ally":
         # Wrenna goes alone, on a move order: an escorting archer's idle shot would close this path.
@@ -327,47 +328,65 @@ def solve_grove(run: Run, *, cut: bool, guardian: str | None = None) -> float:
             if g is None:
                 return
             cast_at(r, Upgrade.ENTANGLE, g.pos)
-            fighters = [u.id for u in r.soldiers(0) if _idle(u) and u.id != r.get("wrenna")]
+            fighters = [u.id for u in r.soldiers(0)
+                        if _idle(u) and u.id != r.get("wrenna") and r.world.can_strike(u, g)]
             if fighters:
-                try:
-                    r.world.attack(fighters, g.id)
-                except RuleError:
-                    pass
+                r.world.attack(fighters, g.id)
+            for church in r.buildings(0, B.CHURCH):
+                if r.world.can_train(church, U.TREANT) is None:
+                    r.world.train(church.id, U.TREANT)
             wrenna = r.unit("wrenna")
-            if wrenna is not None and _idle(wrenna) and dist(wrenna.pos, g.pos) < 7:
-                r.world.move([wrenna.id], (44.5, 14.5))
+            if wrenna is not None and _idle(wrenna) and dist(wrenna.pos, g.pos) < 16:
+                r.world.move([wrenna.id], (30.5, 14.5))
 
-        army = [u.id for u in run.soldiers(0)]
+        army = [u.id for u in run.soldiers(0) if u.id != run.get("wrenna")]
         world.move(army, (47.5, 14.5))
+        world.move([run.get("wrenna")], (30.5, 14.5))  # one blow from the Ancient fells her: she waits well west
         play_until(run, lambda r: bool(r.get("undertow_guardian_core")), seconds=900, act=boss,
                    what="Guardian brought down")
 
-    band = [u.id for u in run.soldiers(0)]
-    world.move(band, (29.5, 29.5))
+        def rebuild(r: Run) -> None:
+            train(r, B.BARRACKS, U.FOOTMAN, 12)
+            for church in r.buildings(0, B.CHURCH):
+                if r.world.can_train(church, U.TREANT) is None:
+                    r.world.train(church.id, U.TREANT)
+
+        play_until(run, lambda r: len(r.soldiers(0)) >= 11, seconds=900, act=rebuild,
+                   what="the grove's guard rebuilt after the Ancient")
+
+    # Wrenna parleys alone, as with the Guardian: a formed band idling by the camp would start the fight itself.
+    world.move([run.get("wrenna")], (29.5, 27.5))  # parley hails her en route; she stops outside bowshot of the mill
     play_until(run, lambda r: "parley" in r.fired, seconds=420, what="parley at the woodcutters' camp")
 
     if cut:
         def fell(r: Run) -> None:
             standing = [tuple(t) for t in r.get("strip_tiles") if r.world.terrain_at(tuple(t)) is Terrain.TREES]
-            for w in workers(r):
-                if _idle(w) and standing:
-                    r.world.harvest([w.id], standing.pop(0))
+            if standing and _every(r, "fell_assign", 4.0):
+                for i, w in enumerate(workers(r)):
+                    current = next((o.target for o in w.orders if type(o).__name__ == "Harvest"), None)
+                    if current not in standing:  # includes miners and workers whose tree was felled under them
+                        r.world.harvest([w.id], standing[i % len(standing)])
             fight(r, (44.5, 25.5), sides=(2,))
 
         play_until(run, lambda r: bool(r.get("bloom_started")), seconds=1200, act=fell, what="firebreak finished")
     else:
         def rout(r: Run) -> None:
-            if r.get("mill_id") in r.world.buildings:
-                attack_building(r, r.get("mill_id"))
-            fight(r, tuple(r.get("cutter_camp")), sides=(1,))
+            # The crew struck camp at the parley; keeping the grove whole is chosen by mustering at the hall.
+            train(r, B.BARRACKS, U.FOOTMAN, 12)
+            ids = [u.id for u in r.soldiers(0) if _idle(u)]
+            if ids:
+                r.world.move(ids, (16.5, 12.5))
 
-        play_until(run, lambda r: bool(r.get("bloom_started")), seconds=900, act=rout, what="woodcutters driven off")
+        play_until(run, lambda r: bool(r.get("bloom_started")), seconds=900, act=rout, what="muster at the Moon Hall")
 
     def weather(r: Run) -> None:
-        fight(r, tuple(r.get("moonwell_center")), sides=(2,))
-        for w in workers(r):
-            if _idle(w):
-                r.world.move([w.id], (15.5, 12.5))
+        train(r, B.BARRACKS, U.FOOTMAN, 12)
+        mend_wounded(r)
+        wrenna = r.unit("wrenna")
+        fight(r, tuple(r.get("moonwell_center")), sides=(2,),
+              exclude=(wrenna.id,) if wrenna is not None else ())
+        if wrenna is not None and _idle(wrenna):
+            r.world.move([wrenna.id], tuple(r.get("moonwell_center")))  # the healer holds the well, not the front
 
     play_until(run, lambda r: r.won, seconds=1200, act=weather, what="bloom weathered")
     return world.time - start
@@ -392,10 +411,7 @@ def solve_weight(run: Run, *, seam: str) -> float:
         damaged = [b for b in r.buildings(0, B.VAULT) + r.buildings(0, B.TOWN_HALL) if b.hp < b.max_hp]
         free = [w for w in workers(r) if _idle(w)]
         if damaged and free:
-            try:
-                r.world.repair([free[0].id], damaged[0].id)
-            except RuleError:
-                pass
+            r.world.repair([free[0].id], damaged[0].id)
         fight(r, tuple(r.get("weight_target")))
 
     if seam == "cap":
@@ -432,7 +448,8 @@ def solve_maw(run: Run, *, ending: str) -> float:
     keystone_pos = tuple(run.get("keystone_pos"))
 
     def enemies_near(r: Run) -> list:
-        return [u for side in (1, 2) for u in r.units(side) if not u.hidden and u.y < 50]
+        return [u for side in (1, 2) for u in r.units(side)
+                if not u.hidden and u.y < 50 and r.world.is_visible(0, u.tile)]
 
     def defend(r: Run, point) -> None:
         train(r, B.BARRACKS, U.FOOTMAN, 16)
@@ -448,10 +465,7 @@ def solve_maw(run: Run, *, ending: str) -> float:
             if keystone is not None and keystone.hp < keystone.max_hp:
                 free = [w.id for w in workers(r) if _idle(w)][:3]
                 if free:
-                    try:
-                        r.world.repair(free, keystone.id)
-                    except RuleError:
-                        pass
+                    r.world.repair(free, keystone.id)
 
         play_until(run, lambda r: r.won, seconds=1800, act=repair_act, what="Maw resealed")
     elif ending == "open":
@@ -485,10 +499,7 @@ def solve_maw(run: Run, *, ending: str) -> float:
                 if vault is not None and vault.hp < vault.max_hp:
                     free = [w.id for w in workers(r) if _idle(w)][:1]
                     if free:
-                        try:
-                            r.world.repair(free, vault.id)
-                        except RuleError:
-                            pass
+                        r.world.repair(free, vault.id)
 
         play_until(run, lambda r: r.won, seconds=1200, act=hold, what="Maw grounded")
     return world.time - start
