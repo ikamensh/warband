@@ -4,7 +4,8 @@ import json
 
 import pytest
 
-from saga2d import Camera, Scene
+from saga2d import Anchor, Camera, Minimap, Scene
+from PIL import Image
 
 from warband.sim.model import World
 from warband.sim.rules import Terrain, UnitType
@@ -22,6 +23,10 @@ class MapScene(Scene):
         from warband.story.landmarks import LandmarkView
 
         self.camera = Camera(self.game.resolution)
+        self.game.assets.image_from_pil("landmark-test-map", Image.new("RGBA", (32, 32), (28, 40, 44, 255)))
+        self.minimap = Minimap("landmark-test-map", (self.world.width*32, self.world.height*32), self.camera,
+                               width=160, height=160, anchor=Anchor.BOTTOM_LEFT, margin=12)
+        self.ui.add(self.minimap)
         self.landmarks = LandmarkView(self)
 
     def update(self, dt):
@@ -154,3 +159,21 @@ def test_campaign_cues_generate_and_play_through_the_sound_bank(game, tmp_path) 
         assert abs(data[0]) < .01 and abs(data[-1]) < .01
         bank.play(name)
     assert len(game.backend.sounds_played) == len(campaign.SOUNDS)
+
+
+def test_charted_landmarks_stay_on_the_minimap_without_disclosing_undiscovered_sites(game) -> None:
+    """A distant charted sluice remains a navigation target after transient pings expire; a secret site stays hidden."""
+    run = empty_run()
+    add_landmark(run, "charted", "Distant Sluice", (30.5, 30.5), kind="gate")
+    add_landmark(run, "secret", "Forgotten Heart", (26.5, 30.5), kind="memorial", revealed=False)
+    scene = MapScene(run)
+    game.push(scene)
+    for _ in range(50):
+        game.tick(.1)
+    charted = scene.minimap.to_screen(30.5*32, 30.5*32)
+    secret = scene.minimap.to_screen(26.5*32, 30.5*32)
+    centers = [(sum(x for x, _ in p["points"])/len(p["points"]), sum(y for _, y in p["points"])/len(p["points"]))
+               for p in game.backend.polygons if p["space"] == "screen"]
+    assert charted in centers
+    assert secret not in centers
+    assert "Distant Sluice" not in [item["text"] for item in game.backend.texts]

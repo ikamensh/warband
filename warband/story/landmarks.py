@@ -12,7 +12,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from saga2d import RenderLayer, Sprite, SpriteAnchor
+from saga2d import Component, RenderLayer, Sprite, SpriteAnchor
 from warband.art import campaign_landmarks as art
 from warband.art.textures import TILE
 from warband.audio import campaign as audio, sound
@@ -70,6 +70,27 @@ def occupied(run: Run, id: str, *, side: int = 0, contested: bool = True, soldie
             and (not contested or not any(unit.player != side for unit in present)))
 
 
+class _LandmarkMarkers(Component):
+    """A minimap child: its diamonds draw above the map image and share its public coordinate conversion."""
+
+    def __init__(self, view: LandmarkView) -> None:
+        super().__init__()
+        self.view = view
+
+    def on_draw(self) -> None:
+        if self._game is None:
+            return
+        scene = self.view.scene
+        for id, record in scene.run.vars.get("landmarks", {}).items():
+            if not self.view.known(id):
+                continue
+            x, y = scene.minimap.to_screen(*(value*TILE for value in record["point"]))
+            color = art.hue(record["kind"], record["state"])
+            for radius, tint in ((4.5, (13, 22, 29, 255)), (3, (*color, 255))):
+                self._game.backend.draw_polygon([(x, y-radius), (x+radius, y), (x, y+radius), (x-radius, y)],
+                                                tint, order=self._order)
+
+
 class LandmarkView:
     """The scene's landmark props and cues, restored quietly from the mission's saved variables."""
 
@@ -77,6 +98,7 @@ class LandmarkView:
         self.scene = scene
         self._sprites: dict[str, Sprite] = {}
         self._states: dict[str, str] = {}
+        scene.minimap.add(_LandmarkMarkers(self))
         self.update()
 
     def known(self, id: str) -> bool:
