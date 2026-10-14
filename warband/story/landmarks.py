@@ -100,7 +100,24 @@ class LandmarkView:
         self._sprites: dict[str, Sprite] = {}
         self._states: dict[str, str] = {}
         scene.minimap.add(_LandmarkMarkers(self))
+        scene.minimap.tooltip = self.minimap_hint
         self.update()
+
+    def minimap_hint(self) -> str:
+        """Name the nearest charted diamond, without inspecting uncharted landmarks or hidden enemies."""
+        scene = self.scene
+        mx, my = scene.game.mouse_position
+        nearest = None
+        distance = 8.0 ** 2
+        for id, record in scene.run.vars.get("landmarks", {}).items():
+            if not self.known(id):
+                continue
+            x, y = scene.minimap.to_screen(*(value*TILE for value in record["point"]))
+            gap = (mx - x) ** 2 + (my - y) ** 2
+            if gap <= distance:
+                nearest, distance = record, gap
+        name = f"{nearest['name']} · {nearest['state']}\n" if nearest is not None else "Diamonds mark charted objectives.\n"
+        return name + "Left-click to look; right-click to order."
 
     def known(self, id: str) -> bool:
         """Whether the player has a charted position or has discovered this landmark's ground."""

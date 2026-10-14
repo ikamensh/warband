@@ -25,7 +25,8 @@ class MapScene(Scene):
         self.camera = Camera(self.game.resolution)
         self.game.assets.image_from_pil("landmark-test-map", Image.new("RGBA", (32, 32), (28, 40, 44, 255)))
         self.minimap = Minimap("landmark-test-map", (self.world.width*32, self.world.height*32), self.camera,
-                               width=160, height=160, anchor=Anchor.BOTTOM_LEFT, margin=12)
+                               width=160, height=160, anchor=Anchor.BOTTOM_LEFT, margin=12,
+                               on_click=lambda x, y, button: self.camera.center_on(x, y) if button == "left" else None)
         self.ui.add(self.minimap)
         self.landmarks = LandmarkView(self)
 
@@ -39,6 +40,27 @@ class MapScene(Scene):
 def empty_run() -> Run:
     world = World(32, 32, [[Terrain.GRASS] * 32 for _ in range(32)], 2, scripted=True)
     return Run(CAMPAIGN.missions[0], world, flags={})
+
+
+def test_minimap_hover_names_charted_objectives_without_revealing_uncharted_ones(game):
+    """Hover identifies a diamond in the fog while its usual left-click still moves the camera."""
+    run = empty_run()
+    add_landmark(run, "bell", "The Tide Bell (repair it)", (12.5, 12.5))
+    add_landmark(run, "hidden", "The secret gate", (24.5, 24.5), revealed=False)
+    scene = MapScene(run)
+    game.push(scene)
+    game.tick(.1)
+    x, y = scene.minimap.to_screen(12.5*32, 12.5*32)
+    game.backend.inject_mouse_move(x, y)
+    game.tick(.1)
+    assert any("The Tide Bell (repair it)" in item["text"] for item in game.backend.texts)
+    game.backend.inject_click(x, y)
+    game.backend.inject_release(x, y)
+    game.tick(.1)
+    assert scene.camera.world_to_screen(12.5*32, 12.5*32) == (game.resolution[0]/2, game.resolution[1]/2)
+    game.backend.inject_mouse_move(*scene.minimap.to_screen(24.5*32, 24.5*32))
+    game.tick(.1)
+    assert not any("secret gate" in item["text"] for item in game.backend.texts)
 
 
 def test_landmark_state_and_occupation_survive_the_real_world_and_run_save() -> None:
