@@ -63,7 +63,8 @@ def occupied(run: Run, id: str, *, side: int = 0, contested: bool = True, soldie
     airborne units and units inside buildings have no feet on this ground. Neutral guards contest too.
     """
     record = landmark(run, id)
-    point, radius = record["point"], record["radius"]
+    point = (float(record["point"][0]), float(record["point"][1]))
+    radius = record["radius"]
     present = [unit for unit in run.world.units.values()
                if unit.hp > 0 and not unit.hidden and not unit.flying and dist(unit.pos, point) <= radius]
     return (any(unit.player == side and (not soldiers_only or not unit.is_worker) for unit in present)

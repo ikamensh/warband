@@ -29,14 +29,14 @@ from warband.sim.rules import (
 )
 
 SPEAKERS = {
-    "Issa": Speaker("Captain Issa Renn", Race.HUMAN, U.KNIGHT),
+    "Issa": Speaker("Captain Issa Renn", Race.HUMAN, U.KNIGHT, portrait="campaign/issa.png"),
     "Hasp": Speaker("Mother Hasp", Race.HUMAN, U.PEASANT),
-    "Brakk": Speaker("Brakk the Unbitten", Race.ORC, U.CLERIC),
+    "Brakk": Speaker("Brakk of the Broken Tooth", Race.ORC, U.CLERIC, portrait="campaign/brakk.png"),
     "Ugga": Speaker("Ugga Salt-Tongue", Race.ORC, U.PEASANT),
-    "Wrenna": Speaker("Wrenna Root-Reader", Race.ELF, U.CLERIC),
+    "Wrenna": Speaker("Wrenna Root-Reader", Race.ELF, U.CLERIC, portrait="campaign/wrenna.png"),
     "Pell": Speaker("Sergeant Pell", Race.HUMAN, U.FOOTMAN, player=1),
-    "Dagna": Speaker("Dagna Leadhand", Race.DWARF, U.CLERIC),
-    "Sella": Speaker("Sella Voss, the Unclencher", Race.HUMAN, U.CLERIC, player=1),
+    "Dagna": Speaker("Dagna Leadhand", Race.DWARF, U.CLERIC, portrait="campaign/dagna.png"),
+    "Sella": Speaker("Sella Voss, the Unclencher", Race.HUMAN, U.CLERIC, player=1, portrait="campaign/sella.png"),
 }
 
 ACT_1 = "Act I · The Breath Rises"
