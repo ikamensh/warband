@@ -33,7 +33,7 @@ def main(out: Path) -> None:
     backend = game.backend
     window = backend.window
     fonts.load(game)
-    scene = new_game(seed=3)
+    scene = new_game(seed=3, settings={"controls": "classic"})  # this walkthrough uses name-letter shortcuts before checking Grid
     game.push(scene)
 
     def frames(n: int) -> None:
@@ -95,7 +95,13 @@ def main(out: Path) -> None:
     press(key.B)
     press(key.F)
     assert scene.placing is BuildingType.FARM
-    site = (hall.x + 5, hall.y + 4)
+    # The map's rifts and resource patches can move: pick real open ground south-east of the hall,
+    # clear of the workers' starting cluster, rather than silently relying on yesterday's seed layout.
+    wanted = (hall.x + 4, hall.y + 5)
+    site = next((sx, sy) for ring in range(9) for sy in range(wanted[1] - ring, wanted[1] + ring + 1)
+                for sx in range(wanted[0] - ring, wanted[0] + ring + 1)
+                if max(abs(sx - wanted[0]), abs(sy - wanted[1])) == ring and sy > wanted[1]
+                and world.can_place(BuildingType.FARM, (sx, sy), scene.human, builder=peasants[1].id) is None)
     px, py = physical((site[0] + 1, site[1] + 1))
     window.dispatch_event("on_mouse_motion", px, py, 0, 0)
     frames(2)
