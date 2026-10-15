@@ -37,13 +37,10 @@ def test_shipped_smoke_accepts_authority_movement_and_seat_rejoin():
 
 
 NATIVE_JOURNEY = """\
-import faulthandler
 import importlib.util
 import json
 import sys
 from pathlib import Path
-print("[DEBUG-native-timeout] traceback timer armed", flush=True)
-faulthandler.dump_traceback_later(90, repeat=True)
 root, check, frames, report, endpoint = sys.argv[1:6]
 sys.path.insert(0, root)
 spec = importlib.util.spec_from_file_location("package_check", check)
@@ -52,7 +49,6 @@ spec.loader.exec_module(checker)
 info = {"source_commit": "source-check", "version": "0.0-source",
         "executable": "source-native-check", "executable_sha256": "source"}
 result = checker.native_journey(Path(frames), endpoint, info)
-faulthandler.cancel_dump_traceback_later()
 Path(report).write_text(json.dumps(result, indent=2, sort_keys=True) + "\\n", encoding="utf-8")
 """
 
@@ -68,19 +64,10 @@ def test_native_clipboard_smoke_creates_a_casual_room(tmp_path):
     (other native CI checks the frozen app itself)."""
     with local_server(PACKAGE.online) as endpoint:
         frames, report = tmp_path / "native.png", tmp_path / "native.json"
-        try:
-            process = subprocess.run(
-                [sys.executable, "-c", NATIVE_JOURNEY,
-                 str(PACKAGE.root), str(PACKAGE.check), str(frames), str(report), endpoint],
-                cwd=PACKAGE.root, capture_output=True, text=True, timeout=280)
-        except subprocess.TimeoutExpired as error:
-            # Pytest abbreviates TimeoutExpired's captured bytes in its locals.
-            # Preserve the actual blocked stack before propagating the timeout.
-            if error.stdout is not None:
-                print(error.stdout.decode("utf-8"), flush=True)
-            if error.stderr is not None:
-                print(error.stderr.decode("utf-8"), file=sys.stderr, flush=True)
-            raise
+        process = subprocess.run(
+            [sys.executable, "-c", NATIVE_JOURNEY,
+             str(PACKAGE.root), str(PACKAGE.check), str(frames), str(report), endpoint],
+            cwd=PACKAGE.root, capture_output=True, text=True, timeout=280)
     assert process.returncode == 0, (process.stdout + process.stderr)[-3000:]
     result = json.loads(report.read_text(encoding="utf-8"))
     assert result["passed"] is True
