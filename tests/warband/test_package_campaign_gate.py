@@ -50,5 +50,9 @@ def test_package_gate_reaches_every_mission_and_loads_its_automatic_slot(tmp_pat
                 assert isinstance(scene, MissionScene) and scene.mission is mission
                 assert not scene.run.won and scene.run.lost is None
         assert any(name == "-campaign-cover" for name, _ in captures)
+        hasp = next(scene for name, scene in captures if name == "-campaign-portrait-hasp")
+        pell = next(scene for name, scene in captures if name == "-campaign-portrait-pell")
+        assert hasp.chart is not None, "briefing faces must be delivered as portal projections"
+        assert pell.chart is None and pell.backdrop == UNDERTOW.mission("undertow_grove").dialogue_art
     finally:
         game.close()

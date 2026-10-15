@@ -179,6 +179,7 @@ def campaign_journey(game, frames, press, capture) -> dict:
     from warband.story.catalog import UNDERTOW
     from warband.story.dialog import DialogScene
     from warband.story.mission_scene import MissionScene, campaign_save_slot
+    from warband.story.undertow_dialogue import GROVE_PARLEY
     from warband.ui.scene import SaveBrowserScene
     from warband.ui.title import TitleScene
 
@@ -186,6 +187,25 @@ def campaign_journey(game, frames, press, capture) -> dict:
     portraits = set()
     missions = []
     slot = campaign_save_slot(UNDERTOW)
+
+    def read_dialogue(dialog):
+        frames()
+        for _ in range(len(dialog) + 1):
+            if not isinstance(game.scene, DialogScene):
+                return
+            item = game.scene.current
+            assert item is not None and not isinstance(item, Choice), "A delivery conversation unexpectedly needs an answer"
+            speaker = UNDERTOW.speakers.get(item.speaker)
+            if speaker is not None and speaker.portrait is not None:
+                presentation = "projection" if game.scene.chart is not None else "portrait"
+                key = f"story.{presentation}.{speaker.portrait}"
+                assert game.assets.has_image(key), f"Missing authored portrait: {item.speaker}"
+                assert min(game.backend.get_image_size(game.assets.image(key))) > 1
+                if item.speaker not in portraits:
+                    capture(f"-campaign-portrait-{item.speaker.lower()}")
+                    portraits.add(item.speaker)
+            press("SPACE")
+        raise AssertionError("Delivery conversation did not close")
 
     def show_objectives(scene):
         # Focus changes card geometry; wait afterwards for banners/notices to clear.
@@ -209,22 +229,15 @@ def campaign_journey(game, frames, press, capture) -> dict:
             capture("-campaign-cover")
         press("ENTER")
         assert isinstance(game.scene, DialogScene), f"No briefing for {mission.id}"
-        for _ in range(len(mission.briefing) + 1):
-            if not isinstance(game.scene, DialogScene):
-                break
-            item = game.scene.current
-            assert item is not None and not isinstance(item, Choice), "A mission briefing unexpectedly needs an answer"
-            speaker = UNDERTOW.speakers.get(item.speaker)
-            if speaker is not None and speaker.portrait is not None:
-                key = f"story.portrait.{speaker.portrait}"
-                assert game.assets.has_image(key), f"Missing authored portrait: {item.speaker}"
-                assert min(game.backend.get_image_size(game.assets.image(key))) > 1
-                if item.speaker not in portraits:
-                    capture(f"-campaign-portrait-{item.speaker.lower()}")
-                    portraits.add(item.speaker)
-            press("SPACE")
+        read_dialogue(mission.briefing)
         assert isinstance(game.scene, MissionScene) and game.scene.mission is mission
         scene = game.scene
+        if mission.id == "undertow_grove":
+            # Pell's field-only face is an authored presentation fixture,
+            # without claiming to play the parley or changing mission flags.
+            game.push(scene.conversation(GROVE_PARLEY))
+            read_dialogue(GROVE_PARLEY)
+            assert game.scene is scene
         assert type(scene.world) is World, f"{mission.id} did not use the active simulation"
         press("F3")
         show_objectives(scene)
