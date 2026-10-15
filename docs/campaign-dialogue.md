@@ -67,21 +67,28 @@ right shows progress through the currently eligible lines.
 ## Where to author and verify
 
 `Mission.dialogue_art` selects a location under `warband/assets/`.
-`story/briefing.py` holds `PLANS`, one beat per physical briefing line, and
-resolves its named places from that mission's authored landmarks, points and
-initial settlements. Missing places or a mismatched line count raise a clear
-error. When changing briefing text or geography, update its beats in the same
-change. Keep route waypoints on the path the company is meant to follow.
+`Line.chart` carries its optional `ChartBeat` beside the words in
+`undertow_dialogue.py` or `missions.py`. Inserting or reordering a line moves its
+annotation with it; a line without an annotation simply holds the chart quiet.
+`story/briefing.py` resolves named places from that mission's authored landmarks,
+points and initial settlements. A missing named place raises a clear error.
+Routes are schematic directional links through the named waypoints, rather
+than movement orders or promises of a walkable path. All route waypoints are
+marked when the route is introduced.
 
 `MissionScene.conversation` supplies the chapter, art, journal and optional
 chart to `DialogScene`; every runtime entry uses that route. `dialog.py` owns
 reading and choosing. `dialog_stage.py` owns scenery and projection animation.
-The chart is a snapshot constructed once; cache keys include the terrain
-pixels so a replay with different geography cannot reuse a stale painting.
+The chart snapshots the terrain once; its texture key includes the terrain,
+dimensions and seed. Paper is painted only when that texture is absent from
+the game's asset cache, so reopening the same chart reuses the image. A replay
+with different geography cannot reuse a stale painting. Map labels stay
+inside the paper and avoid the compass and each other.
 
 `tests/warband/test_briefing_views.py` checks all eleven charts against their
-worlds without modifying the simulation, every eligible line and map label at
-the small window, and a real mission's frozen briefing/command handoff.
+worlds without modifying the simulation, editing and reordering words, skipped conditional annotations, persistence
+without art metadata, every eligible line and map label at the small window,
+and a real mission's frozen briefing/command handoff.
 `test_dialog_choices.py` covers opaque presentation and numbered answers;
 existing campaign and journal integration tests cover triggers, choices,
 saves, results and epilogues. The visual lint walks each level's briefing and

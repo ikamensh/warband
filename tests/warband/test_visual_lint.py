@@ -262,6 +262,7 @@ SMALLEST = min(screens.RESOLUTIONS)
 FAST_SCREENS = {"title", "library", "multiplayer_setup", "multiplayer_identity_create_refused", "multiplayer_identity_join_refused", "multiplayer_identity_rejoin_refused", "select_army", "town_at_work", "battle_wood", "menu_build_hover", "help", "mission_raid", "spell_aim", "modes_build", "modes_withdraw",
                 "neutral_ancient", "codex_wilds", "codex_wilds_open", "new_game_observe", "observer_match", "observer_lobby",
                 "observer_network_match", "observer_network_menu", "observer_network_result"}
+FAST_SCREENS.add("mission_undertow_undertow_mill_briefing")
 FAST_SCREENS.update(name for name in screens.EXTRA_CAMPAIGN_SCREENS if name.endswith("_fresh"))
 
 

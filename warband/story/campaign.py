@@ -45,6 +45,15 @@ class Speaker:
 
 
 @dataclass(frozen=True)
+class ChartBeat:
+    """The field chart annotation spoken with a line; routes are schematic links between named places."""
+
+    caption: str
+    places: tuple[str, ...]
+    route: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
 class Line:
     """One thing said.  ``speaker`` is a :class:`Speaker` name, or empty for narration.  ``when`` and ``unless`` name
     variables (a mission's, or a flag from an earlier mission) that decide whether the line is spoken at all."""
@@ -53,6 +62,7 @@ class Line:
     text: str
     when: str | None = None
     unless: str | None = None
+    chart: ChartBeat | None = None  # presentation only; travels with its words when a briefing is edited
 
     def spoken(self, vars: dict[str, Any]) -> bool:
         return (self.when is None or bool(vars.get(self.when))) and (self.unless is None or not vars.get(self.unless))
@@ -80,7 +90,12 @@ Dialog = tuple[Item, ...]
 
 
 def _dialog_data(dialog: Dialog) -> list[dict[str, Any]]:
-    return [{"kind": "line" if isinstance(item, Line) else "choice", **asdict(item)} for item in dialog]
+    data = []
+    for item in dialog:
+        fields = asdict(item)
+        fields.pop("chart", None)  # authored presentation never enters a saved conversation
+        data.append({"kind": "line" if isinstance(item, Line) else "choice", **fields})
+    return data
 
 
 def _read_dialog(data: list[dict[str, Any]]) -> Dialog:

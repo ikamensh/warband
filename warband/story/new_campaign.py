@@ -20,7 +20,7 @@ import random
 from typing import Any
 
 from warband.story.campaign import (
-    Campaign, Line, Mission, Objective, Run, Side, Speaker, Trigger,
+    ChartBeat, Campaign, Line, Mission, Objective, Run, Side, Speaker, Trigger,
     after, all_of, any_of, at, objective_done, var,
 )
 from warband.story import undertow_dialogue as dialogue
@@ -431,7 +431,9 @@ CARAVAN = Mission(
     size="Medium", theme=MapTheme.WASTELAND, layout=Layout.CROSSINGS, seed=2202,
     briefing=dialogue.CARAVAN_BRIEFING + (
         Line("Ugga", "A finished Great Hall trains replacement drovers. Until then, stragglers can join us once. "
-                     "Lose the last drover after that, with no hall to train another, and the caravan is lost."),
+                     "Lose the last drover after that, with no hall to train another, and the caravan is lost.",
+             chart=ChartBeat("The new Great Hall keeps the caravan alive",
+                             ("mesa",))),
     ),
     debrief=dialogue.CARAVAN_DEBRIEF,
     setup=_setup_caravan,
@@ -789,7 +791,9 @@ WEIGHT = Mission(
     size="Medium", theme=MapTheme.WINTER, layout=Layout.BASTION, seed=2404,
     briefing=dialogue.WEIGHT_BRIEFING + (
         Line("", "Raze the southern hall, or raze the workshop and beat three bands. Clear the remaining attackers. "
-                 "Settle the seam by building a Rune Vault on its rift, hauling 300 gold, or choosing a guard and posting soldiers at the face after the siege."),
+                 "Settle the seam by building a Rune Vault on its rift, hauling 300 gold, or choosing a guard and posting soldiers at the face after the siege.",
+             chart=ChartBeat("Clear the siege, then settle the seam",
+                             ("enemy", "seam", "seam_rift"))),
     ),
     debrief=dialogue.WEIGHT_DEBRIEF,
     setup=_setup_weight,

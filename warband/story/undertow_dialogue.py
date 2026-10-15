@@ -6,16 +6,22 @@ history. Outcome lines read actions the player actually performed; no branch
 assumes the other branch's sacrifice or forgiveness.
 """
 
-from warband.story.campaign import Choice, Dialog, Line, Option
+from warband.story.campaign import ChartBeat, Choice, Dialog, Line, Option
 
 
 MILL_BRIEFING: Dialog = (
     Line("Hasp", "The wolves left the sheep alive. Now they're coming for the mill. "
-                 "My fieldhands are still out there, Captain."),
+                 "My fieldhands are still out there, Captain.",
+         chart=ChartBeat("The fieldhands are still outside",
+                         ("home", "mill_fields"))),
     Line("Issa", "I'm here, Hasp. Company, cover the south field. "
-                 "That vault's been humming since dawn. Get the hands indoors before we touch it."),
+                 "That vault's been humming since dawn. Get the hands indoors before we touch it.",
+         chart=ChartBeat("Hold the south field; protect the vault",
+                         ("mill_fields", "mill_vault"), ("home", "mill_fields"))),
     Line("Issa", "Your company is ready. Right-click a wolf to attack, or the ground to move. "
-                 "Alt+1, then click a wounded ally, casts Mend. We keep the village safe first."),
+                 "Alt+1, then click a wounded ally, casts Mend. We keep the village safe first.",
+         chart=ChartBeat("Take command of the company",
+                         ("home", "mill_fields", "mill_vault"))),
 )
 
 
@@ -32,13 +38,23 @@ MILL_DEBRIEF: Dialog = (
 
 
 CARAVAN_BRIEFING: Dialog = (
-    Line("", "Issa scouts the road down-valley. Brakk brings the Saltmarch camps uphill, to the Broken Tooth mesa."),
-    Line("Brakk", "Strip the Old Camp to its pegs. Hall-timbers, farm-frames, everything we can carry. We raise it again on the Tooth."),
-    Line("Ugga", "Six drovers. Five to put a roof up, one to tell the other five they're doing it wrong. Keep five of us on that mesa, Brakk."),
+    Line("", "Issa scouts the road down-valley. Brakk brings the Saltmarch camps uphill, to the Broken Tooth mesa.",
+         chart=ChartBeat("Uphill, to the Broken Tooth",
+                         ("old_camp", "mesa"), ("old_camp", "middle_ford", "mesa"))),
+    Line("Brakk", "Strip the Old Camp to its pegs. Hall-timbers, farm-frames, everything we can carry. We raise it again on the Tooth.",
+         chart=ChartBeat("Salvage the Old Camp; rebuild on the mesa",
+                         ("old_camp", "mesa"), ("old_camp", "middle_ford", "mesa"))),
+    Line("Ugga", "Six drovers. Five to put a roof up, one to tell the other five they're doing it wrong. Keep five of us on that mesa, Brakk.",
+         chart=ChartBeat("Bring at least five drovers home",
+                         ("old_camp", "mesa"))),
     Line("Ugga", "The Open Hand's camp guards the north ford. Blast their dam-pylon and the water will clear them out. "
-                 "I'd take that over the spiders at the south ford."),
+                 "I'd take that over the spiders at the south ford.",
+         chart=ChartBeat("The guarded north ford and its dam",
+                         ("north_ford", "dam_pylon"))),
     Line("Brakk", "That's Hasp's millpond, Ugga. Her wheels stop if we drain it, and their dam crew is below the spill. "
-                  "We can open the middle causeway instead, or fight through the south ford."),
+                  "We can open the middle causeway instead, or fight through the south ford.",
+         chart=ChartBeat("Choose a crossing; count the cost to Millfield",
+                         ("middle_ford", "south_ford", "dam_pylon"), ("old_camp", "middle_ford", "mesa"))),
 )
 
 
@@ -63,11 +79,19 @@ CARAVAN_DEBRIEF: Dialog = (
 
 
 GROVE_BRIEFING: Dialog = (
-    Line("", "New shoots crowd the Deep Grove's road. Violet sap beads on a row of fresh stumps."),
-    Line("Wrenna", "We cut those last spring. The roots usually take a week to cover the road again. They did it overnight."),
-    Line("Issa", "There's a Lockwatch crew ahead. Stop the saws until we've spoken to them."),
+    Line("", "New shoots crowd the Deep Grove's road. Violet sap beads on a row of fresh stumps.",
+         chart=ChartBeat("The living filter is at its limit",
+                         ("moon_hall", "firebreak"))),
+    Line("Wrenna", "We cut those last spring. The roots usually take a week to cover the road again. They did it overnight.",
+         chart=ChartBeat("The grove grows back overnight",
+                         ("moon_hall", "firebreak"))),
+    Line("Issa", "There's a Lockwatch crew ahead. Stop the saws until we've spoken to them.",
+         chart=ChartBeat("Hear the woodcutters before drawing steel",
+                         ("cutter_camp",), ("moon_hall", "cutter_camp"))),
     Line("Wrenna", "The camp is south. Walk in without an attack order if you want an answer. "
-                   "And leave my escort behind if I visit the Ancient in the eastern ring. It remembers what soldiers do."),
+                   "And leave my escort behind if I visit the Ancient in the eastern ring. It remembers what soldiers do.",
+         chart=ChartBeat("Courtesy before steel at the stone ring",
+                         ("guardian_ring",), ("moon_hall", "guardian_ring"))),
 )
 
 
@@ -111,11 +135,19 @@ GROVE_DEBRIEF: Dialog = (
 
 
 WEIGHT_BRIEFING: Dialog = (
-    Line("", "Tarnlock's three Weights shine above a basin full of workshops. The Open Hand's siege train is moving up from the south."),
-    Line("Dagna", "Keep two Weights standing. Lose another and the basin spills through the workshops. My repair crews are already out there."),
-    Line("Issa", "Cover the crews. Break the siege train before it reaches them."),
+    Line("", "Tarnlock's three Weights shine above a basin full of workshops. The Open Hand's siege train is moving up from the south.",
+         chart=ChartBeat("A siege train below the three Weights",
+                         ("enemy", "weight_1", "weight_2", "weight_3"))),
+    Line("Dagna", "Keep two Weights standing. Lose another and the basin spills through the workshops. My repair crews are already out there.",
+         chart=ChartBeat("Keep at least two Weights standing",
+                         ("weight_1", "weight_2", "weight_3"))),
+    Line("Issa", "Cover the crews. Break the siege train before it reaches them.",
+         chart=ChartBeat("Break the siege; cover the repair crews",
+                         ("home", "enemy"), ("home", "weight_1", "enemy"))),
     Line("Dagna", "After that, come north-east to the seam. There's a drawing I should have shown Sella thirty years ago. "
-                  "I won't ask you to fight for Tarnlock without seeing it."),
+                  "I won't ask you to fight for Tarnlock without seeing it.",
+         chart=ChartBeat("The endless seam has its own account",
+                         ("seam",))),
 )
 
 
@@ -155,21 +187,39 @@ WEIGHT_DEBRIEF: Dialog = (
 
 MAW_BRIEFING: Dialog = (
     Line("", "The river falls into the Maw without pooling. Across the broken ring, Sella waits. "
-             "The marked refuge tower in her southern camp holds wounded crews, including Tern's apprentices."),
+             "The marked refuge tower in her southern camp holds wounded crews, including Tern's apprentices.",
+         chart=ChartBeat("The Keepers arrive at the broken ring",
+                         ("keepers_camp", "keystone", "enemy"), ("keepers_camp", "keystone"))),
     Line("Sella", "Nine days. We open the locks in stages, move everyone uphill, and finish before the next bloom. "
-                  "You have Dagna's bypass now. We can do this."),
-    Line("Issa", "Tern was promised an hour at Tarnlock. You wrote nine minutes on the gauge-sheet. Which did her apprentices get told?"),
+                  "You have Dagna's bypass now. We can do this.",
+         chart=ChartBeat("Sella's refuge holds the wounded crews",
+                         ("enemy",))),
+    Line("Issa", "Tern was promised an hour at Tarnlock. You wrote nine minutes on the gauge-sheet. Which did her apprentices get told?",
+         chart=ChartBeat("The survey's missing nine minutes",
+                         ("enemy",))),
     Line("Sella", "An hour. If I'd told them nine minutes, they'd have refused to work. "
-                  "I thought getting it finished would make that all right."),
-    Line("Brakk", "They're still in your tower. Ask them now."),
+                  "I thought getting it finished would make that all right.",
+         chart=ChartBeat("The people behind the promise",
+                         ("enemy",))),
+    Line("Brakk", "They're still in your tower. Ask them now.",
+         chart=ChartBeat("Ask the crews waiting in the refuge",
+                         ("refuge_tower",))),
     Line("Wrenna", "The grove can take a share, if we give the breath roots and vaults to pass through. "
-                   "It will need tenders long after we leave.", unless="undertow_grove_cut"),
+                   "It will need tenders long after we leave.", unless="undertow_grove_cut",
+         chart=ChartBeat("Three vaults to drink the Maw's aether",
+                         ("maw_rift_1", "maw_rift_2", "maw_rift_3"))),
     Line("Wrenna", "With the grove cut, only the Guardian or its heart-stone can carry our share. "
-                   "If we brought neither, we cannot ground the Maw.", when="undertow_grove_cut"),
+                   "If we brought neither, we cannot ground the Maw.", when="undertow_grove_cut",
+         chart=ChartBeat("GROUND needs the Guardian or its heart",
+                         ("maw_rift_1", "maw_rift_2", "maw_rift_3"))),
     Line("", "Your first work commits the ending: RESEAL by repairing the Keystone with peasants; "
-             "OPEN by destroying a seal-pylon; GROUND by completing a vault on a Maw rift. The other courses then close. Mend heals people, not buildings."),
+             "OPEN by destroying a seal-pylon; GROUND by completing a vault on a Maw rift. The other courses then close. Mend heals people, not buildings.",
+         chart=ChartBeat("First work commits the ending",
+                         ("keystone", "seal_pylon_1", "maw_rift_1"))),
     Line("", "RESEAL needs full repairs and victory over the final assault. OPEN needs Issa at the marked Relief Sluice, "
-             "all three pylons destroyed, and the bloom defeated. GROUND needs three Maw vaults, 450 stored aether, and victory over the last surge."),
+             "all three pylons destroyed, and the bloom defeated. GROUND needs three Maw vaults, 450 stored aether, and victory over the last surge.",
+         chart=ChartBeat("Set the Relief Sluice before OPEN",
+                         ("relief_sluice", "keystone"), ("keepers_camp", "relief_sluice"))),
 )
 
 

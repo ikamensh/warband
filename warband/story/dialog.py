@@ -127,8 +127,8 @@ class DialogScene(Scene):
         position = spoken.index(self.index) + 1
         self.ui.add(Label(f"{position:02}  /  {len(spoken):02}", font_size=15, text_color=GOLD,
                           anchor=Anchor.TOP_RIGHT, margin=(40, 28)))
-        if self.chart:
-            self.ui.add(Label(self.chart.beats[self.index].caption, font_size=14, font=fonts.SEMIBOLD,
+        if self.chart and (beat := self.chart.beats[self.index]) is not None:
+            self.ui.add(Label(beat.caption, font_size=14, font=fonts.SEMIBOLD,
                               text_color=TEXT, width=round(self.game.width * .53), wrap=True,
                               anchor=Anchor.TOP_RIGHT, margin=(40, 108)))
         text_width = width - 2 * DIALOG_PANEL.padding - PORTRAIT - 32
@@ -161,9 +161,10 @@ class DialogScene(Scene):
         self.ui.add(self.panel)
 
     def draw(self) -> None:
-        self.stage.draw(self.index, self.panel.bounds[1])
-        x, y, w, _ = self.panel.bounds
-        self.draw_line(x + 24, y, x + w - 24, y, (222, 190, 120, 200), 2)
+        # A scene pushed by this frame's input draws before the UI tree's first layout.
+        # Measure its content rather than reading last frame's (or zero) panel bounds.
+        _, height = self.panel.get_preferred_size()
+        self.stage.draw(self.index, self.game.height - BOTTOM - height)
 
     def handle_input(self, event: InputEvent) -> bool:
         if event.type == "click" and event.button == "left" and isinstance(self.current, Line):
