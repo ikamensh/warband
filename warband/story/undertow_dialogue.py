@@ -118,8 +118,8 @@ GROVE_ROUT_AFTERMATH: Dialog = (
 GROVE_PLAN: Dialog = (
     Line("Wrenna", "Finish the marked firebreak and we'll face a smaller surge. Keep the grove whole and we must weather both surges here. "
                    "I'll need the guard at Moon Hall."),
-    Line("Wrenna", "Whole, these roots can help us ground the Maw. Cut them, and we'll need the Ancient alive or its heart-stone instead. "
-                   "Without either, we'll have to reseal the Maw or open it."),
+    Line("Wrenna", "Whole, these roots can help ground the Maw. Cut them, and we'll need the Ancient as a living ally or its heart-stone. "
+                   "Without either, we can only reseal or open it."),
     Choice("grove_intent", "Wrenna", "Which part of the wood do we ask to bear it?",
            (Option("Cut the firebreak; ease this bloom", "cut"),
             Option("Keep the roots; face both surges", "whole"))),
