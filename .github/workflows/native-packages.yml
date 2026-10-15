@@ -6,6 +6,11 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      probe_only:
+        description: Temporary isolated Mac native diagnosis
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -15,7 +20,51 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  native_probe:
+    if: inputs.probe_only
+    runs-on: macos-15
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: warband
+    env:
+      UV_PYTHON_PREFERENCE: only-managed
+      PYTHONUTF8: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: warband
+      - id: pins
+        run: |
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as output:
+              for key, value in json.loads(Path('.github/release-pins.json').read_text()).items():
+                  print(f'{key}={value}', file=output)
+          PY
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: ikamensh/sagaforge
+          ref: ${{ steps.pins.outputs.sagaforge_commit }}
+          path: sagaforge
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9
+        with:
+          version: ${{ steps.pins.outputs.uv }}
+          python-version: ${{ steps.pins.outputs.python }}
+          enable-cache: false
+      - run: uv sync --locked --extra dev --python '${{ steps.pins.outputs.python }}'
+      - run: uv run --no-sync python -c "from warband.league import fastsim; fastsim.build()"
+      - run: caffeinate -u -d -i uv run --no-sync pytest -q --slow tests/warband/test_packaging.py::test_native_clipboard_smoke_creates_a_casual_room --basetemp "$RUNNER_TEMP/native-probe"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: native-probe-${{ github.run_id }}
+          path: ${{ runner.temp }}/native-probe
+          retention-days: 3
+
   inputs:
+    if: ${{ !inputs.probe_only }}
     runs-on: ubuntu-latest
     outputs:
       artifact_id: ${{ steps.upload.outputs.artifact-id }}
