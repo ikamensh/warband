@@ -69,6 +69,52 @@ are scenery; titles, portraits, portals, maps and dialogue controls are
 composited by the game. The field charts are drawn from actual mission
 terrain rather than generated illustrations, so their geography stays true.
 
+Nine additional face portraits under `campaign/portraits/` complete the two
+campaigns' speaking casts. The built-in imagegen outputs are encoded as WebP
+at quality 90, capped at 1024×1024. They share the square HUD portrait cache
+and the briefing's oval projection masks; no unit icon needs to be enlarged
+into a speaking face.
+
+## Additional character prompt set (2026-10-15)
+
+### portraits/ugga.webp
+
+> Use case: illustration-story. Asset type: square production dialogue portrait for Warband, a serious grounded medieval fantasy strategy game. Head and shoulders, facing slightly three-quarter toward the viewer, distinctive expressive face, shoulders within frame. Detailed painterly fantasy realism with natural proportions and rich materials, subtle warm brass rim light and a faint violet magical reflection, dark teal atmospheric background, clear readable face at 116 pixels. Consistent cohesive campaign cast. No text, logos, interface, watermark or modern objects. Ugga, a female orc caravan forewoman in her forties. Weathered sage-green skin, small blunt tusks, short black braids tied with salt-blue cloth, broad strong face and a wry tired smile. Practical blue wool and hide drover's coat, leather carrying straps, wooden camp peg tucked into a collar. A working person used to moving a whole camp, humorous without caricature.
+
+### portraits/pell.webp
+
+> Use case: illustration-story. Asset type: square production dialogue portrait for Warband, a serious grounded medieval fantasy strategy game. Head and shoulders, facing slightly three-quarter toward the viewer, distinctive expressive face, shoulders within frame. Detailed painterly fantasy realism with natural proportions and rich materials, subtle warm brass rim light and a faint violet magical reflection, dark teal atmospheric background, clear readable face at 116 pixels. Consistent cohesive campaign cast. No text, logos, interface, watermark or modern objects. Sergeant Pell, a human Lockwatch militia man in his forties. A broad weathered face, close-cropped sandy hair, short greying beard, steady honest eyes. Worn blue tabard over mail and dark leather, a folded sealed warrant at the collar, wood dust on one shoulder. A practical field sergeant waiting to hear sensible orders.
+
+### portraits/aldric.webp
+
+> Use case: illustration-story. Asset type: square production dialogue portrait for Warband, a serious grounded medieval fantasy strategy game. Head and shoulders, facing slightly three-quarter toward the viewer, distinctive expressive face, shoulders within frame. Detailed painterly fantasy realism with natural proportions and rich materials, subtle warm brass rim light and a faint violet magical reflection, dark teal atmospheric background, clear readable face at 116 pixels. Consistent cohesive campaign cast. No text, logos, interface, watermark or modern objects. Captain Aldric Vane, a human knight and border commander in his forties. Short dark-brown hair greying at the temples, close beard, strong tired lined face and stern steady grey eyes. Blue Marcher tabard over battered steel mail and plate, practical unadorned armour. Proud, stubborn, carrying responsibility; no crown or royal regalia.
+
+### portraits/maren.webp
+
+> Use case: illustration-story. Asset type: square production dialogue portrait for Warband, a serious grounded medieval fantasy strategy game. Head and shoulders, facing slightly three-quarter toward the viewer, distinctive expressive face, shoulders within frame. Detailed painterly fantasy realism with natural proportions and rich materials, subtle warm brass rim light and a faint violet magical reflection, dark teal atmospheric background, clear readable face at 116 pixels. Consistent cohesive campaign cast. No text, logos, interface, watermark or modern objects. Sister Maren, a human travelling cleric in her late thirties. Brown skin, warm serious dark eyes, dark hair mostly under a modest blue-grey cloth hood. Plain cream and blue healer's robes over travel-worn leather, small brass sun clasp. Compassionate but firm, a woman who has carried wounded people off a road.
+
+### portraits/tomas.webp
+
+> Use case: illustration-story. Asset type: square production dialogue portrait for Warband, a serious grounded medieval fantasy strategy game. Head and shoulders, facing slightly three-quarter toward the viewer, distinctive expressive face, shoulders within frame. Detailed painterly fantasy realism with natural proportions and rich materials, subtle warm brass rim light and a faint violet magical reflection, dark teal atmospheric background, clear readable face at 116 pixels. Consistent cohesive campaign cast. No text, logos, interface, watermark or modern objects. Reeve Tomas, a human village reeve and farmer in his late fifties. Weathered fair skin, receding grey-brown hair, close grey stubble, shrewd kind eyes and a long practical face. A patched dark-blue wool coat over coarse linen, a little brass grain tally at his collar. An ordinary capable border villager, no armour.
+
+### portraits/gorrash.webp
+
+> Square head-and-shoulders character portrait for a fantasy game: Gorrash, an older male orc with weathered olive-green skin, modest tusks, short grey braids, thoughtful amber eyes and a calm dignified expression. He wears a plain dark red wool mantle with a small brass clasp. Detailed painterly realism, natural facial proportions, warm rim lighting, a simple dark teal background, cohesive with a serious medieval fantasy cast. No weapons, action, text, logos, or interface.
+
+### portraits/brunna.webp
+
+> Use case: illustration-story. Asset type: square production dialogue portrait for Warband, a serious grounded medieval fantasy strategy game. Head and shoulders, facing slightly three-quarter toward the viewer, distinctive expressive face, shoulders within frame. Detailed painterly fantasy realism with natural proportions and rich materials, subtle warm brass rim light and a faint violet magical reflection, dark teal atmospheric background, clear readable face at 116 pixels. Consistent cohesive campaign cast. No text, logos, interface, watermark or modern objects. Thane Brunna Stonebrow, an older dwarf woman and fortress commander. Broad strong face with deep laugh lines, copper-grey thick braids, deep-set hazel eyes and a blunt stubborn expression. Heavy dark-blue wool and brass-bound steel armour, a stone clasp and simple engineering details. Proud guardian of a mountain hold, no crown.
+
+### portraits/ysolde.webp
+
+> Use case: illustration-story. Asset type: square production dialogue portrait for Warband, a serious grounded medieval fantasy strategy game. Head and shoulders, facing slightly three-quarter toward the viewer, distinctive expressive face, shoulders within frame. Detailed painterly fantasy realism with natural proportions and rich materials, subtle warm brass rim light and a faint violet magical reflection, dark teal atmospheric background, clear readable face at 116 pixels. Consistent cohesive campaign cast. No text, logos, interface, watermark or modern objects. Lady Ysolde of the Thornwood, an adult elven ruler and archer with an ageless sharply defined face. Pale olive skin, long dark copper hair woven with living thorn twigs, green-grey eyes, elegantly pointed ears. Deep forest-green layered leather and moss cloth with a carved wood clasp, proud composed and uncompromising. Organic woodland regalia, no metal crown.
+
+### portraits/warden.webp
+
+> Use case: illustration-story. Asset type: square production dialogue portrait for Warband, a serious grounded medieval fantasy strategy game. Head and shoulders, facing slightly three-quarter toward the viewer, distinctive expressive face, shoulders within frame. Detailed painterly fantasy realism with natural proportions and rich materials, subtle warm brass rim light and a faint violet magical reflection, dark teal atmospheric background, clear readable face at 116 pixels. Consistent cohesive campaign cast. No text, logos, interface, watermark or modern objects. A Thornwood Warden, an adult male elf scout and guard. Tawny brown skin, dark hair tied back, long pointed ears, watchful green eyes and a severe lean face. Leaf-green cloak and bark-textured leather armour, a narrow twig clasp. Quietly threatening woodland defender, natural grounded proportions.
+
+## Scenery prompt set
+
 ### portal-room.webp
 
 > Use case: illustration-story. Asset type: production background painting for a dedicated fantasy RTS mission briefing screen, landscape 16:9. Paint an ancient magical conferencing chamber in Warband: a semicircular vaulted room of dark weathered stone, brass lockwork and carved conduits. Three monumental empty oval portal frames stand across the back wall, left, middle and right, seen straight on from a low central viewpoint. Their dark teal glass interiors softly glow turquoise and violet; keep the interiors empty and dark so animated character projections can be composited inside them. Foreground: a low circular brass war table with a luminous violet relief-map of a terraced river valley, occupying the lower middle. Warm candle clusters in recesses, hanging chains, rain-dark stone and faint aether dust. Rich painterly fantasy strategy-game concept art, grounded medieval engineering, exquisite materials, cinematic depth, restrained palette of midnight teal, antique gold and violet, strong architectural silhouette. Compose portal interiors centered around x=25%,50%,75%, y=34%; leave lower 28% dark and quiet for a separately rendered dialogue panel. No characters, writing, runes resembling text, interface, logos, watermark or modern technology.

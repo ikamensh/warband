@@ -19,13 +19,13 @@ from warband.sim.model import tile_center
 from warband.sim.rules import BuildingType as B, Difficulty, Layout, MapTheme, Race, UnitType as U, Upgrade
 
 SPEAKERS = {
-    "Aldric": Speaker("Captain Aldric Vane", Race.HUMAN, U.KNIGHT),
-    "Maren": Speaker("Sister Maren", Race.HUMAN, U.CLERIC),
-    "Tomas": Speaker("Reeve Tomas", Race.HUMAN, U.PEASANT),
-    "Gorrash": Speaker("Gorrash Ironjaw", Race.ORC, U.FOOTMAN, player=1),
-    "Brunna": Speaker("Thane Brunna Stonebrow", Race.DWARF, U.FOOTMAN),
-    "Ysolde": Speaker("Lady Ysolde of the Thornwood", Race.ELF, U.ARCHER, player=1),
-    "Warden": Speaker("Thornwood Warden", Race.ELF, U.FOOTMAN, player=1),
+    "Aldric": Speaker("Captain Aldric Vane", Race.HUMAN, U.KNIGHT, portrait="campaign/portraits/aldric.webp"),
+    "Maren": Speaker("Sister Maren", Race.HUMAN, U.CLERIC, portrait="campaign/portraits/maren.webp"),
+    "Tomas": Speaker("Reeve Tomas", Race.HUMAN, U.PEASANT, portrait="campaign/portraits/tomas.webp"),
+    "Gorrash": Speaker("Gorrash Ironjaw", Race.ORC, U.FOOTMAN, player=1, portrait="campaign/portraits/gorrash.webp"),
+    "Brunna": Speaker("Thane Brunna Stonebrow", Race.DWARF, U.FOOTMAN, portrait="campaign/portraits/brunna.webp"),
+    "Ysolde": Speaker("Lady Ysolde of the Thornwood", Race.ELF, U.ARCHER, player=1, portrait="campaign/portraits/ysolde.webp"),
+    "Warden": Speaker("Thornwood Warden", Race.ELF, U.FOOTMAN, player=1, portrait="campaign/portraits/warden.webp"),
 }
 
 ACT_1, ACT_2, ACT_3 = "Act I · The Marches", "Act II · The Silent Hold", "Act III · The Thornwood"

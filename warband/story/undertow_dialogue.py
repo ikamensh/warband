@@ -54,7 +54,8 @@ CARAVAN_BRIEFING: Dialog = (
     Line("Brakk", "That's Hasp's millpond, Ugga. Her wheels stop if we drain it, and their dam crew is below the spill. "
                   "We can open the middle causeway instead, or fight through the south ford.",
          chart=ChartBeat("Choose a crossing; count the cost to Millfield",
-                         ("middle_ford", "south_ford", "dam_pylon"), ("old_camp", "middle_ford", "mesa"))),
+                         ("middle_ford", "south_ford", "dam_pylon"), ("old_camp", "middle_ford", "mesa"),
+                                 alternatives=(("old_camp", "south_ford", "ford_east", "mesa"),))),
 )
 
 

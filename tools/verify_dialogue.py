@@ -17,7 +17,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from pyglet.window import key  # noqa: E402
-from saga2d import Game, fonts  # noqa: E402
+from saga2d import Button, Game, fonts  # noqa: E402
 from warband.story.campaign import Choice, Progress  # noqa: E402
 from warband.story.catalog import CAMPAIGNS, UNDERTOW  # noqa: E402
 from warband.story.dialog import DialogScene  # noqa: E402
@@ -83,6 +83,12 @@ def main(out: Path, size: tuple[int, int], *, animation: bool = False) -> None:
             while not isinstance(game.scene.current, Choice):
                 press(key.SPACE)
             tick()
+            answer = game.scene.ui.find(lambda c: isinstance(c, Button))
+            x, y, w, h = answer.bounds
+            backend = game.backend
+            backend.window.dispatch_event("on_mouse_motion", round(backend.offset_x + (x + w / 2) * backend.scale_factor),
+                                          round(backend.offset_y + (game.height - y - h / 2) * backend.scale_factor), 0, 0)
+            tick(.1)
             shot("field-choice")
             press(key._3)
             assert scene.run.vars["seam_intent"] == "guard"

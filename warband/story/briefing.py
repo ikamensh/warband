@@ -47,7 +47,8 @@ class BriefingChart:
         with scene.screen_layer(6):
             beat = self.beats[index]
             visible = dict.fromkeys(place for n in sorted(revealed) if (earlier := self.beats[n]) is not None
-                                    for place in (*earlier.places, *earlier.route))
+                                    for place in (*earlier.places, *earlier.route,
+                                                  *(point for path in earlier.alternatives for point in path)))
             active = set(beat.places) if beat else set()
 
             def project(place: str) -> Point:
@@ -55,17 +56,22 @@ class BriefingChart:
                 return x + point[0] / self.size[0] * w, y + point[1] / self.size[1] * h
 
             # A route is inked over 1.2 seconds, then a travelling bead keeps its direction readable.
-            route = beat.route if beat else ()
-            for start, end in zip(route, route[1:]):
+            paths = (beat.route, *beat.alternatives) if beat else ()
+            for start, end in ((a, b) for path in paths for a, b in zip(path, path[1:])):
                 ax, ay = project(start)
                 bx, by = project(end)
                 count = max(1, round(math.hypot(bx - ax, by - ay) / 10))
                 progress = min(1.0, age / 1.2)
                 for n in range(round(count * progress)):
                     f, g = n / count, min((n + .55) / count, progress)
-                    scene.draw_line(ax + (bx - ax) * f, ay + (by - ay) * f, ax + (bx - ax) * g, ay + (by - ay) * g, INK, 2)
+                    scene.draw_line(ax + (bx - ax) * f, ay + (by - ay) * f, ax + (bx - ax) * g, ay + (by - ay) * g, INK, 2.5)
                 f = (clock * .22) % max(.001, progress)
                 scene.draw_circle(ax + (bx - ax) * f, ay + (by - ay) * f, 3, (248, 234, 184, 255))
+                if progress == 1:
+                    length = max(1, math.hypot(bx - ax, by - ay))
+                    dx, dy = (bx - ax) / length, (by - ay) / length
+                    scene.draw_polygon([(bx, by), (bx - dx * 9 + dy * 4, by - dy * 9 - dx * 4),
+                                        (bx - dx * 9 - dy * 4, by - dy * 9 + dx * 4)], INK)
             labels: list[tuple[float, float, float, float]] = [(x + w - 30, y, 30, 48)]
             for place in visible:
                 px, py = project(place)
@@ -84,6 +90,7 @@ class BriefingChart:
                     tw, th = scene.game.backend.measure_text(label, 11, fonts.SEMIBOLD)
                     lx, ly = _label_position(px, py, tw, th, bounds, labels)
                     labels.append((lx - 3, ly - 2, tw + 6, th + 4))
+                    scene.draw_line(px, py, max(lx, min(px, lx + tw)), max(ly, min(py, ly + th)), (86, 65, 42, 150), 1)
                     scene.draw_rect(lx - 3, ly - 2, tw + 6, th + 4, (218, 200, 157, 240), radius=2)
                     scene.draw_text(label, lx, ly, font_size=11, font=fonts.SEMIBOLD, color=INK, anchor_y="top")
             # A modest compass needle stays out of the authored annotations.
@@ -165,10 +172,10 @@ def briefing_chart(run: Run) -> BriefingChart:
     if mines:
         mine = min(mines, key=lambda b: math.dist(b.center, origin))
         places["mine"] = ("Gold mine", mine.center)
-    for key in ("camp", "orc_home", "goal", "siege", "north_ford", "south_ford"):
+    for key in ("camp", "orc_home", "goal", "siege", "north_ford", "south_ford", "ford_east"):
         if key in run.vars:
             labels = {"camp": "Raider camp", "orc_home": "Orc camp", "goal": "The pass to Karst", "siege": "Karst siege engines",
-                      "north_ford": "North ford", "south_ford": "South ford"}
+                      "north_ford": "North ford", "south_ford": "South ford", "ford_east": "Mesa road"}
             places[key] = (labels[key], tuple(run.vars[key]))
     for key, landmark in run.vars.get("landmarks", {}).items():
         places[key] = (landmark["name"].split(" (")[0], tuple(landmark["point"]))
@@ -178,7 +185,7 @@ def briefing_chart(run: Run) -> BriefingChart:
     for beat in beats:
         if beat is None:
             continue
-        for key in (*beat.places, *beat.route):
+        for key in (*beat.places, *beat.route, *(point for path in beat.alternatives for point in path)):
             if key not in places:
                 raise KeyError(f"{run.mission.id}: briefing chart has no landmark {key!r}")
     terrain = tuple(tuple(row) for row in world.terrain)

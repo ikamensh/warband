@@ -33,9 +33,9 @@ SPEAKERS = {
     "Issa": Speaker("Captain Issa Renn", Race.HUMAN, U.KNIGHT, portrait="campaign/issa.png"),
     "Hasp": Speaker("Mother Hasp", Race.HUMAN, U.PEASANT, portrait="campaign/hasp.png"),
     "Brakk": Speaker("Brakk of the Broken Tooth", Race.ORC, U.CLERIC, portrait="campaign/brakk.png"),
-    "Ugga": Speaker("Ugga Salt-Tongue", Race.ORC, U.PEASANT),
+    "Ugga": Speaker("Ugga Salt-Tongue", Race.ORC, U.PEASANT, portrait="campaign/portraits/ugga.webp"),
     "Wrenna": Speaker("Wrenna Root-Reader", Race.ELF, U.CLERIC, portrait="campaign/wrenna.png"),
-    "Pell": Speaker("Sergeant Pell", Race.HUMAN, U.FOOTMAN, player=1),
+    "Pell": Speaker("Sergeant Pell", Race.HUMAN, U.FOOTMAN, player=1, portrait="campaign/portraits/pell.webp"),
     "Dagna": Speaker("Dagna Leadhand", Race.DWARF, U.CLERIC, portrait="campaign/dagna.png"),
     "Sella": Speaker("Sella Voss, the Unclencher", Race.HUMAN, U.CLERIC, player=1, portrait="campaign/sella.png"),
 }

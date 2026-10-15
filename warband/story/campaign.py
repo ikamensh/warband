@@ -51,6 +51,7 @@ class ChartBeat:
     caption: str
     places: tuple[str, ...]
     route: tuple[str, ...] = ()
+    alternatives: tuple[tuple[str, ...], ...] = ()
 
 
 @dataclass(frozen=True)

@@ -12,20 +12,20 @@ from typing import Any, Callable
 
 from PIL import Image as PILImage
 
-from saga2d import Anchor, Button, Column, Component, Image, InputEvent, Label, Row, Scene, Style, TextStyle, fonts
+from saga2d import Anchor, Button, Column, Component, Image, InputEvent, KeyHints, Label, Row, Scene, Style, TextStyle, fonts
+from saga2d.rendering.shapes import draw_box
 from warband.story.campaign import Choice, Dialog, Item, Line, Speaker
 from warband.story.journal import remember
 from warband.story.briefing import BriefingChart
 from warband.story.dialog_stage import DialogStage
 from warband.art.production import ProductionIcon
 from warband.audio.sound import play_sound
-from warband.ui.style import BODY, GOLD, MUTED, TEXT
+from warband.ui.style import BODY, GOLD, TEXT
 
 PORTRAIT = 116
-PANEL_WIDTH = 1360
-BOTTOM = 28
+BOTTOM = 0
 DIALOG_PANEL = Style(background_color=(10, 19, 27, 248), border_color=(156, 130, 78, 180),
-                     border_width=1, padding=24, radius=5)
+                     border_width=1, padding=20, radius=0)
 PORTRAIT_FRAME = Style(background_color=(15, 28, 35, 255), border_color=(166, 139, 81, 255),
                        border_width=1, padding=5, radius=3)
 CONTINUE = Style(font=fonts.SEMIBOLD, font_size=15, background_color=(142, 106, 47, 255),
@@ -35,6 +35,21 @@ ANSWER = Style(font=fonts.SEMIBOLD, font_size=14, background_color=(26, 46, 56, 
                hover_color=(43, 72, 83, 255), press_color=(65, 96, 106, 255),
                border_color=(140, 176, 177, 110), border_width=1, padding=10, radius=3)
 SKIP = Style(font_size=14, background_color=(0, 0, 0, 0), hover_color=(255, 255, 255, 18), padding=10)
+
+
+class _Answer(Button):
+    """A real numbered button, with a fixed key gutter and the same pointer/shortcut behaviour as any button."""
+
+    def __init__(self, label: str, number: int, width: int, on_click: Callable[[], None]) -> None:
+        super().__init__(label, shortcut=str(number), on_click=on_click, style=ANSWER, width=width, height=42)
+        self.add(Row(KeyHints([(str(number), "")]), Label(label, font_size=14, font=fonts.SEMIBOLD, width=width - 76),
+                     spacing=12, anchor=Anchor.LEFT_CENTER, margin=(16, 0)))
+
+    def on_draw(self) -> None:
+        resolved = self._game.theme.resolve_button_style(self.style, self.state)
+        draw_box(self._game.backend, *self.bounds, resolved.background_color,
+                 border_color=GOLD if self.state != "normal" else resolved.border_color,
+                 border_width=2 if self.state != "normal" else 1, radius=3, order=self._order)
 
 
 class _Seal(Component):
@@ -94,12 +109,14 @@ class DialogScene(Scene):
     def on_enter(self) -> None:
         self.stage = DialogStage(self, self.backdrop, self.chart)
         self._resolution = self.game.resolution
+        self._measure_briefing()
         self._show()
 
     def update(self, dt: float) -> None:
         self.stage.update(dt)
         if self.game.resolution != self._resolution:
             self._resolution = self.game.resolution
+            self._measure_briefing()
             self._show()
 
     def _show(self) -> None:
@@ -111,7 +128,6 @@ class DialogScene(Scene):
         if self.record and isinstance(item, Line) and self.index not in self._remembered:
             remember(self.vars, item.speaker, item.text)
             self._remembered.add(self.index)
-        width = min(PANEL_WIDTH, self.game.width - 72)
         speaker = self.speakers.get(item.speaker) if item.speaker else None
         if item.speaker and speaker is None:
             raise KeyError(f"no speaker {item.speaker!r} in this campaign")
@@ -128,37 +144,61 @@ class DialogScene(Scene):
         self.ui.add(Label(f"{position:02}  /  {len(spoken):02}", font_size=15, text_color=GOLD,
                           anchor=Anchor.TOP_RIGHT, margin=(40, 28)))
         if self.chart and (beat := self.chart.beats[self.index]) is not None:
-            self.ui.add(Label(beat.caption, font_size=14, font=fonts.SEMIBOLD,
-                              text_color=TEXT, width=round(self.game.width * .53), wrap=True,
-                              anchor=Anchor.TOP_RIGHT, margin=(40, 108)))
-        text_width = width - 2 * DIALOG_PANEL.padding - PORTRAIT - 32
+            self.ui.add(Label(beat.caption, font_size=12, font=fonts.SEMIBOLD, text_color=TEXT,
+                              width=round(self.game.width * .38) - 64, wrap=True,
+                              anchor=Anchor.TOP_RIGHT, margin=(46, 142)))
+        last = not any(isinstance(following, Choice) or following.spoken(self.vars) for following in self.items[self.index+1:])
+        self.panel = self._make_panel(item, speaker, last=last, height=self._briefing_height)
+        self.ui.add(self.panel)
+
+    def _measure_briefing(self) -> None:
+        """Reserve one tray height for the whole briefing so its map never jumps between beats."""
+        self._briefing_height: int | None = None
+        if self.chart is None:
+            return
+        heights = []
+        for item in self.items:
+            speaker = self.speakers[item.speaker] if item.speaker else None
+            panel = self._make_panel(item, speaker)
+            self.ui.add(panel)  # attach for the game's real font metrics; this is removed before any frame draws
+            heights.append(panel.get_preferred_size()[1])
+            self.ui.remove(panel)
+        self._briefing_height = max(heights, default=0)
+
+    def _make_panel(self, item: Item, speaker: Speaker | None, *, last: bool = False, height: int | None = None) -> Row:
+        width = self.game.width
+        has_portrait = self.chart is None
+        text_width = min(960, width - 2 * DIALOG_PANEL.padding - (PORTRAIT + 32 if has_portrait else 72))
         column = Column(spacing=10, width=text_width)
-        column.add(Label(speaker.name if speaker else "The chronicle", font_size=22, font=fonts.EXTRABOLD,
+        column.add(Label(speaker.name if speaker else "The chronicle", font_size=20, font=fonts.EXTRABOLD,
                          text_color=GOLD, width=text_width, wrap=True))
         if isinstance(item, Line):
             column.add(Label(item.text, text_style=TextStyle(18, BODY, fonts.REGULAR), wrap=True, width=text_width))
-            last = not any(isinstance(following, Choice) or following.spoken(self.vars) for following in self.items[self.index+1:])
-            column.add(Row(Button(self.end_label if last else "Continue", hotkey="Space", on_click=self.advance,
+            column.add(Row(Component(width=text_width - 352), Button(self.end_label if last else "Continue", hotkey="Space", on_click=self.advance,
                                   style=CONTINUE, width=220),
-                           Button("Skip", hotkey="Esc", on_click=self.skip, style=SKIP, width=116), spacing=16))
+                           Button("Skip", hotkey="Esc", on_click=self.skip, style=SKIP, width=116), spacing=8))
         else:
             column.add(Label(item.prompt, font_size=18, wrap=True, width=text_width))
             answers = Column(spacing=7, width=text_width)
+            answer_width = min(760, text_width)
             for number, option in enumerate(item.options, 1):
-                answers.add(Button(option.label, shortcut=str(number), on_click=lambda value=option.value: self.choose(value),
-                                   style=ANSWER, width=text_width))
+                answers.add(Row(_Answer(option.label, number, answer_width, lambda value=option.value: self.choose(value)),
+                                Component(width=text_width - answer_width), spacing=0))
             column.add(answers)
-            column.add(Label("Choose an answer to continue", font_size=12, text_color=MUTED))
-        key = speaker_portrait(self.game, speaker) if speaker is not None else None
-        if key is not None:
-            portrait: Component = Image(key, width=PORTRAIT, height=PORTRAIT)
-        else:
-            portrait = (ProductionIcon(speaker.subject, speaker.player, speaker.race, size=PORTRAIT) if speaker is not None
-                        else _Seal(width=PORTRAIT, height=PORTRAIT))
-        framed = Column(style=PORTRAIT_FRAME)
-        framed.add(portrait)
-        self.panel = Row(framed, column, spacing=22, anchor=Anchor.BOTTOM_CENTER, margin=(0, BOTTOM), style=DIALOG_PANEL)
-        self.ui.add(self.panel)
+        children: list[Component] = []
+        if has_portrait:
+            key = speaker_portrait(self.game, speaker) if speaker is not None else None
+            if key is not None:
+                portrait: Component = Image(key, width=PORTRAIT, height=PORTRAIT)
+            else:
+                portrait = (ProductionIcon(speaker.subject, speaker.player, speaker.race, size=PORTRAIT) if speaker is not None
+                            else _Seal(width=PORTRAIT, height=PORTRAIT))
+            framed = Column(style=PORTRAIT_FRAME)
+            framed.add(portrait)
+            children.append(framed)
+        children.append(column)
+        return Row(*children, width=width, height=height, spacing=22, anchor=Anchor.BOTTOM_CENTER,
+                   margin=(0, BOTTOM), style=DIALOG_PANEL)
 
     def draw(self) -> None:
         # A scene pushed by this frame's input draws before the UI tree's first layout.

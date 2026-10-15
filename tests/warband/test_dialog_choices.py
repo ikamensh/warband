@@ -2,7 +2,7 @@
 
 import pytest
 
-from saga2d import Game, Scene
+from saga2d import Button, Game, Scene
 from saga2d.testing import assert_no_text_overlap, assert_text_fits
 from warband.art.visual_lint import use_real_text_metrics
 from warband.story.campaign import Choice, Line
@@ -38,6 +38,35 @@ def test_conversation_has_its_own_screen_and_returns_to_the_frozen_scene(tmp_pat
         game.tick(.1)
         assert game.scene is battlefield
         assert battlefield.elapsed > before
+    finally:
+        game.close()
+
+
+def test_reading_keys_cannot_answer_a_question_but_its_numbered_row_can_be_clicked(tmp_path):
+    """Advancing prose must never accidentally choose; clicking the row (including its child label) is deliberate."""
+    choice = next(item for item in undertow_dialogue.WEIGHT_CONFESSION if isinstance(item, Choice))
+    game = Game("Story answer", backend="mock", resolution=(1200, 680), theme=build_theme(), save_dir=tmp_path / "saves")
+    variables = {}
+    try:
+        game.push(Scene())
+        scene = DialogScene((choice,), UNDERTOW.speakers, variables)
+        game.push(scene)
+        game.tick(.1)
+        for key in ("space", "return", "escape"):
+            game.backend.inject_key(key)
+            game.tick(.1)
+        game.backend.inject_click(20, 200)
+        game.tick(.1)
+        assert game.scene is scene and not variables
+        answer = scene.ui.find(lambda c: isinstance(c, Button) and c.text == choice.options[-1].label)
+        x, y, w, h = answer.bounds
+        game.backend.inject_mouse_move(x + w / 2, y + h / 2)
+        game.tick(.1)
+        assert answer.state == "hovered"
+        game.backend.inject_click(x + w / 2, y + h / 2)
+        game.tick(.1)
+        assert variables[choice.key] == choice.options[-1].value
+        assert game.scene is not scene
     finally:
         game.close()
 

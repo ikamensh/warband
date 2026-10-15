@@ -11,11 +11,14 @@ use the same interaction and eleven individually authored briefing charts.
 The **Aether Council** is a wet-stone, brass-and-lockwork chamber. Three oval
 portals overlook a luminous relief table. The current speaker arrives in the
 left portal as a softly tinted projection: a short fade, gentle breathing
-motion, drifting arcs and a travelling scan of aether. A previous speaker
-remains faintly visible in the middle portal. Linked sigils under the portals
-remember who has joined. Nobody appears before their first line.
+motion, drifting arcs and a travelling scan of aether. A previous speaker remains visible in the middle portal. Both use the same
+frame, with a warm speaking rim and quieter cyan listening rim. Named
+SPEAKING/LISTENING plaques make the state explicit; nobody appears before
+their first line. Every named speaker has a painted face.
 
-A parchment field chart floats above the right side of the table. Its muted
+A parchment field chart has its own column above the right side of the table,
+clear of the two participant portals. The briefing reserves one dialogue-tray
+height for all of its lines, so the chart stays still as the words change. Its muted
 blue waterways, green woodland, mountain hatching, paper grain and fold lines
 belong to the same brass, teal and gold palette as the room. The chart uses
 the level's real terrain, including crossings and obstructions. It is a survey,
@@ -41,11 +44,15 @@ Hold share the mountain setting. The five Undertow levels each have their own
 painting. These are establishing views of the location, not literal depictions
 of every conditional event or claim that a particular ending occurred.
 
-The bottom panel is dark blue-black, almost opaque, edged in antique brass.
-A framed portrait and gold name identify the speaker; narration has a compass
-seal and "The chronicle". Body text is 18 px, with generous line spacing and no
+The bottom tray is dark blue-black, almost opaque, edged in antique brass and
+anchored to the window's bottom. In the field chronicle a framed portrait and
+gold name identify the speaker; narration has a compass seal and "The
+chronicle". Briefings keep the speaker name in the tray and give the picture
+to the portal above, without a second thumbnail. Body text is 18 px, with generous line spacing and no
 automatic advance or typing delay. The panel grows to hold the actual text or
-answers. Its width caps at 1360 px and retains margins at 1200×680. The upper
+answers. The content has a bounded reading width inside the full-width tray, including
+at 1200×680. Choices have a fixed number gutter and left-aligned text, a
+compact height and a gold hover rim. The upper
 right shows progress through the currently eligible lines.
 
 ## Interaction and continuity
@@ -86,7 +93,8 @@ with different geography cannot reuse a stale painting. Map labels stay
 inside the paper and avoid the compass and each other.
 
 `tests/warband/test_briefing_views.py` checks all eleven charts against their
-worlds without modifying the simulation, editing and reordering words, skipped conditional annotations, persistence
+worlds without modifying the simulation, editing and reordering words,
+skipped conditional annotations, persistence
 without art metadata, every eligible line and map label at the small window,
 and a real mission's frozen briefing/command handoff.
 `test_dialog_choices.py` covers opaque presentation and numbered answers;

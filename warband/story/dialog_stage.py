@@ -10,6 +10,7 @@ import math
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFilter, ImageOps
+from saga2d import fonts
 from saga2d import Scene
 from warband.art.production import draw_production_icon
 from warband.story.briefing import BriefingChart
@@ -56,7 +57,6 @@ class DialogStage:
         self.speaker: Speaker | None = None
         self.joined: dict[str, Speaker] = {}
         self.visited: set[int] = set()
-        self.projection: str | None = None
 
     def attend(self, speaker: Speaker | None, index: int) -> None:
         self.age = 0.0
@@ -66,9 +66,6 @@ class DialogStage:
         self.speaker = speaker
         if speaker is not None:
             self.joined[speaker.name] = speaker
-            self.projection = _projection(self.scene.game, speaker) if self.chart else None
-        else:
-            self.projection = None
 
     def update(self, dt: float) -> None:
         self.clock += dt
@@ -83,21 +80,28 @@ class DialogStage:
         # A nearly imperceptible drift keeps a painted location alive without moving the text.
         zoom = 1 if self.chart else 1.025 + .008 * math.sin(self.clock * .12)
         sw, sh = iw * scale * zoom, ih * scale * zoom
-        ox, oy = (w - sw) / 2, (h - sh) / 2
+        ox, oy = (w - sw) / 2, (h - sh) / 2 + (36 if self.chart else 0)
         scene.draw_image(self.key, ox, oy, sw, sh)
         with scene.screen_layer(1):
             scene.draw_rect(0, 0, w, h, (3, 10, 17, 32))
             # Gradients are small fixed strips, independent of output pixel density.
             for n in range(16):
-                scene.draw_rect(0, n * 8, w, 8, (5, 12, 20, round(215 * (1 - n / 16))))
+                scene.draw_rect(0, n * 8, w, 8, (5, 12, 20, round(245 * (1 - n / 16))))
                 scene.draw_rect(0, panel_top - 100 + n * 8, w, 8, (5, 12, 20, round(165 * n / 16)))
         if self.chart:
             with scene.screen_layer(2):
                 self._room(ox, oy, sw, sh, panel_top)
-            available = panel_top - 176
-            map_h = min(available, h * .41)
-            map_w = min(w * .48, map_h * self.chart.size[0] / self.chart.size[1])
-            mx, my = w * .70 - map_w / 2, 146
+            column_x, column_w = w * .62, w * .38 - 28
+            with scene.screen_layer(4):
+                scene.draw_rect(column_x, 108, column_w, panel_top - 124, (7, 18, 25, 232),
+                                border_color=(167, 139, 81, 170), border_width=1, radius=3)
+            with scene.screen_layer(7):
+                scene.draw_text("FIELD CHART", column_x + 18, 122, font_size=10, font=fonts.SEMIBOLD,
+                                color=BRASS, anchor_y="top")
+            available = panel_top - 196
+            map_h = min(available, (column_w - 36) * self.chart.size[1] / self.chart.size[0])
+            map_w = map_h * self.chart.size[0] / self.chart.size[1]
+            mx, my = column_x + (column_w - map_w) / 2, 176
             self.chart.draw(scene, index, self.age, self.clock, (mx, my, map_w, map_h), revealed=self.visited)
         # A few slow, deterministic motes; the simulation's random stream is never touched.
         with scene.screen_layer(8):
@@ -107,45 +111,41 @@ class DialogStage:
                 scene.draw_circle(x, y, 1 + (n % 2) * .5, (161, 197, 218, 35 + round(30 * math.sin(self.clock + n) ** 2)))
 
     def _room(self, ox: float, oy: float, sw: float, sh: float, panel_top: float) -> None:
-        scene = self.scene
-        cx, cy = ox + sw * .268, oy + sh * .275
-        rx, ry = sw * .069, sh * .188
-        opacity = min(1.0, self.transmission_age / .6)
         previous = next((speaker for speaker in reversed(self.joined.values()) if speaker is not self.speaker), None)
-        if previous is not None:
-            key = _projection(scene.game, previous)
-            if key is not None:
-                scene.draw_image(key, ox + sw * .50 - rx, cy - ry, rx * 2, ry * 2, opacity=.35)
+        for fraction, speaker, active in ((.268, self.speaker, True), (.50, previous, False)):
+            cx, cy = ox + sw * fraction, oy + sh * .275
+            rx, ry = sw * .069, sh * .188
+            if speaker is None:
+                continue
+            opacity = min(1.0, self.transmission_age / .6) if active else .65
+            key = _projection(self.scene.game, speaker)
+            if key:
+                self.scene.draw_image(key, cx - rx, cy - ry + math.sin(self.clock * 1.3) * 1.2,
+                                      rx * 2, ry * 2, opacity=opacity)
             else:
-                draw_production_icon(scene, previous.subject, previous.player, previous.race,
-                                     ox + sw * .50 - rx, cy - rx, rx * 2, opacity=.35)
-        if self.speaker is not None:
-            if self.projection:
-                scene.draw_image(self.projection, cx - rx, cy - ry + math.sin(self.clock * 1.3) * 1.2,
-                                 rx * 2, ry * 2, opacity=.88 * opacity)
-            else:
-                draw_production_icon(scene, self.speaker.subject, self.speaker.player, self.speaker.race,
+                draw_production_icon(self.scene, speaker.subject, speaker.player, speaker.race,
                                      cx - rx, cy - rx, rx * 2, opacity=opacity)
-            with scene.screen_layer(3):
-                # Curving arcs, drifting particles and a soft scan line make the face a transmission.
+            with self.scene.screen_layer(3):
+                color = (255, 212, 122, 215) if active else (143, 224, 227, 100)
+                # Both attendees use the same frame geometry and transmission, with state carried by light.
                 for radius in (1.02, 1.08):
-                    for n in range(42):
-                        a = n * math.tau / 64 + self.clock * .12
-                        b = a + math.tau / 68
-                        scene.draw_line(cx + math.cos(a) * rx * radius, cy + math.sin(a) * ry * radius,
-                                        cx + math.cos(b) * rx * radius, cy + math.sin(b) * ry * radius,
-                                        (143, 224, 227, 65 if radius > 1.04 else 125), 1)
+                    for n in range(64):
+                        a = n * math.tau / 64
+                        b = (n + 1) * math.tau / 64
+                        self.scene.draw_line(cx + math.cos(a) * rx * radius, cy + math.sin(a) * ry * radius,
+                                             cx + math.cos(b) * rx * radius, cy + math.sin(b) * ry * radius,
+                                             color if radius == 1.02 else (143, 113, 63, 170), 2 if active else 1)
+                for n in range(20):
+                    a = n * math.tau / 64 + self.clock * .18
+                    b = a + math.tau / 68
+                    self.scene.draw_line(cx + math.cos(a) * rx * 1.12, cy + math.sin(a) * ry * 1.12,
+                                         cx + math.cos(b) * rx * 1.12, cy + math.sin(b) * ry * 1.12, color, 1)
                 sy = cy - ry + ((self.clock * .13) % 1) * ry * 2
                 half = rx * math.sqrt(max(0, 1 - ((sy - cy) / ry) ** 2))
-                scene.draw_line(cx - half, sy, cx + half, sy, (143, 224, 227, 45), 2)
-        # Entered speakers remain as linked sigils below the portal, never announced before they speak.
-        with scene.screen_layer(3):
-            count = len(self.joined)
-            for n, speaker in enumerate(self.joined.values()):
-                x = cx + (n - (count - 1) / 2) * 46
-                y = min(cy + ry + 24, panel_top - 32)
-                scene.draw_circle(x, y, 16, (9, 29, 37, 225))
-                scene.draw_circle(x, y, 4 if speaker is self.speaker else 2,
-                                  CYAN if speaker is self.speaker else BRASS)
-                if n:
-                    scene.draw_line(x - 30, y, x - 16, y, (143, 224, 227, 70), 1)
+                self.scene.draw_line(cx - half, sy, cx + half, sy, (143, 224, 227, 35), 1)
+                py = min(cy + ry + 4, panel_top - 54)
+                self.scene.draw_rect(cx - 124, py, 248, 44, (7, 18, 25, 245), border_color=color, border_width=1, radius=3)
+                self.scene.draw_text("SPEAKING" if active else "LISTENING", cx, py + 7, font_size=9,
+                                     color=color, font=fonts.SEMIBOLD, anchor_x="center", anchor_y="top")
+                self.scene.draw_text(speaker.name, cx, py + 23, font_size=11, color=(242, 232, 211, 255),
+                                     font=fonts.SEMIBOLD, anchor_x="center", anchor_y="top")
