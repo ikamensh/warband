@@ -5,6 +5,7 @@ default; *The Thornwood War* remains playable beside it). Five hand-authored mis
 Vesskar Hollow's Five Steps — Humans, Orcs, Elves, Dwarves, Humans — each with a different verb,
 choices fulfilled through ordinary orders, and flags the next Steps and the finale read back.
 World and story design: `docs/campaign-setting.md`. This note records what shipped.
+The entrance and Millfield's revised first playable sequence: [first impression criteria and design](undertow-opening.md).
 
 Each playable keeper has a named map tag and an authored portrait in dialogue, the selection
 card and the army grid. **F3** selects and centres the current keeper; that link follows a rescue

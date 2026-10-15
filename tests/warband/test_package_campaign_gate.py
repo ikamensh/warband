@@ -41,7 +41,7 @@ def test_package_gate_reaches_every_mission_and_loads_its_automatic_slot(tmp_pat
         frames()
         result = checker.campaign_journey(game, frames, press, capture)
         assert result["missions"] == [mission.id for mission in UNDERTOW.missions]
-        assert result["portraits"] == ["Brakk", "Dagna", "Issa", "Sella", "Wrenna"]
+        assert result["portraits"] == sorted(name for name, speaker in UNDERTOW.speakers.items() if speaker.portrait)
         assert result["cover"] and result["objectives"] and result["landmarks"] and result["autosave_load"]
         assert isinstance(game.scene, TitleScene)
         for mission in UNDERTOW.missions:

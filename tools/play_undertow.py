@@ -226,7 +226,6 @@ def solve_mill(run: Run, *, shutter: bool) -> float:
         world.harvest([w.id], mine.id)
 
     def act(r: Run) -> None:
-        answer(r, "mill_intent", not shutter)
         train(r, B.BARRACKS, U.FOOTMAN, 10)
         mend_wounded(r)
         if shutter and "wave_2" in r.fired and r.get("mill_pylon") in r.world.buildings:

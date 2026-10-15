@@ -25,7 +25,7 @@ from warband.sim.model import Event, Unit, World
 from warband.art import textures
 from warband.art.production import fit
 from warband.sim.rules import BuildingType, Difficulty
-from warband.ui.scene import CARD_PANEL_WIDTH, HINT_BAR, HUD_TOP, OBJECTIVES_GAP, GameScene, HelpScene, PauseScene, _clock, _Overlay, check_save
+from warband.ui.scene import CARD_GAP, CARD_PANEL_WIDTH, HINT_BAR, HUD_TOP, OBJECTIVES_GAP, PANEL_MARGIN, GameScene, HelpScene, PauseScene, _clock, _Overlay, check_save
 from warband.ui.style import ACTION_BUTTON, BAD, GHOST_BUTTON, GOLD, GOOD, MUTED, PANEL_STYLE, RESULTS_STYLE, TEXT
 from warband.ui.view import Sighting, rgba, to_world
 
@@ -87,16 +87,15 @@ def restart_mission(game, scene: MissionScene) -> str | None:
 
 
 def start_mission(game, campaign: Campaign, mission: Mission, progress: Progress, settings, *, briefing: bool = True) -> None:
-    """Build the mission and play its briefing over the current screen, then replace everything with the match."""
+    """Brief over the actual battlefield, paused, then give the player the same company and camera."""
     if progress.campaign != campaign.id or mission not in campaign.missions:
         raise ValueError("mission and progress must belong to the selected campaign")
     run = build_world(mission, flags=progress.flags)
     scene = MissionScene(campaign, run, difficulty=progress.difficulty, settings=settings)
+    game.clear_and_push(scene)
     if briefing:
-        game.push(DialogScene(mission.briefing, campaign.speakers, run.vars,
-                              on_done=lambda: game.clear_and_push(scene), record=True))
-    else:
-        game.clear_and_push(scene)
+        game.push(DialogScene(mission.briefing, campaign.speakers, run.vars, record=True,
+                              heading=f"CHAPTER {campaign.index(mission):02} / {mission.title}", end_label="Take command"))
 
 
 class _Notice(Toast):
@@ -168,6 +167,11 @@ class MissionScene(GameScene):
         # The band crosses the window at 40 % of its height, where a short window's objectives panel reaches: the
         # panel and the script's first notices wait for it to pass.
         self._banner_until = self.clock + banner.duration
+        if self.world.time == 0 and self.mission.opening_focus is not None:
+            self.select([unit.id for unit in self.run.soldiers(self.human)], quiet=True)
+            self.camera.center_on(*to_world(self.mission.opening_focus))
+        self._update_objectives()
+        self._fold_objectives()
 
     def draw(self) -> None:
         super().draw()
@@ -217,6 +221,12 @@ class MissionScene(GameScene):
     def open_journal(self) -> None:
         """Read the briefing and witnessed choices without changing the current mission."""
         self.game.push(JournalScene(self.run, self.campaign.speakers))
+
+    def cast_at(self, point: tuple[float, float]) -> None:
+        """A successful campaign spell gives the company back its next order immediately."""
+        super().cast_at(point)
+        if self.aiming is None and self.catalogue == "spells":
+            self.open_catalogue(None)
 
     def _draw_keeper_labels(self) -> None:
         if self.clock < self._banner_until:
@@ -282,9 +292,12 @@ class MissionScene(GameScene):
                 if self.run.state[objective.id] == "done":
                     self._rows[objective.id][0].visible = False
             super()._fold_objectives()
-        # A story notice takes this column briefly; even the finale's full muster stays above the bottom HUD.
+        # A story notice shares the column with the command card as well as the objectives.
+        bottom = self.game.height - HINT_BAR - 6
+        if self.card_panel.visible:
+            bottom = min(bottom, self.game.height - PANEL_MARGIN[1] - self.card_panel.get_preferred_size()[1] - CARD_GAP)
         if (self._notice is not None and not self._notice.done
-                and self.toast_top + self._notice.height(self) > self.game.resolution[1] - HINT_BAR - 6):
+                and self.toast_top + self._notice.height(self) > bottom):
             self.objectives_body.visible = False
 
     def update(self, dt: float) -> None:
@@ -329,6 +342,12 @@ class MissionScene(GameScene):
         elif self.run.lost is not None or not self.player.alive:
             self._finish(False)
             self.game.push(MissionResultScene(self, won=False, reason=self.run.lost or "Your forces were destroyed"))
+
+    def _finish(self, won: bool) -> None:
+        # The result pauses this scene: a sliding warning must not freeze halfway off screen behind it.
+        self.effects.clear()
+        self._notices.clear()
+        super()._finish(won)
 
     def _record(self) -> None:
         """Write the mission into the progress at the moment of victory; the debrief is a story, not a condition."""

@@ -10,12 +10,12 @@ from warband.story.campaign import Choice, Dialog, Line, Option
 
 
 MILL_BRIEFING: Dialog = (
-    Line("", "Violet aether rises beneath Millfield. Its vault has metered that breath for generations; "
-             "now it strains, and beasts are coming uphill."),
-    Line("Hasp", "Flour first, Captain. My mill feeds half the Hollow. If the lock goes, tell me before you tell the council."),
-    Line("Issa", "Soldiers to the south fields. Keep the peasants clear, and Sister's Mend ready. "
-                 "We hold the vault while it keeps people safe."),
-    Line("Hasp", "Good. A lock is useful. A village is the reason we have one."),
+    Line("Hasp", "The wolves left the sheep alive. Now they're coming for the mill. "
+                 "My fieldhands are still out there, Captain."),
+    Line("Issa", "I'm here, Hasp. Company, keep them off the south field. "
+                 "The vault behind us holds the valley's spell-light. Today it holds something else."),
+    Line("Issa", "Your company is ready. Right-click a wolf to attack, or the ground to move. "
+                 "Alt+1, then click a wounded ally, casts Mend. We keep the village safe first."),
 )
 
 

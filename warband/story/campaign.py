@@ -154,6 +154,7 @@ class Mission:
     triggers: tuple[Trigger, ...] = ()
     win: Callable[[Run], bool] | None = None  # default: every required objective done
     remember: tuple[str, ...] = ()  # variables copied into the campaign's flags on completion
+    opening_focus: Point | None = None  # fresh mission: frame this battlefield and select its starting company
 
     def won(self, run: Run) -> bool:
         """The mission's own rule, else every required objective on the panel is done."""
@@ -172,6 +173,7 @@ class Campaign:
     missions: tuple[Mission, ...]
     epilogue: Dialog
     cover: str | None = None  # relative to warband/assets; looked up only when the campaign screen is drawn
+    introduction: str = ""  # the fresh cover screen's player-facing premise
 
     def mission(self, mission_id: str) -> Mission:
         for mission in self.missions:

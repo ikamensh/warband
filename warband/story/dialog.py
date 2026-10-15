@@ -42,7 +42,8 @@ class DialogScene(Scene):
     controls = {("space", "return"): "advance", "escape": "skip"}
 
     def __init__(self, dialog: Dialog, speakers: dict[str, Speaker], vars: dict[str, Any], *,
-                 on_done: Callable[[], None] | None = None, record: bool = False) -> None:
+                 on_done: Callable[[], None] | None = None, record: bool = False,
+                 heading: str = "", end_label: str = "Continue") -> None:
         self.items: list[Item] = list(dialog)
         self.speakers = speakers
         self.vars = vars
@@ -50,6 +51,8 @@ class DialogScene(Scene):
         self.index = 0
         self.finished = False
         self.record = record
+        self.heading = heading
+        self.end_label = end_label
         self._remembered: set[int] = set()
 
     @property
@@ -80,10 +83,13 @@ class DialogScene(Scene):
             raise KeyError(f"no speaker {item.speaker!r} in this campaign")
         text_width = width - 2 * OVERLAY_STYLE.padding - PORTRAIT - 18
         column = Column(spacing=10, width=text_width)
+        if self.heading:
+            column.add(Label(self.heading, text_style="caption", width=text_width, text_color=MUTED))
         column.add(Label(speaker.name if speaker is not None else "", text_style="title", width=text_width))
         if isinstance(item, Line):
             column.add(Label(item.text, text_style="body", wrap=True, width=text_width, text_color=None if speaker is not None else MUTED))
-            column.add(Row(Button("Continue", hotkey="Space", on_click=self.advance, style=ACTION_BUTTON, width=150),
+            last = not any(isinstance(following, Choice) or following.spoken(self.vars) for following in self.items[self.index+1:])
+            column.add(Row(Button(self.end_label if last else "Continue", hotkey="Space", on_click=self.advance, style=ACTION_BUTTON, width=220),
                            KeyHints([("Esc", "skip")]), spacing=14))
         else:
             column.add(Label(item.prompt, text_style="body", wrap=True, width=text_width))
