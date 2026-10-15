@@ -425,18 +425,18 @@ def test_every_difficulty_has_a_rating_and_a_note_and_they_go_up() -> None:
         assert 10 < len(note) <= 70, note  # long enough to say something, short enough to fit the panel
 
 
-def test_every_difficulty_builds_a_brain_that_plays() -> None:
-    """Easy and Medium are a Brain, Hard and Master a ProBrain; all four must think."""
+@pytest.mark.parametrize("difficulty", list(Difficulty), ids=lambda difficulty: difficulty.value)
+def test_every_difficulty_builds_a_brain_that_plays(difficulty: Difficulty) -> None:
+    """Every offered difficulty must build its real brain and play a one-minute opening."""
     from warband.brains.ai import make_brain
 
-    for difficulty in Difficulty:
-        world = mapgen.generate(seed=7, players=2, human=None)
-        brain = make_brain(0, difficulty)
-        rng = random.Random(1)
-        for _ in range(int(60 / SIM_DT)):
-            brain.think(world, rng)
-            world.step()
-        assert len(world.player_units(0)) > 3, difficulty
+    world = mapgen.generate(seed=7, players=2, human=None)
+    brain = make_brain(0, difficulty)
+    rng = random.Random(1)
+    for _ in range(int(60 / SIM_DT)):
+        brain.think(world, rng)
+        world.step()
+    assert len(world.player_units(0)) > 3, difficulty
 
 
 def test_master_draws_its_posture_from_the_seed_and_the_seat_a_third_each() -> None:
