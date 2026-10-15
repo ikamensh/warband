@@ -18,7 +18,7 @@ simulation advances and then shows the dialogues, toasts and camera cues it queu
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Any, Callable
 
 from saga2d import SaveError, SaveManager
@@ -27,6 +27,7 @@ from warband.sim.rules import BUILDINGS, BuildingType, Difficulty, Layout, MapTh
 
 FORMAT = 1  # of the progress file; bump only when an older Warband could misread a newer file
 MINE_CLEARANCE = 2
+LEGACY_CAMPAIGN_ID = "thornwood"
 
 
 # -- Story ---------------------------------------------------------------------
@@ -40,6 +41,7 @@ class Speaker:
     race: Race
     subject: UnitType | BuildingType
     player: int = 0  # whose colours the portrait wears
+    portrait: str | None = None  # authored character art, relative to warband/assets
 
 
 @dataclass(frozen=True)
@@ -77,6 +79,25 @@ Item = Line | Choice
 Dialog = tuple[Item, ...]
 
 
+def _dialog_data(dialog: Dialog) -> list[dict[str, Any]]:
+    return [{"kind": "line" if isinstance(item, Line) else "choice", **asdict(item)} for item in dialog]
+
+
+def _read_dialog(data: list[dict[str, Any]]) -> Dialog:
+    items: list[Item] = []
+    for saved in data:
+        fields = dict(saved)
+        kind = fields.pop("kind")
+        if kind == "line":
+            items.append(Line(**fields))
+        elif kind == "choice":
+            fields["options"] = tuple(Option(**option) for option in fields["options"])
+            items.append(Choice(**fields))
+        else:
+            raise ValueError(f"unknown dialogue item {kind!r}")
+    return tuple(items)
+
+
 # -- Mission definition ----------------------------------------------------------
 
 
@@ -84,7 +105,9 @@ Dialog = tuple[Item, ...]
 class Objective:
     """A line of the objectives panel.  ``done`` and ``failed`` read the run; ``shown`` hides the line until it holds
     (then it stays).  A failed objective loses the mission.  An optional one is never required to win: a second way
-    to win that the mission's ``win`` counts, or a condition that only matters by failing (``done`` never true)."""
+    to win that the mission's ``win`` counts, or a condition that only matters by failing (``done`` never true).
+    An ``ongoing`` condition reopens when it stops holding: its checkmark describes the current crew or buildings,
+    rather than a historical arrival or construction."""
 
     id: str
     text: str
@@ -92,6 +115,7 @@ class Objective:
     failed: Callable[[Run], bool] | None = None
     shown: Callable[[Run], bool] | None = None
     optional: bool = False
+    ongoing: bool = False
 
 
 @dataclass(frozen=True)
@@ -130,6 +154,7 @@ class Mission:
     triggers: tuple[Trigger, ...] = ()
     win: Callable[[Run], bool] | None = None  # default: every required objective done
     remember: tuple[str, ...] = ()  # variables copied into the campaign's flags on completion
+    opening_focus: Point | None = None  # fresh mission: frame this battlefield and select its starting company
 
     def won(self, run: Run) -> bool:
         """The mission's own rule, else every required objective on the panel is done."""
@@ -147,6 +172,8 @@ class Campaign:
     speakers: dict[str, Speaker]
     missions: tuple[Mission, ...]
     epilogue: Dialog
+    cover: str | None = None  # relative to warband/assets; looked up only when the campaign screen is drawn
+    introduction: str = ""  # the fresh cover screen's player-facing premise
 
     def mission(self, mission_id: str) -> Mission:
         for mission in self.missions:
@@ -370,7 +397,7 @@ class Run:
                     self.state[objective.id] = state = "open"
                 else:
                     continue
-            if state != "open":
+            if state != "open" and not (state == "done" and objective.ongoing):
                 continue
             if objective.failed is not None and objective.failed(self):
                 self.state[objective.id] = "failed"
@@ -378,7 +405,10 @@ class Run:
                     self.lost = objective.text
             elif objective.done(self):
                 self.state[objective.id] = "done"
-                self.completed.append(objective.id)
+                if state != "done":
+                    self.completed.append(objective.id)
+            elif state == "done":
+                self.state[objective.id] = "open"
         if not self.won and self.lost is None and self.mission.won(self):
             self.won = True
 
@@ -386,7 +416,8 @@ class Run:
 
     def to_dict(self) -> dict[str, Any]:
         return {"id": self.mission.id, "vars": dict(self.vars), "fired": dict(self.fired), "state": dict(self.state),
-                "ai": {str(side): level.value for side, level in self.ai.items()}}
+                "ai": {str(side): level.value for side, level in self.ai.items()},
+                "pending": [_dialog_data(dialog) for dialog in self.pending]}
 
     @classmethod
     def from_dict(cls, mission: Mission, world: World, data: dict[str, Any]) -> Run:
@@ -399,6 +430,7 @@ class Run:
         # already gave are among them.  Dropping them lost the choice the player made before the save (the emissary
         # at Greywater Ford), with it the objective the answer opens and the flag the campaign remembers.
         run.vars = dict(data["vars"])
+        run.pending = [_read_dialog(dialog) for dialog in data.get("pending", [])]
         run.fired = {str(k): float(v) for k, v in data["fired"].items()}
         if "ai" in data:
             run.ai = {int(side): Difficulty(level) for side, level in data["ai"].items()}
@@ -468,12 +500,16 @@ class Progress:
 
 
 class ProgressStore:
-    """The progress file under the game's data directory, with the save manager's durable writes and backup.  A file
-    this version cannot read must never be written over: :meth:`set_aside` moves it out of the way first."""
+    """One campaign's durable progress. Thornwood keeps its original directory; other campaigns use a subdirectory
+    named by their stable id. An unreadable or foreign file is kept until :meth:`set_aside` moves it aside."""
 
-    def __init__(self, data_dir) -> None:
-        self.saves = SaveManager(data_dir / "campaign")
-        self.path = data_dir / "campaign" / "save_1.json"
+    def __init__(self, data_dir, campaign_id: str = LEGACY_CAMPAIGN_ID) -> None:
+        self.campaign_id = campaign_id
+        directory = data_dir / "campaign"
+        if campaign_id != LEGACY_CAMPAIGN_ID:
+            directory /= campaign_id
+        self.saves = SaveManager(directory)
+        self.path = directory / "save_1.json"
         self.aside = self.path.with_name("save_1.unreadable.json")
 
     def load(self) -> Progress | None:
@@ -481,12 +517,19 @@ class ProgressStore:
         if saved is None:
             return None
         try:
-            return Progress.from_dict(saved["state"])
+            progress = Progress.from_dict(saved["state"])
+            self._check_campaign(progress)
+            return progress
         except (KeyError, TypeError, ValueError) as error:
             raise SaveError(f"Cannot read the campaign progress: {error}") from error
 
     def save(self, progress: Progress) -> None:
+        self._check_campaign(progress)
         self.saves.save(1, progress.to_dict(), "WarbandCampaign", summary={"completed": len(progress.completed)})
+
+    def _check_campaign(self, progress: Progress) -> None:
+        if progress.campaign != self.campaign_id:
+            raise SaveError(f"campaign progress belongs to {progress.campaign!r}, not {self.campaign_id!r}")
 
     def clear(self) -> None:
         self.saves.delete(1)

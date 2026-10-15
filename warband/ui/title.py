@@ -21,7 +21,7 @@ from warband.brains.ai import DIFFICULTY_ELO, DIFFICULTY_NOTES
 from warband.records.profile import OUTCOME_NAMES, Profile, plural
 from warband.sim.rules import BuildingType, Difficulty, Layout, MapTheme, Race
 from warband.ui.controls import DEFAULT, SCHEMES
-from warband.ui.scene import SAVE_SLOTS, CodexScene, HelpScene, SaveBrowserScene, codex_world, fair_map, load_game, new_game
+from warband.ui.scene import CodexScene, HelpScene, SaveBrowserScene, codex_world, fair_map, load_game, new_game, save_slots
 from warband.audio.sound import play_music, play_sound
 from warband.ui.style import ACTION_BUTTON, BAD, GHOST_BUTTON, GOLD, GOOD, MENU_BUTTON, MUTED, OVERLAY_STYLE, PANEL_STYLE
 from warband.art.textures import TILE
@@ -105,7 +105,7 @@ class TitleScene(Scene):
 
     def _newest_save(self) -> int | str | None:
         """The slot saved most recently, whatever kind it is."""
-        entries = [e for e in self.game.save_manager.list_slots(SAVE_SLOTS, names=("quick", "autosave", "campaign")) if e is not None and "error" not in e]
+        entries = [saved.entry for saved in save_slots(self.game) if saved.entry is not None and "error" not in saved.entry]
         return max(entries, key=lambda e: e["timestamp"])["slot"] if entries else None
 
     def _build_menu(self) -> None:
@@ -122,7 +122,7 @@ class TitleScene(Scene):
                      Button("Campaign", shortcut="A", on_click=self.campaign, style=MENU_BUTTON, width=156), spacing=8))
         menu.add(Button("Library & help", shortcut="Y", on_click=self.library, style=GHOST_BUTTON, width=320))
         menu.add(Button("Quit", hotkey="Q", on_click=self.quit, style=GHOST_BUTTON, width=320))
-        where = f"slot {newest}" if isinstance(newest, int) else "the campaign mission" if newest == "campaign" else f"the {newest}" if newest else None
+        where = next((saved.name for saved in save_slots(self.game) if saved.slot == newest), None)
         menu.add(Label(f"Continue resumes {where} — in the Library (C)" if where else "No saved game yet — the match autosaves every two minutes",
                        text_style="caption"))
         self._block = Column(Label("", height=150), Row(menu, self._online_card(), spacing=36), spacing=0, anchor=Anchor.CENTER, margin=0)

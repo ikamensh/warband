@@ -87,6 +87,7 @@ def main(out: Path, size: tuple[int, int]) -> None:
             game.scene.campaign()
             frames(3)
             assert isinstance(game.scene, CampaignScene)
+            game.scene.select_campaign(CAMPAIGN)
             shot("02-campaign-fresh")
             game.scene.continue_campaign()
             frames(3)

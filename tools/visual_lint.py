@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import collections
+from functools import partial
 import math
 import os
 import random
@@ -32,10 +33,12 @@ from saga2d import Game, fonts  # noqa: E402
 from saga2d.effects import Toast  # noqa: E402
 from saga2d.testing.native_frames import tick as native_tick  # noqa: E402
 from warband.art import visual_lint as lint  # noqa: E402
-from warband.story.campaign import Progress, ProgressStore  # noqa: E402
+from warband.story.campaign import LEGACY_CAMPAIGN_ID, Campaign, Choice, Mission, Progress, ProgressStore  # noqa: E402
+from warband.story.catalog import CAMPAIGNS  # noqa: E402
 from warband.story.campaign_scene import CampaignScene  # noqa: E402
 from warband.story.dialog import DialogScene  # noqa: E402
-from warband.story.mission_scene import MissionResultScene, MissionScene, build_world  # noqa: E402
+from warband.story.journal import JournalScene  # noqa: E402
+from warband.story.mission_scene import MissionResultScene, MissionScene, build_world, start_mission  # noqa: E402
 from warband.story.missions import CAMPAIGN  # noqa: E402
 from warband.sim.model import World, tile_center  # noqa: E402
 from warband.sim.rules import BLEEDING, BUILT, CHOICES, LODE_GOLD, PLAYABLE_UNITS, SIM_DT, UNITS, UPGRADES, BuildingType, Difficulty, Race, Terrain, UnitType, Upgrade  # noqa: E402
@@ -1288,14 +1291,14 @@ def high_scores_after_match(game: Game) -> None:
 
 @screen
 def campaign_fresh(game: Game) -> None:
-    game.push(CampaignScene())
+    game.push(CampaignScene(campaign=CAMPAIGN))
     ticks(game)
 
 
 @screen
 def campaign_under_way(game: Game) -> None:
     ProgressStore(game.data_dir).save(Progress(CAMPAIGN.id, Difficulty.HARD, completed=["hollowmere", "greywater"], flags={"truce": True}))
-    game.push(CampaignScene())
+    game.push(CampaignScene(campaign=CAMPAIGN))
     ticks(game)
 
 
@@ -1334,6 +1337,218 @@ def mission_result(game: Game) -> None:
     scene.run.state.update(court="done", orcs="done")
     game.push(MissionResultScene(scene, won=True))
     ticks(game)
+
+
+def _catalog_campaign(game: Game, *, campaign: Campaign, underway: bool = False) -> None:
+    """Real progress surfaces under this campaign's own save identity, without assumptions about its plot flags."""
+    if underway:
+        ProgressStore(game.data_dir, campaign.id).save(Progress(campaign.id, Difficulty.MEDIUM,
+                                                               completed=[campaign.missions[0].id], flags={}))
+    game.push(CampaignScene(settings=dict(QUIET), campaign=campaign))
+    ticks(game)
+
+
+def _catalog_mission(game: Game, *, campaign: Campaign, mission: Mission) -> MissionScene:
+    """A real seeded mission held still while the banner passes: scenery, HUD and markers, not a playthrough."""
+    run = build_world(mission, flags={})
+    scene = MissionScene(campaign, run, difficulty=Difficulty.MEDIUM, settings=dict(QUIET))
+    scene.execution.paused = True
+    game.push(scene)
+    ticks(game, 30, .1)
+    return scene
+
+
+def _catalog_opening(game: Game, *, campaign: Campaign, mission: Mission) -> None:
+    _catalog_mission(game, campaign=campaign, mission=mission)
+
+
+def _catalog_briefing(game: Game, *, campaign: Campaign, mission: Mission) -> None:
+    scene = _catalog_mission(game, campaign=campaign, mission=mission)
+    game.push(DialogScene(mission.briefing, campaign.speakers, scene.run.vars))
+    ticks(game)
+
+
+def _catalog_objectives(game: Game, *, campaign: Campaign, mission: Mission) -> None:
+    """A conservative layout fixture: show every objective together, including later phases and alternatives."""
+    scene = _catalog_mission(game, campaign=campaign, mission=mission)
+    scene.run.state.update({objective.id: "open" for objective in mission.objectives})
+    ticks(game)
+
+
+def _catalog_result(game: Game, *, campaign: Campaign, mission: Mission) -> None:
+    """A synthetic success overlay tests result layout only; it proves nothing about winning the actual mission."""
+    scene = _catalog_mission(game, campaign=campaign, mission=mission)
+    game.push(MissionResultScene(scene, won=True))
+    ticks(game)
+
+
+def _undertow_choice(game: Game, *, campaign: Campaign) -> None:
+    """Queue the authored three-answer seam conversation as a presentation fixture."""
+    mission = campaign.mission("undertow_weight")
+    scene = _catalog_mission(game, campaign=campaign, mission=mission)
+    next(trigger for trigger in mission.triggers if trigger.id == "confession").do(scene.run)
+    game.push(DialogScene(scene.run.pending.pop(), campaign.speakers, scene.run.vars, record=True))
+    while not isinstance(game.scene.current, Choice):
+        game.scene.advance()
+    ticks(game)
+
+
+def _undertow_journal(game: Game, *, campaign: Campaign) -> None:
+    """The saved history names the chosen seam answer and presents its real portrait."""
+    _undertow_choice(game, campaign=campaign)
+    game.scene.choose(game.scene.current.options[-1].value)
+    game.scene.skip()
+    scene = game.scene
+    game.push(JournalScene(scene.run, campaign.speakers))
+    game.scene.previous()  # the selected answer, before the following instruction
+    ticks(game)
+
+
+def _undertow_committed(game: Game, *, campaign: Campaign) -> None:
+    """A public peasant repair commits RESEAL; the fixture clears notices to inspect the lasting HUD."""
+    scene = _catalog_mission(game, campaign=campaign, mission=campaign.mission("undertow_maw"))
+    run = scene.run
+    keystone = run.world.building_at(tuple(run.get("keystone_pos")))
+    run.world.repair([unit.id for unit in run.units(0, UnitType.PEASANT)[:1]], keystone.id)
+    for _ in range(1200):
+        run.world.step()
+        run.tick()
+        if run.get("ending_path"):
+            break
+    assert run.get("ending_path") == "sealed"
+    run.pending.clear()
+    run.notes.clear()
+    run.completed.clear()
+    ticks(game)
+
+
+def _undertow_keeper_objectives(game: Game, *, campaign: Campaign) -> None:
+    """Keeper selection must leave all precommit objectives visible above the unit command card."""
+    scene = _catalog_mission(game, campaign=campaign, mission=campaign.mission("undertow_maw"))
+    scene.focus_keeper()
+    ticks(game)
+    assert scene.objectives_body.visible
+
+
+def _undertow_ground_keeper(game: Game, *, campaign: Campaign) -> None:
+    """The cut-grove route shows its living Guardian requirement after a real vault commits GROUND."""
+    from tools.play_undertow import ensure_buildings
+
+    run = build_world(campaign.mission("undertow_maw"), flags={
+        "undertow_grove_cut": True, "undertow_guardian_ally": True})
+    run.world.hold([unit.id for unit in run.soldiers(0)])
+    ensure_buildings(run, [(BuildingType.VAULT, tuple(run.get("maw_rifts")[0]))], seconds=120)
+    assert run.get("ending_path") == "ground" and run.state["ground_guardian"] == "open"
+    run.pending.clear()
+    run.notes.clear()
+    run.completed.clear()
+    scene = MissionScene(campaign, run, difficulty=Difficulty.MEDIUM, settings=dict(QUIET))
+    scene.execution.paused = True
+    game.push(scene)
+    ticks(game, 30, .1)
+    scene.focus_keeper()
+    ticks(game)
+    assert scene.objectives_body.visible
+
+
+def _undertow_reached_keeper(game: Game, *, campaign: Campaign, mission_id: str, answer: str | None = None) -> None:
+    """Real salvage/parley phases leave current work readable beside the selected keeper's card."""
+    from tools.campaign_phases import reached_keeper_phase
+
+    run = reached_keeper_phase(mission_id)
+    scene = MissionScene(campaign, run, difficulty=Difficulty.MEDIUM, settings=dict(QUIET))
+    scene.execution.paused = True
+    game.push(scene)
+    for _ in range(250):
+        if isinstance(game.scene, DialogScene):
+            dialog = game.scene
+            dialog.skip()
+            if isinstance(dialog.current, Choice):
+                assert answer in {option.value for option in dialog.current.options}
+                dialog.choose(answer)
+        ticks(game, 1, .1)
+    scene.focus_keeper()
+    ticks(game)
+    assert scene.objectives_body.visible
+
+
+def _undertow_success(game: Game, *, campaign: Campaign) -> None:
+    """The Maw wins through ordinary orders; only earlier campaign completion is a phase fixture."""
+    from tools.play_undertow import solve_maw
+
+    progress = Progress(campaign.id, Difficulty.MEDIUM, completed=[mission.id for mission in campaign.missions[:-1]])
+    ProgressStore(game.data_dir, campaign.id).save(progress)
+    run = build_world(campaign.mission("undertow_maw"), flags=progress.flags)
+    solve_maw(run, ending="sealed")
+    run.pending.clear()
+    run.notes.clear()
+    game.push(MissionScene(campaign, run, difficulty=Difficulty.MEDIUM, settings=dict(QUIET)))
+    ticks(game)
+    assert isinstance(game.scene, MissionResultScene) and game.scene.won
+
+
+def _undertow_epilogue(game: Game, *, campaign: Campaign) -> None:
+    """The actual successful result proceeds through its debrief to the correct epilogue."""
+    _undertow_success(game, campaign=campaign)
+    game.scene.proceed()
+    game.scene.skip()
+    ticks(game)
+    assert isinstance(game.scene, DialogScene)
+
+
+def _undertow_handoff(game: Game, *, campaign: Campaign) -> None:
+    """The final briefing line, including the longer button the player uses to take command."""
+    mission = campaign.missions[0]
+    start_mission(game, campaign, mission, Progress(campaign.id, Difficulty.MEDIUM), dict(QUIET))
+    for _ in mission.briefing[:-1]:
+        game.scene.advance()
+    ticks(game)
+
+
+def _undertow_first_command(game: Game, *, campaign: Campaign) -> None:
+    """Reach the first fight after Mend: its completion notice must leave the company card readable."""
+    scene = _catalog_mission(game, campaign=campaign, mission=campaign.missions[0])
+    wounded = next(unit for unit in scene.run.soldiers(0) if unit.hp < unit.info.hp)
+    scene.aim_level(1)
+    scene.cast_at(wounded.pos)
+    scene.execution.paused = False
+    ticks(game, 50, .1)
+
+
+def campaign_cases(campaign: Campaign) -> dict[str, Screen]:
+    """The campaign pages, each mission's opening, briefing and full objective panel, and a result layout."""
+    cases = {
+        f"campaign_{campaign.id}_fresh": partial(_catalog_campaign, campaign=campaign),
+        f"campaign_{campaign.id}_under_way": partial(_catalog_campaign, campaign=campaign, underway=True),
+    }
+    for mission in campaign.missions:
+        cases[f"mission_{campaign.id}_{mission.id}_opening"] = partial(_catalog_opening, campaign=campaign, mission=mission)
+        cases[f"mission_{campaign.id}_{mission.id}_briefing"] = partial(_catalog_briefing, campaign=campaign, mission=mission)
+        cases[f"mission_{campaign.id}_{mission.id}_objectives"] = partial(_catalog_objectives, campaign=campaign, mission=mission)
+    cases[f"mission_{campaign.id}_result"] = partial(_catalog_result, campaign=campaign, mission=campaign.missions[-1])
+    if campaign.id == "undertow":
+        cases.update({
+            "mission_undertow_handoff": partial(_undertow_handoff, campaign=campaign),
+            "mission_undertow_first_command": partial(_undertow_first_command, campaign=campaign),
+            "mission_undertow_choice": partial(_undertow_choice, campaign=campaign),
+            "mission_undertow_journal": partial(_undertow_journal, campaign=campaign),
+            "mission_undertow_committed": partial(_undertow_committed, campaign=campaign),
+            "mission_undertow_keeper_objectives": partial(_undertow_keeper_objectives, campaign=campaign),
+            "mission_undertow_ground_keeper": partial(_undertow_ground_keeper, campaign=campaign),
+            "mission_undertow_weight_keeper_phase": partial(_undertow_reached_keeper, campaign=campaign, mission_id="undertow_weight"),
+            "mission_undertow_caravan_keeper_phase": partial(_undertow_reached_keeper, campaign=campaign, mission_id="undertow_caravan"),
+            "mission_undertow_grove_cut_keeper_phase": partial(_undertow_reached_keeper, campaign=campaign, mission_id="undertow_grove", answer="cut"),
+            "mission_undertow_grove_whole_keeper_phase": partial(_undertow_reached_keeper, campaign=campaign, mission_id="undertow_grove", answer="whole"),
+            "mission_undertow_result": partial(_undertow_success, campaign=campaign),
+            "mission_undertow_epilogue": partial(_undertow_epilogue, campaign=campaign),
+        })
+    return cases
+
+
+# Thornwood keeps its explicit regression fixtures; every additional registered campaign is walked automatically.
+EXTRA_CAMPAIGN_SCREENS = {name: show for campaign in CAMPAIGNS if campaign.id != LEGACY_CAMPAIGN_ID
+                          for name, show in campaign_cases(campaign).items()}
+SCREENS.update(EXTRA_CAMPAIGN_SCREENS)
 
 
 # -- Running ----------------------------------------------------------------------------

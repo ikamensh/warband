@@ -161,22 +161,134 @@ def smoke(endpoint: str) -> dict:
 
 
 def native_smoke(output: Path, endpoint: str) -> dict:
-    """Use native clipboard/buttons to create and join a real online match in the package."""
+    """Accept the bundled campaign and native online journey in the frozen executable."""
     return native_journey(output, endpoint, build_info())
 
 
-def native_journey(output: Path, endpoint: str, info: dict) -> dict:
-    """The native online journey with explicitly supplied build metadata.
+def campaign_journey(game, frames, press, capture) -> dict:
+    """Walk Undertow's UI, bundled art and load path in the caller's isolated profile.
+
+    Only campaign progress is seeded between missions, so this checks delivery without
+    solving five battles. Every mission is entered from the title, saved by the normal
+    pause-menu Campaign action, and resumed through the title's Load game browser.
+    ``press`` accepts key names or characters; the frozen caller sends real pyglet events.
+    """
+    from warband.sim.model import World
+    from warband.story.campaign import Choice, ProgressStore
+    from warband.story.campaign_scene import CampaignScene
+    from warband.story.catalog import UNDERTOW
+    from warband.story.dialog import DialogScene
+    from warband.story.mission_scene import MissionScene, campaign_save_slot
+    from warband.ui.scene import SaveBrowserScene
+    from warband.ui.title import TitleScene
+
+    assert isinstance(game.scene, TitleScene)
+    portraits = set()
+    missions = []
+    slot = campaign_save_slot(UNDERTOW)
+
+    def show_objectives(scene):
+        # Focus changes card geometry; wait afterwards for banners/notices to clear.
+        for _ in range(600):
+            frames(1)
+            if isinstance(game.scene, DialogScene):
+                press("SPACE")
+            if game.scene is scene and scene.objectives.visible and scene.objectives_body.visible:
+                return
+        capture(f"-campaign-{scene.mission.id}-objectives-blocked")
+        raise AssertionError(f"Objectives never became visible for {scene.mission.id}")
+
+    for index, mission in enumerate(UNDERTOW.missions):
+        press("A")
+        assert isinstance(game.scene, CampaignScene) and game.scene.campaign is UNDERTOW
+        assert game.scene.next_mission is mission
+        if index == 0:
+            cover = game.scene.cover_key
+            assert cover and game.assets.has_image(cover), "The Undertow cover is missing"
+            assert min(game.backend.get_image_size(game.assets.image(cover))) > 1
+            capture("-campaign-cover")
+        press("ENTER")
+        assert isinstance(game.scene, DialogScene), f"No briefing for {mission.id}"
+        for _ in range(len(mission.briefing) + 1):
+            if not isinstance(game.scene, DialogScene):
+                break
+            item = game.scene.current
+            assert item is not None and not isinstance(item, Choice), "A mission briefing unexpectedly needs an answer"
+            speaker = UNDERTOW.speakers.get(item.speaker)
+            if speaker is not None and speaker.portrait is not None:
+                key = f"story.portrait.{speaker.portrait}"
+                assert game.assets.has_image(key), f"Missing authored portrait: {item.speaker}"
+                assert min(game.backend.get_image_size(game.assets.image(key))) > 1
+                if item.speaker not in portraits:
+                    capture(f"-campaign-portrait-{item.speaker.lower()}")
+                    portraits.add(item.speaker)
+            press("SPACE")
+        assert isinstance(game.scene, MissionScene) and game.scene.mission is mission
+        scene = game.scene
+        assert type(scene.world) is World, f"{mission.id} did not use the active simulation"
+        press("F3")
+        show_objectives(scene)
+        assert any(getattr(component, "text", None) == objective.text
+                   for component in scene.objectives_body.walk() for objective in mission.objectives), mission.id
+        records = scene.run.get("landmarks")
+        assert records, f"No landmarks for {mission.id}"
+        saved_landmarks = json.loads(json.dumps(records))
+        for id, record in records.items():
+            assert scene.landmarks.known(id), id
+            assert game.assets.has_image(f"landmark.{record['kind']}.{record['state']}"), id
+        capture(f"-campaign-{mission.id}")
+        assert scene.objectives.visible and scene.objectives_body.visible, mission.id
+        saved_time = scene.world.time
+        press("F10")
+        press("C")  # leaving a mission writes its own automatic campaign slot
+        assert isinstance(game.scene, CampaignScene) and game.scene.resume is not None
+        press("ESCAPE")
+        assert isinstance(game.scene, TitleScene)
+        press("L")
+        assert isinstance(game.scene, SaveBrowserScene)
+        saved = next(entry for entry in game.scene.listing if entry.slot == slot)
+        assert saved.automatic and saved.entry["summary"]["mission"].endswith(mission.title)
+        capture(f"-campaign-{mission.id}-load")
+        press(saved.key)
+        assert isinstance(game.scene, MissionScene) and game.scene.mission is mission
+        resumed = game.scene
+        assert type(resumed.world) is World and resumed.world.time >= saved_time
+        assert resumed.run.get("landmarks") == saved_landmarks
+        capture(f"-campaign-{mission.id}-resumed")
+        missions.append(mission.id)
+        press("F10")
+        press("C")
+        assert isinstance(game.scene, CampaignScene)
+        if index + 1 < len(UNDERTOW.missions):
+            # This profile is temporary; advance the catalogue without manufacturing a battle victory.
+            store = ProgressStore(game.data_dir, UNDERTOW.id)
+            progress = store.load()
+            assert progress is not None
+            progress.complete(mission, {})
+            store.save(progress)
+            game.save_manager.delete(slot)
+        press("ESCAPE")
+        assert isinstance(game.scene, TitleScene)
+    assert portraits == {name for name, speaker in UNDERTOW.speakers.items() if speaker.portrait is not None}
+    return {"missions": missions, "portraits": sorted(portraits), "cover": True,
+            "objectives": True, "landmarks": True, "autosave_load": True}
+
+
+def native_journey(output: Path, endpoint: str, info: dict, *, campaign_only: bool = False) -> dict:
+    """The native campaign and online journeys with explicitly supplied build metadata.
 
     The frozen wrapper above passes the app's own receipt, which refuses a source checkout;
     source regression passes a declared placeholder and runs here in a separate process, with
-    real native inputs against a real loopback authority."""
-    if not endpoint:
+    real native inputs against a real loopback authority. ``campaign_only`` runs the same
+    campaign portion for local pixel inspection without repeating the online journey;
+    the frozen acceptance wrapper always runs both."""
+    if not endpoint and not campaign_only:
         raise ValueError("Native multiplayer acceptance requires an explicit --endpoint")
     os.environ["SAGA2D_SILENT"] = "1"
     os.environ["SAGA2D_HEADLESS"] = "1"
     os.environ["SAGA2D_SERVER_URL"] = endpoint
     compiled = compiled_simulation()
+    assert compiled, "Native package acceptance requires the bundled compiled simulation"
     from PIL import ImageStat
     from pyglet import gl
     from pyglet.window import key
@@ -201,13 +313,15 @@ def native_journey(output: Path, endpoint: str, info: dict) -> dict:
             bank.wait()  # the whole catalogue must compose in the packaged build; keep the frames below undisturbed
             settings = game.settings(DEFAULT_SETTINGS)
 
-            def frames(count=3):
+            def frames(count=1):
+                # This checks UI state, not frame cadence. A slow software renderer must not
+                # need ninety frames just to wait out a three-second mission banner.
                 for _ in range(count):
                     started = time.monotonic()
-                    game.tick(1 / 30)
+                    game.tick(.1)
                     if creator is not None:
                         creator.poll()
-                    time.sleep(max(0, 1 / 30 - (time.monotonic() - started)))
+                    time.sleep(max(0, .1 - (time.monotonic() - started)))
 
             def wait(condition):
                 deadline = time.monotonic() + 20
@@ -248,6 +362,16 @@ def native_journey(output: Path, endpoint: str, info: dict) -> dict:
 
             game.push(TitleScene(settings=settings))
             capture("-title")
+            campaign = campaign_journey(game, frames,
+                                        lambda name: press(ord(name.lower()) if len(name) == 1 else getattr(key, name)), capture)
+            report = {"passed": True, "source_commit": info["source_commit"], "version": info["version"],
+                      "executable": info["executable"], "executable_sha256": info["executable_sha256"],
+                      "renderer": gl.gl_info.get_renderer(), "opengl_version": gl.gl_info.get_version_string(), "vendor": gl.gl_info.get_vendor(),
+                      "backend": "pyglet", "native_campaign": True, "campaign_autosave_load": True,
+                      "campaign": campaign, "compiled_simulation": compiled,
+                      "sound_catalogue": len(bank.names), "images": images}
+            if campaign_only:
+                return report
             press(key.M)
             assert isinstance(game.scene, MatchMenu)
             capture("-multiplayer")
@@ -310,12 +434,8 @@ def native_journey(output: Path, endpoint: str, info: dict) -> dict:
             assert isinstance(game.scene, GameScene) and game.backend.scale_factor != 1.0
             capture("")
             assert game.scene.world.units and game.scene.world.buildings
-            return {"passed": True, "source_commit": info["source_commit"], "version": info["version"],
-                    "executable": info["executable"], "executable_sha256": info["executable_sha256"],
-                    "renderer": gl.gl_info.get_renderer(), "opengl_version": gl.gl_info.get_version_string(), "vendor": gl.gl_info.get_vendor(),
-                    "backend": "pyglet", "native_multiplayer_input": True, "native_clipboard_join": True,
-                    "live_match_menu": True, "native_settlement_planning": True, "start_after_resize": True, "compiled_simulation": compiled,
-                    "sound_catalogue": len(bank.names), "images": images}
+            return {**report, "native_multiplayer_input": True, "native_clipboard_join": True,
+                    "live_match_menu": True, "native_settlement_planning": True, "start_after_resize": True}
         finally:
             game.backend.set_clipboard_text(clipboard)
             game.close()

@@ -3490,6 +3490,14 @@ class GameScene(Scene):
             if qx <= mx < qx + 30 and qy <= my < qy + 30:
                 self.tooltip = f"Queued {i + 1}: {world.unit_info(building.player, queued).name}"
 
+    def entity_name(self, entity: Unit | Sighting) -> str:
+        """The selection card's caption, including a neutral lair's encounter name."""
+        if isinstance(entity, Sighting) and entity.type is BuildingType.LAIR:
+            from warband.art.monsters import LAIR_NAMES, LairKind
+
+            return CAMP_ENCOUNTERS[entity.camp_encounter].name if entity.camp_encounter else LAIR_NAMES[LairKind(entity.lair_kind)]
+        return entity.info.name if isinstance(entity, Unit) else RACES[entity.race].buildings[entity.type].name
+
     def _draw_entity_card(self, entity: Unit | Sighting, x: float, y: float) -> None:
         """One selected unit or building.  What a rival's unit is ordered to do and what their building is
         making are theirs to know: the card says them of the player's own only."""
@@ -3500,12 +3508,7 @@ class GameScene(Scene):
         tx = x + CARD_TEXT
         abandoned = isinstance(entity, Sighting) and entity.abandoned
         owner = "Abandoned" if abandoned else world.players[entity.player].name if entity.player is not None else "Neutral"
-        if isinstance(entity, Sighting) and entity.type is BuildingType.LAIR:
-            from warband.art.monsters import LAIR_NAMES, LairKind
-
-            name = CAMP_ENCOUNTERS[entity.camp_encounter].name if entity.camp_encounter else LAIR_NAMES[LairKind(entity.lair_kind)]
-        else:
-            name = entity.info.name if isinstance(entity, Unit) else RACES[entity.race].buildings[entity.type].name
+        name = self.entity_name(entity)
         self.draw_text(f"{name}", tx, y + 16, style="heading")
         color = MUTED if abandoned else rgba(world.players[entity.player].color) if entity.player is not None else GOLD
         heading = self.game.theme.get_text_style("heading")  # the name's style: the owner follows wherever the theme ends it
@@ -3892,7 +3895,7 @@ class PauseScene(_Overlay):
         self.game.push(SettingsScene(self.game_scene))
 
     def help(self) -> None:
-        self.game.push(HelpScene(self.game_scene.scheme))
+        self.game_scene.open_help()
 
     def resign(self) -> None:
         scene = self.game_scene
@@ -4029,8 +4032,44 @@ class SettingsScene(_Overlay):
         self._adjust(self.row_keys[self.ui.focused], 1)
 
 
+@dataclass(frozen=True)
+class SaveSlot:
+    """A player-facing slot and its current saved-game summary."""
+
+    slot: int | str
+    name: str
+    key: str
+    entry: dict[str, Any] | None
+    automatic: bool = False
+
+
+def save_slots(game: Any) -> list[SaveSlot]:
+    """Discover ordinary slots and existing campaign autosaves in one place.
+
+    Campaign identities come from the playable catalogue and keep their own files. Empty
+    campaign slots are omitted; only the ordinary manual slots can be written by the browser.
+    """
+    from warband.story.catalog import CAMPAIGNS
+    from warband.story.mission_scene import campaign_save_slot
+
+    names = {"quick": "Quick", "autosave": "Autosave",
+             **{campaign_save_slot(campaign): campaign.title for campaign in CAMPAIGNS}}
+    entries = game.save_manager.list_slots(SAVE_SLOTS, names=tuple(names))
+    slots: list[SaveSlot] = []
+    campaign_key = SAVE_SLOTS + 1
+    for slot, entry in zip([*range(1, SAVE_SLOTS + 1), *names], entries):
+        if isinstance(slot, int):
+            slots.append(SaveSlot(slot, f"Slot {slot}", str(slot), entry))
+        elif slot in ("quick", "autosave"):
+            slots.append(SaveSlot(slot, names[slot], "Q" if slot == "quick" else "A", entry, slot == "autosave"))
+        elif entry is not None:
+            slots.append(SaveSlot(slot, names[slot], str(campaign_key), entry, True))
+            campaign_key += 1
+    return slots
+
+
 class SaveBrowserScene(_Overlay):
-    """Three manual slots, the quicksave and the autosave with what they hold; a key or a click picks one."""
+    """Manual saves and every available autosave; a key or click picks one without overwriting campaign slots."""
 
     pause_below = True
     controls = {"1": "pick_1", "2": "pick_2", "3": "pick_3", "q": "pick_quick", "a": "pick_auto"}
@@ -4038,12 +4077,12 @@ class SaveBrowserScene(_Overlay):
     def __init__(self, game: Any, mode: str, *, on_pick: Callable[[int | str], None]) -> None:
         self.mode = mode
         self.on_pick = on_pick
-        self.listing = game.save_manager.list_slots(SAVE_SLOTS, names=("quick", "autosave"))
+        self.listing = save_slots(game)
 
     def on_enter(self) -> None:
         panel = self.panel("Save game" if self.mode == "save" else "Load game")
-        for entry, slot, key in zip(self.listing, [*range(1, SAVE_SLOTS + 1), "quick", "autosave"], ("1", "2", "3", "Q", "A")):
-            name = f"Slot {slot}" if isinstance(slot, int) else slot.title()
+        for saved in self.listing:
+            entry, slot = saved.entry, saved.slot
             if entry is None:
                 detail, ok = "empty", self.mode == "save"
             elif "error" in entry:
@@ -4053,10 +4092,11 @@ class SaveBrowserScene(_Overlay):
                 head = f"Campaign · {s['mission']}" if "mission" in s else s.get("player", "")
                 detail = f"{head} · {s.get('map', '')} · {s.get('players', '?')} players · {s.get('difficulty', '')} · {s.get('clock', '')} · {entry['timestamp'][:16].replace('T', ' ')}"
                 ok = True
-            button = Button(name, hotkey=key, on_click=lambda sl=slot: self.pick(sl), style=ACTION_BUTTON if ok else GHOST_BUTTON, width=150)
-            button.enabled = ok and not (self.mode == "save" and slot == "autosave")
-            panel.add(Row(button, Label(detail, text_style="body", width=560, wrap=True), spacing=12))
-        panel.add(KeyHints([("1 2 3 Q A", "pick"), ("Esc", "back")]))
+            button = Button(saved.name, shortcut=saved.key, on_click=lambda sl=slot: self.pick(sl),
+                            style=ACTION_BUTTON if ok else GHOST_BUTTON, width=220)
+            button.enabled = ok and not (self.mode == "save" and saved.automatic)
+            panel.add(Row(button, Label(detail, text_style="body", width=490, wrap=True), spacing=12))
+        panel.add(KeyHints([(" ".join(saved.key for saved in self.listing), "pick"), ("Esc", "back")]))
 
     def pick(self, slot: int | str) -> None:
         self.game.pop()
@@ -4091,7 +4131,7 @@ def command_keys(scheme: Scheme, sep: str = "/") -> str:
     return "Ctrl+" + sep.join(shortcut.removeprefix("Ctrl+") for shortcut in shortcuts)
 
 
-def help_keys(scheme: Scheme, *, magic: bool = False) -> list[tuple[str, str]]:
+def help_keys(scheme: Scheme, *, magic: bool = False, f3_action: str = "pause") -> list[tuple[str, str]]:
     """The How to play table for *scheme*: its own keys first, then what every scheme shares."""
     idle = key_label(scheme.keys["idle_soldier"])
     if scheme.modes:
@@ -4108,7 +4148,7 @@ def help_keys(scheme: Scheme, *, magic: bool = False) -> list[tuple[str, str]]:
              "recall / assign / add to a group; " + ("Alt+1-3: aim a spell; " if magic else "") + "Tab: idle worker; comma: idle soldier; Space: alert"),
             ("Click / drag / right-click", "select / box-select / contextual order; selecting keeps the active mode"),
             ("Arrows / edges / wheel", "scroll; middle-drag scrolls too; wheel or + / − zooms"),
-            ("F1 F2 F3 F5 F9 F11", "help, codex, pause, save, load (offline), health bars; F6-F8 camera bookmarks (Ctrl sets)"),
+            ("F1 F2 F3 F5 F9 F11", f"help, codex, {f3_action}, save, load (offline), health bars; F6-F8 camera bookmarks (Ctrl sets)"),
             ("Esc / Right-click", "cancel the target first; Esc then returns home, deselects, and opens the menu"),
         ]
     if scheme.positional:
@@ -4130,7 +4170,7 @@ def help_keys(scheme: Scheme, *, magic: bool = False) -> list[tuple[str, str]]:
         ("1-9 / Ctrl / Shift" + (" / Alt" if magic else ""),
          "recall / assign / add to a control group;  " + ("Alt+1-3: aim that level's spell;  " if magic else "") + "Tab: idle peasant;  Space: alert"),
         ("Arrows / edges / wheel", "scroll (middle-drag too);  wheel or + / −: zoom;  minimap: left-click looks, right-click sends"),
-        ("F1 F2 F3 F5 F9 F11", "help, codex (5: tech tree), pause, save, load (offline), health bars;  F6-F8 bookmarks (Ctrl sets)"),
+        ("F1 F2 F3 F5 F9 F11", f"help, codex (5: tech tree), {f3_action}, save, load (offline), health bars;  F6-F8 bookmarks (Ctrl sets)"),
         ("Esc", "back one level: the order, the catalogue, the selection, then the menu"),
     ]
 
@@ -4143,18 +4183,21 @@ class HelpScene(_Overlay):
 
     pause_below = True
 
-    def __init__(self, scheme: Scheme, *, magic: bool = False) -> None:
+    def __init__(self, scheme: Scheme, *, magic: bool = False, f3_action: str = "pause", mission: bool = False) -> None:
         self.scheme = scheme
         self.magic = magic
+        self.f3_action = f3_action
+        self.mission = mission
 
     def on_enter(self) -> None:
         panel = self.panel(f"How to play · {self.scheme.name} controls")
-        intro = " ".join(HELP_INTRO)
+        intro = (HELP_INTRO[0] + " starts. The mission objectives decide victory. J in the match opens the mission journal for its briefing and decisions; "
+                 "hover minimap diamonds for charted objective names." if self.mission else " ".join(HELP_INTRO))
         if self.magic:
             intro += " A vault on a violet ley rift draws aether for the spells a Mage Tower researches (Alt+1-3)."
         panel.add(Label(intro, text_style="body", width=HELP_KEY_WIDTH + 14 + HELP_TEXT_WIDTH, wrap=True))
         table = Column(spacing=4)
-        for keys, what in help_keys(self.scheme, magic=self.magic):
+        for keys, what in help_keys(self.scheme, magic=self.magic, f3_action=self.f3_action):
             table.add(Row(Label(keys, text_style="hud", width=HELP_KEY_WIDTH, align="right", text_color=GOLD),
                           Label(what, text_style="body", width=HELP_TEXT_WIDTH, wrap=True), spacing=14))
         panel.add(table)

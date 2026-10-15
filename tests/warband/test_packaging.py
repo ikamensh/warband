@@ -72,7 +72,8 @@ def test_native_clipboard_smoke_creates_a_casual_room(tmp_path):
     result = json.loads(report.read_text(encoding="utf-8"))
     assert result["passed"] is True
     for key in ("native_multiplayer_input", "native_clipboard_join", "live_match_menu",
-                "native_settlement_planning", "start_after_resize", "compiled_simulation"):
+                "native_settlement_planning", "start_after_resize", "compiled_simulation",
+                "native_campaign", "campaign_autosave_load"):
         assert result[key] is True
     assert result["source_commit"] == "source-check" and result["backend"] == "pyglet"
     for name in result["images"]:

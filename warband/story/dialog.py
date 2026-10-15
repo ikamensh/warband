@@ -8,10 +8,14 @@ paused while the panel is up.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any, Callable
 
-from saga2d import Anchor, Button, Column, Component, InputEvent, KeyHints, Label, Row, Scene
+from PIL import Image as PILImage
+
+from saga2d import Anchor, Button, Column, Component, Image, InputEvent, KeyHints, Label, Row, Scene
 from warband.story.campaign import Choice, Dialog, Item, Line, Speaker
+from warband.story.journal import remember
 from warband.art.production import ProductionIcon
 from warband.audio.sound import play_sound
 from warband.ui.style import ACTION_BUTTON, GHOST_BUTTON, MUTED, OVERLAY_STYLE
@@ -21,19 +25,35 @@ PANEL_WIDTH = 980
 BOTTOM = 44
 
 
+def speaker_portrait(game, speaker: Speaker) -> str | None:
+    """Register authored character art once, shared by the dialogue and the linked unit's selection portraits."""
+    if speaker.portrait is None:
+        return None
+    key = f"story.portrait.{speaker.portrait}"
+    if not game.assets.has_image(key):
+        with PILImage.open(Path(__file__).resolve().parents[1] / "assets" / speaker.portrait) as picture:
+            game.assets.image_from_pil(key, picture)
+    return key
+
+
 class DialogScene(Scene):
     transparent = True
     pause_below = True
     controls = {("space", "return"): "advance", "escape": "skip"}
 
     def __init__(self, dialog: Dialog, speakers: dict[str, Speaker], vars: dict[str, Any], *,
-                 on_done: Callable[[], None] | None = None) -> None:
+                 on_done: Callable[[], None] | None = None, record: bool = False,
+                 heading: str = "", end_label: str = "Continue") -> None:
         self.items: list[Item] = list(dialog)
         self.speakers = speakers
         self.vars = vars
         self.on_done = on_done
         self.index = 0
         self.finished = False
+        self.record = record
+        self.heading = heading
+        self.end_label = end_label
+        self._remembered: set[int] = set()
 
     @property
     def current(self) -> Item | None:
@@ -54,26 +74,36 @@ class DialogScene(Scene):
         if item is None:
             self._finish()
             return
+        if self.record and isinstance(item, Line) and self.index not in self._remembered:
+            remember(self.vars, item.speaker, item.text)
+            self._remembered.add(self.index)
         width = min(PANEL_WIDTH, self.game.width - 40)
         speaker = self.speakers.get(item.speaker) if item.speaker else None
         if item.speaker and speaker is None:
             raise KeyError(f"no speaker {item.speaker!r} in this campaign")
         text_width = width - 2 * OVERLAY_STYLE.padding - PORTRAIT - 18
         column = Column(spacing=10, width=text_width)
+        if self.heading:
+            column.add(Label(self.heading, text_style="caption", width=text_width, text_color=MUTED))
         column.add(Label(speaker.name if speaker is not None else "", text_style="title", width=text_width))
         if isinstance(item, Line):
             column.add(Label(item.text, text_style="body", wrap=True, width=text_width, text_color=None if speaker is not None else MUTED))
-            column.add(Row(Button("Continue", hotkey="Space", on_click=self.advance, style=ACTION_BUTTON, width=150),
+            last = not any(isinstance(following, Choice) or following.spoken(self.vars) for following in self.items[self.index+1:])
+            column.add(Row(Button(self.end_label if last else "Continue", hotkey="Space", on_click=self.advance, style=ACTION_BUTTON, width=220),
                            KeyHints([("Esc", "skip")]), spacing=14))
         else:
             column.add(Label(item.prompt, text_style="body", wrap=True, width=text_width))
-            answers = Row(spacing=10)
+            answers = Column(spacing=8, width=text_width)
             for number, option in enumerate(item.options, 1):
                 answers.add(Button(option.label, shortcut=str(number), on_click=lambda value=option.value: self.choose(value),
-                                   style=ACTION_BUTTON if number == 1 else GHOST_BUTTON, width=max(180, (text_width - 10 * (len(item.options) - 1)) // len(item.options))))
+                                   style=ACTION_BUTTON if number == 1 else GHOST_BUTTON, width=text_width))
             column.add(answers)
-        portrait: Component = (ProductionIcon(speaker.subject, speaker.player, speaker.race, size=PORTRAIT) if speaker is not None
-                               else Component(width=PORTRAIT, height=PORTRAIT))
+        key = speaker_portrait(self.game, speaker) if speaker is not None else None
+        if key is not None:
+            portrait: Component = Image(key, width=PORTRAIT, height=PORTRAIT)
+        else:
+            portrait = (ProductionIcon(speaker.subject, speaker.player, speaker.race, size=PORTRAIT) if speaker is not None
+                        else Component(width=PORTRAIT, height=PORTRAIT))
         self.ui.add(Row(portrait, column, spacing=18, anchor=Anchor.BOTTOM_CENTER, margin=(0, BOTTOM), style=OVERLAY_STYLE))
 
     def draw(self) -> None:
@@ -97,6 +127,9 @@ class DialogScene(Scene):
         item = self.current
         if not isinstance(item, Choice):
             return
+        if self.record:
+            answer = next(option.label for option in item.options if option.value == value)
+            remember(self.vars, item.speaker, f"{item.prompt}\nAnswer: {answer}")
         self.vars[item.key] = value
         play_sound("button")
         self.index += 1
