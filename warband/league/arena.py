@@ -142,6 +142,10 @@ from warband.brains.apex4 import APEX4, APEX4_FOR_LAYOUT  # noqa: E402 - round f
 
 register("apex4", lambda player, seed: RaceBrain(player, APEX4, seed, APEX4_FOR_LAYOUT))
 
+from warband.brains.apex5 import APEX5, APEX5_FOR_LAYOUT  # noqa: E402 - the island roster, bred on Scaleway
+
+register("apex5", lambda player, seed: RaceBrain(player, APEX5, seed, APEX5_FOR_LAYOUT))
+
 from warband.brains.policy import LEARNED, PolicyBrain  # noqa: E402 - the learned stance policy over apex3
 
 register("policy", lambda player, seed: PolicyBrain(player, APEX3, seed, LEARNED, APEX3_FOR_LAYOUT))

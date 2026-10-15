@@ -42,15 +42,28 @@ def test_the_search_can_seed_itself_from_contenders_and_bred_postures():
         assert evolve.profile_of(genes, name).name == name
 
 
+def test_champions_is_a_difficulty_that_draws_from_the_pooled_rosters():
+    from warband.brains.ai import DIFFICULTY_ELO, DIFFICULTY_NOTES, make_brain
+    from warband.brains.champions import CHAMPIONS
+    from warband.brains.pro_ai import RaceBrain
+    from warband.sim.rules import Difficulty, Race
+
+    assert set(DIFFICULTY_ELO) == set(Difficulty) and set(DIFFICULTY_NOTES) == set(Difficulty)
+    assert DIFFICULTY_ELO[Difficulty.CHAMPIONS] > DIFFICULTY_ELO[Difficulty.GRANDMASTER]
+    assert all(len(CHAMPIONS[race]) == 6 for race in Race)
+    assert isinstance(make_brain(0, Difficulty.CHAMPIONS, seed=7), RaceBrain)
+
+
 def test_the_apex_rosters_have_postures_for_every_race_and_play_as_agents():
     from warband.brains.apex import APEX
     from warband.brains.apex2 import APEX2
     from warband.brains.apex3 import APEX3
     from warband.brains.apex4 import APEX4
+    from warband.brains.apex5 import APEX5
     from warband.brains.pro_ai import RaceBrain
     from warband.sim.rules import Race
 
-    for roster, agent in ((APEX, "apex"), (APEX2, "apex2"), (APEX3, "apex3"), (APEX4, "apex4")):
+    for roster, agent in ((APEX, "apex"), (APEX2, "apex2"), (APEX3, "apex3"), (APEX4, "apex4"), (APEX5, "apex5")):
         assert set(roster) == set(Race)
         assert all(len(postures) >= 2 for postures in roster.values())
         names = [p.name for postures in roster.values() for p in postures]

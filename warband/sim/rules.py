@@ -780,6 +780,7 @@ class Difficulty(IdentityEnum):
     HARD = "hard"
     MASTER = "master"
     GRANDMASTER = "grandmaster"  # postures bred by a genetic search, a race's own for each race (warband/brains/bred.py)
+    CHAMPIONS = "champions"  # a group of the strongest bred rosters, one drawn per game (warband/brains/champions.py)
 
 
 class MapTheme(IdentityEnum):

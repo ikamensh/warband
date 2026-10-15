@@ -783,6 +783,10 @@ def make_brain(player: int, difficulty: Difficulty, seed: int = 0, *, own_units:
         from warband.brains.bred import BRED, BRED_FOR_LAYOUT  # tables of profiles, imported late as pro_ai is
 
         return RaceBrain(player, BRED, seed, BRED_FOR_LAYOUT, own_units=own_units, magic=magic, spell=spell)
+    if difficulty is Difficulty.CHAMPIONS:
+        from warband.brains.champions import CHAMPIONS, CHAMPIONS_FOR_LAYOUT
+
+        return RaceBrain(player, CHAMPIONS, seed, CHAMPIONS_FOR_LAYOUT, own_units=own_units, magic=magic, spell=spell)
     postures = PRO_FOR[difficulty]
     profile = PRO_PROFILES[postures[(seed + player) % len(postures)]]
     return ProBrain(player, played(profile, own_units=own_units, magic=magic, spell=spell))
@@ -802,6 +806,7 @@ DIFFICULTY_ELO: Final[dict[Difficulty, int]] = {
     Difficulty.HARD: 1122,
     Difficulty.MASTER: 1307,
     Difficulty.GRANDMASTER: 1381,
+    Difficulty.CHAMPIONS: 1465,  # the pooled apex3/4/5 rosters, laddered on the merged maps (1200 games)
 }
 
 #: One line per setting, for the same screen. Kept short enough to fit beside
@@ -812,6 +817,7 @@ DIFFICULTY_NOTES: Final[dict[Difficulty, str]] = {
     Difficulty.HARD: "Strong, but slow to think and short of workers.",
     Difficulty.MASTER: "Marches at five, towers up at home, or raises a tower by your mine.",
     Difficulty.GRANDMASTER: "Bred by a genetic search: an opening and an army of its race's own.",
+    Difficulty.CHAMPIONS: "The strongest bred rosters pooled: a different champion each game.",
 }
 
 
