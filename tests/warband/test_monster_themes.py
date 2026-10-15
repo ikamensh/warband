@@ -19,7 +19,6 @@ from warband.sim import camps, mapgen
 from warband.sim.rules import BuildingType, MapTheme, Race, UnitType
 from warband.ui.scene import GameScene
 from warband.ui.style import build_theme
-from warband.ui.view import NEUTRAL_MINIMAP
 
 from tests.warband.battlefield import SETTINGS, field
 
@@ -145,13 +144,22 @@ def scene_on(game: Game, theme: MapTheme) -> GameScene:
     return scene
 
 
+def minimap_sample(scene: GameScene) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
+    """The first den's rendered mark and one clear ground pixel, through the public minimap image."""
+    pixels = np.asarray(scene.view.minimap_image())
+    lair = scene.world.buildings[scene.world.camps[0].lair]
+    scale = pixels.shape[0] // scene.world.height
+    mark = tuple(int(v) for v in pixels[lair.y * scale, lair.x * scale, :3])
+    return mark, tuple(int(v) for v in pixels[2 * scale, 2 * scale, :3])
+
+
 @pytest.mark.parametrize(
     ("theme", "suffix"),
     [(MapTheme.SUMMER, None), (MapTheme.WINTER, ".winter"), (MapTheme.WASTELAND, ".wasteland")],
     ids=["summer", "winter", "wasteland"],
 )
 def test_the_view_draws_the_worlds_own_coats(tmp_path, theme: MapTheme, suffix: str | None) -> None:
-    """Through the real sprite path: every guard and den key wears the world's own coat."""
+    """Every guard and den wears the world's coat; its minimap mark keeps the neutral seat colour."""
     game = Game(f"Warband coats {theme.value}", backend="mock", resolution=(1280, 800), theme=build_theme(),
                 save_dir=tmp_path / "saves")
     try:
@@ -163,12 +171,17 @@ def test_the_view_draws_the_worlds_own_coats(tmp_path, theme: MapTheme, suffix: 
         lair_keys = {scene.view._building_keys[camp.lair] for camp in world.camps}
         for key in guard_keys | lair_keys:
             assert (suffix is None and ".winter" not in key and ".wasteland" not in key) or (suffix is not None and key.endswith(suffix)), (theme, key)
+        mark, _ = minimap_sample(scene)
+        assert mark == tuple(world.players[world.neutral].color), (theme, mark)
     finally:
         game.close()
 
 
+@pytest.mark.slow
 def test_the_minimap_keeps_one_neutral_mark_on_every_landscape(tmp_path) -> None:
-    """The minimap deliberately does not distinguish dens or coats: a den wears its seat's colour —
+    """Slow: compare three complete match scenes and their minimaps, one per landscape.
+
+    The minimap deliberately does not distinguish dens or coats: a den wears its seat's colour —
     the wilds' bone grey, nobody's yellow for a bare mine — on every landscape, while the ground
     itself still changes with it."""
     grounds, marks = {}, set()
@@ -177,12 +190,10 @@ def test_the_minimap_keeps_one_neutral_mark_on_every_landscape(tmp_path) -> None
                     save_dir=tmp_path / "saves")
         try:
             scene = scene_on(game, theme)
-            pixels = np.asarray(scene.view.minimap_image())
-            lair = scene.world.buildings[scene.world.camps[0].lair]
-            mark = tuple(int(v) for v in pixels[lair.y * 2, lair.x * 2, :3])
+            mark, ground = minimap_sample(scene)
             assert mark == tuple(scene.world.players[scene.world.neutral].color), (theme, mark)
             marks.add(mark)
-            grounds[theme] = tuple(pixels[4, 4, :3])
+            grounds[theme] = ground
         finally:
             game.close()
     assert len(marks) == 1, marks

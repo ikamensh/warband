@@ -83,22 +83,22 @@ def test_weight_seam_rift_is_clear_of_the_seam_and_capable_of_a_vault() -> None:
     assert run.footprint_free(B.VAULT, rift)
 
 
-def test_maw_starts_within_supply_for_every_flag_combination() -> None:
+@pytest.mark.parametrize("flags", [
+    pytest.param({}, id="default"),
+    pytest.param({"undertow_mill_vault": True}, id="mill-vault"),
+    pytest.param({"undertow_mill_vault": False, "undertow_dam": True, "undertow_guardian_ally": True},
+                 id="dam-and-guardian"),
+    pytest.param({"undertow_mill_vault": True, "undertow_dam": True, "undertow_guardian_core": True,
+                  "undertow_seam_mined": True}, id="vault-dam-core-and-gold"),
+    pytest.param({"undertow_mill_vault": False, "undertow_dam": False, "undertow_guardian_ally": True,
+                  "undertow_seam_capped": True}, id="guardian-and-cap"),
+])
+def test_maw_starts_within_supply_for_every_flag_combination(flags) -> None:
     """The audit's trap: Brakk's band, the Guardian and a farm lost to the blown dam must never
     together put the starting camp over supply, or training is unreachable."""
-    combos = [
-        {},
-        {"undertow_mill_vault": True},
-        {"undertow_mill_vault": False, "undertow_dam": True, "undertow_guardian_ally": True},
-        {"undertow_mill_vault": True, "undertow_dam": True, "undertow_guardian_core": True,
-         "undertow_seam_mined": True},
-        {"undertow_mill_vault": False, "undertow_dam": False, "undertow_guardian_ally": True,
-         "undertow_seam_capped": True},
-    ]
-    for flags in combos:
-        run = build_world(mission("undertow_maw"), flags=flags)
-        used, cap = run.world.supply(0)
-        assert used <= cap, f"{flags}: {used} > {cap}"
+    run = build_world(mission("undertow_maw"), flags=flags)
+    used, cap = run.world.supply(0)
+    assert used <= cap, f"{flags}: {used} > {cap}"
 
 
 def test_maw_flag_effects_are_real_board_differences() -> None:
