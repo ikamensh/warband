@@ -34,7 +34,8 @@ left-click looks there, right-click sends the selected units.
   the same footprint counts. The Mend spell heals units; it cannot repair buildings.
 - **OPEN** — after the first pylon commits this ending, send **Issa to the marked Relief Sluice**
   inside the north rim. She opens the bypass using Dagna’s corrected seam survey. Destroy the
-  three hostile seal-pylons (south, west, east gates); release waits for the bypass. Sella stands
+  three hostile seal-pylons (south, west, east gates). These anchor the seals; the release stays
+  latched until the bypass unloads Tarnlock, even if every pylon is already down. Sella stands
   her side down permanently, and the Keepers must defeat the escaping bloom.
 - **GROUND** — a finished vault on each of the three Maw rifts, held until the aether store reaches
   **450**, and defeat the final surge that begins at the first completed vault. Needs somewhere for the breath to go: the grove whole, or the Guardian, living or as
@@ -58,7 +59,11 @@ leaving at the result screen never skips one.
   reports the actual grant.
 - Seam mined → +2000 gold and a wild-elemental bloom immediately on ending commitment, then
   further blooms at 200, 300, 400 and 500 seconds; all arrived pressure bands must be defeated;
-  also capped → half the gold and no blooms. Capped alone → quiet rifts.
+  also capped → +1000 gold and no seam blooms. Capped alone → quiet rifts. Guarding leaves the
+  gold untouched, requires soldiers at the face after the siege, and avoids building a vault;
+  it gives no extra gold or seam blooms. The dialogue answer prepares a job, rather than
+  excluding the other actions. To mine and cap, arrange both during the siege: the mission
+  ends once the siege and a seam action are complete.
 - Starting supply (hall + up to six farms) covers every combination of these arrivals; a test
   audits the combinations.
 

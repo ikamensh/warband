@@ -105,8 +105,7 @@ the field conversation and choice layouts at both supported lint resolutions.
 Reproduce native frames with:
 
 ```bash
-caffeinate -u -t 3
-python3 ~/saga/tools/slot.py -- uv run python tools/verify_dialogue.py /tmp/warband-dialogue --size 1200x680 --animation
+python3 ~/saga/tools/slot.py -- caffeinate -u -d uv run python tools/verify_dialogue.py /tmp/warband-dialogue --size 1200x680 --animation
 ```
 
 The generated scenery's final prompts are recorded in [campaign-art.md](campaign-art.md).

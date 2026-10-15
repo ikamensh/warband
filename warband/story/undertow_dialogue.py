@@ -116,8 +116,10 @@ GROVE_ROUT_AFTERMATH: Dialog = (
 
 
 GROVE_PLAN: Dialog = (
-    Line("Wrenna", "Finish the marked firebreak and we'll face a smaller surge, but have fewer roots to help the Maw. "
-                   "Keep the grove whole and we must weather both surges here. I'll need the guard at Moon Hall."),
+    Line("Wrenna", "Finish the marked firebreak and we'll face a smaller surge. Keep the grove whole and we must weather both surges here. "
+                   "I'll need the guard at Moon Hall."),
+    Line("Wrenna", "Whole, these roots can help us ground the Maw. Cut them, and we'll need the Ancient alive or its heart-stone instead. "
+                   "Without either, we'll have to reseal the Maw or open it."),
     Choice("grove_intent", "Wrenna", "Which part of the wood do we ask to bear it?",
            (Option("Cut the firebreak; ease this bloom", "cut"),
             Option("Keep the roots; face both surges", "whole"))),
@@ -168,13 +170,17 @@ WEIGHT_CONFESSION: Dialog = (
     Line("Dagna", "Thirty years. The gold paid for lock-gaskets, wages, all of this. "
                   "My family made the survey. I signed the copies with this layer missing."),
     Line("Dagna", "Sella's sequence releases the locks onto that thinned cap. Tarnlock bursts before her crews can leave. "
-                  "We must relieve the seam first. I'll mark the bypass on her drawing."),
-    Choice("seam_intent", "Dagna", "The face is still open. What do we do with it?",
+                  "Before the Maw releases, we must relieve the seam. I'll mark the bypass on her drawing."),
+    Line("Dagna", "A vault on the throat-rift stops it feeding blooms. Or leave the gold untouched and post soldiers at the face after the siege. "
+                  "That saves building a vault, but I'll need a watch here after you've gone."),
+    Line("", "For the Maw: mining 300 gold adds 2,000 starting gold, but brings repeated blooms. "
+             "Mine and then cap while the siege still holds you here: +1,000 gold, no seam blooms. "
+             "Once the siege and seam are settled, the company leaves."),
+    Choice("seam_intent", "Dagna", "Which job should my crews prepare first?",
            (Option("Cap its rift; quiet the Maw", "cap"),
             Option("Mine 300 gold; risk Maw blooms", "mine"),
             Option("Post a guard; close the face", "guard"))),
-    Line("Dagna", "North-east. A vault on the throat-rift, three hundred gold hauled, or soldiers at the face after the siege. "
-                  "Tell my crews which. I'll stay to see it done.", when="seam_intent"),
+    Line("Dagna", "North-east, then. I'll stay to see it done.", when="seam_intent"),
 )
 
 
@@ -221,6 +227,10 @@ MAW_BRIEFING: Dialog = (
              "all three pylons destroyed, and the bloom defeated. GROUND needs three Maw vaults, 450 stored aether, and victory over the last surge.",
          chart=ChartBeat("Set the Relief Sluice before OPEN",
                          ("relief_sluice", "keystone"), ("keepers_camp", "relief_sluice"))),
+    Line("Dagna", "The pylons anchor the seals; breaking one commits us to opening them. The release stays latched until Issa operates the Relief Sluice. "
+                  "That bypass unloads Tarnlock before the Maw can vent.",
+         chart=ChartBeat("The Relief Sluice protects Tarnlock",
+                         ("relief_sluice", "seal_pylon_1"), ("keepers_camp", "relief_sluice"))),
 )
 
 
@@ -241,13 +251,14 @@ MAW_COMMIT_SEALED: Dialog = (
 MAW_COMMIT_OPEN: Dialog = (
     Line("Issa", "Open it. People uphill before we lose the lower works."),
     Line("Dagna", "My workshop's down there. So is my father's. Give me a moment. "
-                  "Then, Captain: the Relief Sluice first. Stand at its mark; I've set the corrected measure."),
+                  "Then, Captain: stand at the Relief Sluice. I've set the corrected measure. "
+                  "The release stays latched until the bypass takes the seam's load, even with every pylon down."),
     Line("Sella", "I'll pass that drawing to every crew. The actual clearance time, on every copy."),
 )
 
 
 MAW_RELIEF_OPENED: Dialog = (
-    Line("Dagna", "The bypass is taking the seam's load. Gauge falling. Now we can release the three seals without bursting Tarnlock."),
+    Line("Dagna", "The bypass is taking the seam's load. Gauge falling. The Maw can vent once all three anchors are down, without bursting Tarnlock."),
     Line("Sella", "I see it. Crews, check that reading yourselves. Then back from the ring."),
     Line("Issa", "Disable the remaining pylons. Soldiers, fall back to the north camp when they're down. Keep the road clear."),
 )

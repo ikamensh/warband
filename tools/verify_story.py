@@ -169,7 +169,11 @@ def main(out: Path, campaign_id: str, size: tuple[int, int], flags: dict) -> Non
                 for mission_id, dialog, index, name in (
                     ("undertow_caravan", campaign.mission("undertow_caravan").briefing, 4, "story-dam-cost"),
                     ("undertow_grove", undertow_dialogue.GROVE_PARLEY, 3, "story-grove-warrant"),
-                    ("undertow_grove", undertow_dialogue.GROVE_PLAN, 1, "story-grove-choice"),
+                    ("undertow_grove", undertow_dialogue.GROVE_PLAN, 1, "story-grove-cost"),
+                    ("undertow_grove", undertow_dialogue.GROVE_PLAN,
+                     next(i for i, item in enumerate(undertow_dialogue.GROVE_PLAN) if isinstance(item, Choice)), "story-grove-choice"),
+                    ("undertow_weight", undertow_dialogue.WEIGHT_CONFESSION, 5, "story-seam-combinations"),
+                    ("undertow_maw", undertow_dialogue.MAW_COMMIT_OPEN, 1, "story-release-latch"),
                     ("undertow_maw", undertow_dialogue.MAW_REFUGE_WARNING, 0, "story-refuge-crew"),
                     ("undertow_maw", undertow_dialogue.MAW_BRIEFING, 3, "story-sella-clearance"),
                 ):

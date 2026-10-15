@@ -69,8 +69,9 @@ The caravan briefing identifies Hasp's millpond before the player can destroy
 the dam; Ugga argues for the quick crossing, Brakk identifies who pays, and the
 causeway and south ford remain alternatives. Its map label identifies the owner.
 The grove's peaceful and violent routes both confront Issa with her warrant;
-the plan names the easier fight versus lost roots before the player chooses.
-Seam answers name the quiet-rift versus extra-bloom consequence before the haul.
+the plan names the easier fight and the Guardian requirement for GROUND before
+the player chooses. The seam preview distinguishes mining, capping, guarding
+and mining then capping during the siege; the answer prepares the first job.
 
 The Maw charts the existing occupied refuge, and a one-time warning names Tern's
 apprentices when soldiers approach within sixteen tiles, before ordinary siege
@@ -87,3 +88,11 @@ cost-free ending reactions. It challenged the proposed refuge escort as a
 checklist added to an already busy finale. The final revision uses a named
 landmark and warning instead. Concrete findings were checked against both the
 dialogue file and inline mission script before editing.
+
+A later first-reader review by Muse found three choice-clarity gaps: the grove
+warning understated a possible ending lockout, OPEN's physical release latch was
+implicit, and the seam menu obscured the mine-and-cap combination. Each was
+checked against the triggers. The dialogue now states the Guardian requirement
+before cutting, names the existing latch that waits for the corrected bypass,
+and explains the seam's supplies, blooms and departure deadline before choosing.
+These clarifications preserve the established mission mechanics and saved runs.
