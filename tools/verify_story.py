@@ -109,10 +109,10 @@ def main(out: Path, campaign_id: str, size: tuple[int, int], flags: dict) -> Non
                 for mission_id, trigger_id in (("undertow_weight", "confession"),):
                     mission = campaign.mission(mission_id)
                     run = build_world(mission, flags=flags)
-                    paused_mission(run)
+                    scene = paused_mission(run)
                     # A presentation fixture queues the authored phase, without claiming to play to it.
                     next(trigger for trigger in mission.triggers if trigger.id == trigger_id).do(run)
-                    game.push(DialogScene(run.pending.pop(), campaign.speakers, run.vars, record=True))
+                    game.push(scene.conversation(run.pending.pop()))
                     while not isinstance(game.scene.current, Choice):
                         game.scene.advance()
                     shot(f"phase-{mission_id}-choice")
@@ -178,8 +178,8 @@ def main(out: Path, campaign_id: str, size: tuple[int, int], flags: dict) -> Non
                     ("undertow_maw", undertow_dialogue.MAW_BRIEFING, 3, "story-sella-clearance"),
                 ):
                     run = build_world(campaign.mission(mission_id), flags=flags)
-                    paused_mission(run)
-                    game.push(DialogScene(dialog, campaign.speakers, run.vars))
+                    scene = paused_mission(run)
+                    game.push(scene.conversation(dialog, briefing=dialog is run.mission.briefing))
                     for _ in range(index):
                         game.scene.advance()
                     shot(name)
