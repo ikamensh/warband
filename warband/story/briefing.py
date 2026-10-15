@@ -40,12 +40,13 @@ PLANS: dict[str, tuple[Beat, ...]] = {
         Beat("Uphill, to the Broken Tooth", ("old_camp", "mesa"), ("old_camp", "middle_ford", "mesa")),
         Beat("Salvage the Old Camp; rebuild on the mesa", ("old_camp", "mesa"), ("old_camp", "middle_ford", "mesa")),
         Beat("Bring at least five drovers home", ("old_camp", "mesa")),
-        Beat("Choose a crossing on the Sorrow", ("middle_ford", "dam_pylon"), ("old_camp", "middle_ford", "mesa")),
+        Beat("The guarded north ford and its dam", ("north_ford", "dam_pylon")),
+        Beat("Choose a crossing; count the cost to Millfield", ("middle_ford", "south_ford", "dam_pylon"), ("old_camp", "middle_ford", "mesa")),
         Beat("The new Great Hall keeps the caravan alive", ("mesa",)),
     ),
     "undertow_grove": (
         Beat("The living filter is at its limit", ("moon_hall", "firebreak")),
-        Beat("Someone is cutting a firebreak", ("firebreak", "cutter_camp")),
+        Beat("The grove grows back overnight", ("moon_hall", "firebreak")),
         Beat("Hear the woodcutters before drawing steel", ("cutter_camp",), ("moon_hall", "cutter_camp")),
         Beat("Courtesy before steel at the stone ring", ("guardian_ring",), ("moon_hall", "guardian_ring")),
     ),
@@ -61,11 +62,11 @@ PLANS: dict[str, tuple[Beat, ...]] = {
         Beat("Sella's refuge holds the wounded crews", ("enemy",)),
         Beat("The survey's missing nine minutes", ("enemy",)),
         Beat("The people behind the promise", ("enemy",)),
-        Beat("First work commits the ending", ("keystone", "seal_pylon_1", "maw_rift_1")),
-        Beat("Set the Relief Sluice before OPEN", ("relief_sluice",), ("keepers_camp", "relief_sluice")),
+        Beat("Ask the crews waiting in the refuge", ("refuge_tower",)),
         Beat("Three vaults to drink the Maw's aether", ("maw_rift_1", "maw_rift_2", "maw_rift_3")),
         Beat("GROUND needs the Guardian or its heart", ("maw_rift_1", "maw_rift_2", "maw_rift_3")),
-        Beat("Commit, hold the works, weather the last assault", ("keystone", "seal_pylon_1", "maw_rift_1")),
+        Beat("First work commits the ending", ("keystone", "seal_pylon_1", "maw_rift_1")),
+        Beat("Set the Relief Sluice before OPEN", ("relief_sluice", "keystone"), ("keepers_camp", "relief_sluice")),
     ),
     "hollowmere": (
         Beat("The Greywater raids reach Hollowmere", ("home", "camp")),
@@ -243,9 +244,10 @@ def briefing_chart(run: Run) -> BriefingChart:
     if mines:
         mine = min(mines, key=lambda b: math.dist(b.center, origin))
         places["mine"] = ("Gold mine", mine.center)
-    for key in ("camp", "orc_home", "goal", "siege"):
+    for key in ("camp", "orc_home", "goal", "siege", "north_ford", "south_ford"):
         if key in run.vars:
-            labels = {"camp": "Raider camp", "orc_home": "Orc camp", "goal": "The pass to Karst", "siege": "Karst siege engines"}
+            labels = {"camp": "Raider camp", "orc_home": "Orc camp", "goal": "The pass to Karst", "siege": "Karst siege engines",
+                      "north_ford": "North ford", "south_ford": "South ford"}
             places[key] = (labels[key], tuple(run.vars[key]))
     for key, landmark in run.vars.get("landmarks", {}).items():
         places[key] = (landmark["name"].split(" (")[0], tuple(landmark["point"]))

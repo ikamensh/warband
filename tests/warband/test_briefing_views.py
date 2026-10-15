@@ -66,12 +66,12 @@ def test_caravan_chart_follows_the_words_and_hands_back_the_same_company(tmp_pat
         before = scene.world.to_dict()
         camera = scene.camera.center
         company = list(scene.selection)
-        for _ in range(3):
+        for _ in range(4):
             game.backend.inject_key("space")
             game.tick(.1)
         drawn = [item["text"] for item in game.backend.texts]
-        assert "Choose a crossing on the Sorrow" in drawn
-        assert "The causeway ford" in drawn and "Mill-dam pylon" in drawn
+        assert "Choose a crossing; count the cost to Millfield" in drawn
+        assert "The causeway ford" in drawn and "Hasp's millpond dam" in drawn
         assert scene.world.to_dict() == before
         assert scene.camera.center == camera and list(scene.selection) == company
         game.backend.inject_key("escape")

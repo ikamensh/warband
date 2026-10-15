@@ -2,7 +2,7 @@
 
 Design note and record, 2026-09-15. Implemented: `warband/story/campaign.py` (the
 engine and the progress file), `warband/story/missions.py` (the six missions),
-`warband/story/dialog.py` (the dialogue overlay), `warband/story/mission_scene.py` (a
+`warband/story/dialog.py` (the dedicated dialogue view), `warband/story/mission_scene.py` (a
 mission as a match, its result, its loader), `warband/story/campaign_scene.py` (the
 campaign screen). Tests: `tests/warband/test_campaign.py`; screens rendered by
 `tools/verify_campaign.py DIR`.
@@ -15,16 +15,25 @@ come, a map of the next mission, and one button that does the right thing:
 begin (after choosing the campaign's difficulty), resume the saved mission,
 open the next briefing, or read the epilogue once the war is over.
 
-Every mission has a **briefing** (a dialogue over the campaign screen), an
+Every mission has a **briefing** in the animated Aether Council, with a
+level-specific narrated field chart ([dialogue design](campaign-dialogue.md)), an
 **objectives panel** on the HUD in place of the tutorial strip (ticks for done,
 crosses for failed, lines that appear when the story reaches them), **scripted
 events** during play (bands arriving, a warning from the captain, a camera cue
 and a minimap ping, a notice), **dialogue** that pauses the match and shows who
-speaks with their portrait, **questions** with two answers on number keys, a
+speaks with their portrait over a painted view of that level, **questions** with answers on number keys, a
 **result screen** (the objectives as they ended, the battle record, Continue
 or Retry), and a **debrief**. The pause menu of a mission offers Restart
 mission and Campaign (which saves first) instead of New game and Resign.
 Missions are not ranked: the leaderboard is for skirmishes.
+
+**Speed** on the campaign screen cycles through 0.5×, 0.75×, 1× (the default),
+1.2×, 1.5×, 2× and 3×. During a mission, open **Menu (F10) → Settings →
+Campaign speed** to adjust it with the −/+ buttons or arrow keys. The preference
+is saved across both campaigns, restarts and resumed missions; it does not alter
+skirmish or multiplayer speed. The HUD shows the multiplier when it differs from
+1×. Dialogue and menus still pause the mission, and text and notices keep their
+normal reading pace.
 
 ## The plot
 

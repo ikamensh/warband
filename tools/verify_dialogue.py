@@ -64,6 +64,7 @@ def main(out: Path, size: tuple[int, int], *, animation: bool = False) -> None:
                     if mission.id == "undertow_caravan":
                         press(key.SPACE)
                         press(key.SPACE)
+                        press(key.SPACE)
                         shot("briefing-caravan-route")
                     recording = False
             if frames:

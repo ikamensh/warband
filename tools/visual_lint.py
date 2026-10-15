@@ -1231,10 +1231,14 @@ def pause(game: Game) -> None:
 
 
 @screen
-def settings(game: Game) -> None:
-    scene = town(game)
+def settings(game: Game, *, controls: str = "classic") -> None:
+    scene = town(game, controls=controls)
     game.push(SettingsScene(scene))
     ticks(game)
+
+
+for _controls in ("grid", "modal"):
+    SCREENS[f"settings_{_controls}"] = partial(settings, controls=_controls)
 
 
 @screen
@@ -1413,6 +1417,14 @@ def _undertow_journal(game: Game, *, campaign: Campaign) -> None:
     ticks(game)
 
 
+def _undertow_refuge(game: Game, *, campaign: Campaign) -> None:
+    """The authored warning and charted minimap diamond; the order regression proves its approach trigger."""
+    scene = _catalog_mission(game, campaign=campaign, mission=campaign.mission("undertow_maw"))
+    next(trigger for trigger in scene.mission.triggers if trigger.id == "refuge_warning").do(scene.run)
+    game.push(scene.conversation(scene.run.pending.pop()))
+    ticks(game)
+
+
 def _undertow_committed(game: Game, *, campaign: Campaign) -> None:
     """A public peasant repair commits RESEAL; the fixture clears notices to inspect the lasting HUD."""
     scene = _catalog_mission(game, campaign=campaign, mission=campaign.mission("undertow_maw"))
@@ -1542,6 +1554,7 @@ def campaign_cases(campaign: Campaign) -> dict[str, Screen]:
             "mission_undertow_choice": partial(_undertow_choice, campaign=campaign),
             "mission_undertow_conversation": partial(_undertow_conversation, campaign=campaign),
             "mission_undertow_journal": partial(_undertow_journal, campaign=campaign),
+            "mission_undertow_refuge": partial(_undertow_refuge, campaign=campaign),
             "mission_undertow_committed": partial(_undertow_committed, campaign=campaign),
             "mission_undertow_keeper_objectives": partial(_undertow_keeper_objectives, campaign=campaign),
             "mission_undertow_ground_keeper": partial(_undertow_ground_keeper, campaign=campaign),

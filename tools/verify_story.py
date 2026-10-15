@@ -161,6 +161,24 @@ def main(out: Path, campaign_id: str, size: tuple[int, int], flags: dict) -> Non
                 shot("phase-maw-epilogue")
                 game.scene.skip()
                 shot("phase-campaign-complete")
+
+                from warband.story import undertow_dialogue
+
+                # Presentation fixtures for the revised writing, including the cost before a choice.
+                # Whole-mission tests establish that the actual triggers deliver these conversations.
+                for mission_id, dialog, index, name in (
+                    ("undertow_caravan", campaign.mission("undertow_caravan").briefing, 4, "story-dam-cost"),
+                    ("undertow_grove", undertow_dialogue.GROVE_PARLEY, 3, "story-grove-warrant"),
+                    ("undertow_grove", undertow_dialogue.GROVE_PLAN, 1, "story-grove-choice"),
+                    ("undertow_maw", undertow_dialogue.MAW_REFUGE_WARNING, 0, "story-refuge-crew"),
+                    ("undertow_maw", undertow_dialogue.MAW_BRIEFING, 3, "story-sella-clearance"),
+                ):
+                    run = build_world(campaign.mission(mission_id), flags=flags)
+                    paused_mission(run)
+                    game.push(DialogScene(dialog, campaign.speakers, run.vars))
+                    for _ in range(index):
+                        game.scene.advance()
+                    shot(name)
         finally:
             game.close()
 

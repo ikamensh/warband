@@ -1,9 +1,9 @@
 """The Undertow's dialogue, kept apart from its authored maps and triggers.
 
-Mill outcomes distinguish a held vault, intentional shuttering and a lost vault.
-The Maw names the corrected Relief Sluice procedure, and its closing lines read
-the chosen ending and the refuge tower's fate. Runtime actions set these flags;
-the dialogue never substitutes a menu answer for an action on the map.
+Each Step gives its keeper a different stake in the same machinery. Tactical
+instructions stay explicit, but the characters argue from their own work and
+history. Outcome lines read actions the player actually performed; no branch
+assumes the other branch's sacrifice or forgiveness.
 """
 
 from warband.story.campaign import Choice, Dialog, Line, Option
@@ -12,257 +12,267 @@ from warband.story.campaign import Choice, Dialog, Line, Option
 MILL_BRIEFING: Dialog = (
     Line("Hasp", "The wolves left the sheep alive. Now they're coming for the mill. "
                  "My fieldhands are still out there, Captain."),
-    Line("Issa", "I'm here, Hasp. Company, keep them off the south field. "
-                 "The vault behind us holds the valley's spell-light. Today it holds something else."),
+    Line("Issa", "I'm here, Hasp. Company, cover the south field. "
+                 "That vault's been humming since dawn. Get the hands indoors before we touch it."),
     Line("Issa", "Your company is ready. Right-click a wolf to attack, or the ground to move. "
                  "Alt+1, then click a wounded ally, casts Mend. We keep the village safe first."),
 )
 
 
 MILL_DEBRIEF: Dialog = (
-    Line("Brakk", "Captain Renn. Brakk, of the Saltmarches. My people are moving uphill before the bloom does. All of them, this time."),
-    Line("Brakk", "You held your lock. I hope Millfield was asked what holding it might cost. "
-                  "I have seen a captain make that choice for a camp before.", when="undertow_mill_vault"),
-    Line("Brakk", "You gave up your own lock to spare your village. That is not the answer I expected from the Lockwatch.",
-         when="undertow_mill_shuttered"),
-    Line("Brakk", "Your vault fell. That is a loss, Captain, not a choice. I know the difference; I wish more officers did.",
-         when="undertow_mill_lost"),
-    Line("Issa", "Get your people clear, Brakk. Then we go down together and find out why the locks are failing."),
+    Line("Hasp", "All right. The night shift can come in. I'll bring the crew something hot.", when="undertow_mill_vault"),
+    Line("Hasp", "No spell-light tonight. Tell the night shift to sleep; we'll start at sunrise.", when="undertow_mill_shuttered"),
+    Line("Hasp", "I'll need timber for that roof before it rains. Captain, don't take every carpenter with you.", when="undertow_mill_lost"),
+    Line("Brakk", "Captain Renn? Brakk, from the Saltmarches. Our camps are moving up. We need the road through Millfield."),
+    Line("Brakk", "Your lock held. Is there room here for people who have lost theirs?", when="undertow_mill_vault"),
+    Line("Brakk", "You shut your own lock. I'd heard the Lockwatch never did that.", when="undertow_mill_shuttered"),
+    Line("Brakk", "We saw the light go out from the road. How many hurt?", when="undertow_mill_lost"),
+    Line("Issa", "Hasp, open the storehouse. Brakk, show me where your people are. We go down together."),
 )
 
 
 CARAVAN_BRIEFING: Dialog = (
-    Line("", "While Issa scouts the road down-valley, Brakk leads the Saltmarches uphill to the Broken Tooth mesa."),
-    Line("Brakk", "Strip the Old Camp to its pegs. We carry the hall-timbers across the Sorrow and raise them on the Tooth."),
-    Line("Ugga", "Six drovers, Brakk. Keep five of us breathing and I'll raise you a camp on that rock."),
-    Line("Brakk", "The river has three fords. Use the road that gets us home. We are moving people, not winning a river."),
+    Line("", "Issa scouts the road down-valley. Brakk brings the Saltmarch camps uphill, to the Broken Tooth mesa."),
+    Line("Brakk", "Strip the Old Camp to its pegs. Hall-timbers, farm-frames, everything we can carry. We raise it again on the Tooth."),
+    Line("Ugga", "Six drovers. Five to put a roof up, one to tell the other five they're doing it wrong. Keep five of us on that mesa, Brakk."),
+    Line("Ugga", "The Open Hand's camp guards the north ford. Blast their dam-pylon and the water will clear them out. "
+                 "I'd take that over the spiders at the south ford."),
+    Line("Brakk", "That's Hasp's millpond, Ugga. Her wheels stop if we drain it, and their dam crew is below the spill. "
+                  "We can open the middle causeway instead, or fight through the south ford."),
 )
 
 
 CARAVAN_DEBRIEF: Dialog = (
-    Line("Brakk", "Six years ago, a bloom came up this Step at lambing. The Lockwatch vented it through my sister's camp. "
-                  "She stayed to get the last lambs clear. I have carried the order ever since."),
-    Line("Issa", "I signed it. Nine people died, and I called that the smaller number. The order was lawful. The decision was mine."),
-    Line("Brakk", "You put the number on the paper. I put my sister in the ground."),
-    Line("Issa", "I cannot give her back, or ask you to forgive me. I can put the full order on record, "
-                 "and give the people below a say before another vent opens. No camp gets volunteered again."),
-    Line("Brakk", "At Millfield you gave up your own works. I will walk with you, Captain. I have not forgiven you.",
+    Line("", "Brakk unfolds a paper worn soft at the creases. Issa's signature crosses one of them."),
+    Line("Brakk", "Ashford. Six years ago, at lambing. You sent the bloom through our camp. My sister Orra stayed with the last pen."),
+    Line("Issa", "There were farmhouses below the other vent. I had to get the pressure off before—"),
+    Line("Brakk", "I know what was below the other vent. Orra was below yours."),
+    Line("Issa", "I signed it. Nine people died. I kept the farms and called that enough."),
+    Line("Brakk", "You shut your own works at Millfield. When we get to the next lock, I want to be there before you touch it.",
          when="undertow_mill_shuttered", unless="undertow_dam"),
-    Line("Brakk", "At Millfield you held the lock again. If we walk together, you will have to hear us before you count us.",
+    Line("Brakk", "You held Millfield. Good. Next time, hear the camp below it before you open a vent.",
          when="undertow_mill_vault", unless="undertow_dam"),
-    Line("Brakk", "Millfield lost its lock. That does not make Ashford right. But you came down to hear this, and I will walk with you.",
+    Line("Brakk", "Millfield lost a lock. It has not lost the right to be asked. Neither have we.",
          when="undertow_mill_lost", unless="undertow_dam"),
-    Line("Brakk", "Today we spent Millfield's millpond to buy our road. Put that in the account too. It was not harmless because we needed it.",
-         when="undertow_dam"),
-    Line("Issa", "Then Hasp gets the truth, and our help with what it cost her. Your name beside mine, Brakk.", when="undertow_dam"),
-    Line("Ugga", "The road crew's orders name Sella Voss. Open the locks before they burst, and warn the camps. "
-                 "Late warning is not much use in water."),
+    Line("Brakk", "And today we took Hasp's millpond. I wanted our people over that river. I still have to face her.", when="undertow_dam"),
+    Line("Issa", "We'll go to her together. I'll leave a repair crew.", when="undertow_dam"),
+    Line("Issa", "Come with me, Brakk. Before I touch it.", unless="undertow_dam"),
+    Line("Ugga", "The camp's up. Supper's on. Also, this was nailed to the roadblock: Sella Voss says open the locks and warn the camps. "
+                 "Could someone tell her a warning needs a road?"),
 )
 
 
 GROVE_BRIEFING: Dialog = (
-    Line("", "The Deep Grove drinks surplus aether and spends it growing. This spring it is at its limit, "
-             "and someone is cutting a firebreak through it."),
-    Line("Wrenna", "Saws in my grove, Captain. Trees coming down in a marked line. Very tidy, for a wound."),
-    Line("Issa", "Stop the cutting until we know who ordered it. They may think they are saving Millfield. Hear them first."),
-    Line("Wrenna", "Gladly. And the Ancient in the eastern stone ring may answer courtesy before steel. "
-                   "I will go alone, if we want to find out."),
+    Line("", "New shoots crowd the Deep Grove's road. Violet sap beads on a row of fresh stumps."),
+    Line("Wrenna", "We cut those last spring. The roots usually take a week to cover the road again. They did it overnight."),
+    Line("Issa", "There's a Lockwatch crew ahead. Stop the saws until we've spoken to them."),
+    Line("Wrenna", "The camp is south. Walk in without an attack order if you want an answer. "
+                   "And leave my escort behind if I visit the Ancient in the eastern ring. It remembers what soldiers do."),
+)
+
+
+GROVE_PARLEY: Dialog = (
+    Line("Pell", "Sergeant Pell, Lockwatch. Captain, here's your warrant. Firebreak from the south road to the old stone ring."),
+    Line("Issa", "It stopped the last bloom reaching Hasp's fields. Those men are doing what I told them."),
+    Line("Wrenna", "And where did that bloom go? Here. We had blossom in winter. "
+                   "These roots drink what you send us; you've ordered him to cut them."),
+    Line("Issa", "Pell, stop the saws. I should have come down this road before I signed that."),
+    Line("Pell", "I'll need the cancellation in writing, Captain. Then my crew can hold the south road. Nobody else comes in with an axe."),
+    Line("Wrenna", "I'll walk the line with you, Sergeant. There may still be cuts we need to make. Let me show you which roots they take."),
 )
 
 
 GROVE_ROUT_AFTERMATH: Dialog = (
-    Line("", "Among the woodcutters' tools lies a Lockwatch warrant, stamped with Issa Renn's seal."),
-    Line("Wrenna", "Your men, Captain. Your standing order: cut a firebreak when a bloom threatens Millfield. "
-                   "They thought they were protecting your people."),
-    Line("Issa", "I wrote it. I saw trees between a bloom and a farm; I never asked what the trees did. "
-                 "The order was mine, and so is what we have done here."),
-    Line("Wrenna", "Then choose with the grove in view this time. Finish the marked firebreak, "
-                   "or bring our guard to Moon Hall and let the whole wood drink."),
+    Line("", "In the ruined camp, a warrant hangs beside the abandoned saws. Issa's seal is unbroken."),
+    Line("Issa", "My standing order. That firebreak kept the last bloom out of Millfield."),
+    Line("Wrenna", "It came here instead. We grew blossom in winter. Now your men have cut the roots that drank it."),
+    Line("Issa", "I sent them. Pell would have shown us this if we'd let him. Bring the warrant; I need to cancel every copy."),
+)
+
+
+GROVE_PLAN: Dialog = (
+    Line("Wrenna", "Finish the marked firebreak and we'll face a smaller surge, but have fewer roots to help the Maw. "
+                   "Keep the grove whole and we must weather both surges here. I'll need the guard at Moon Hall."),
+    Choice("grove_intent", "Wrenna", "Which part of the wood do we ask to bear it?",
+           (Option("Cut the firebreak; ease this bloom", "cut"),
+            Option("Keep the roots; face both surges", "whole"))),
 )
 
 
 GROVE_DEBRIEF: Dialog = (
-    Line("Issa", "The woodcutters carried my order. I will not write another firebreak order without asking the people whose trees it takes."),
-    Line("Wrenna", "The stumps stopped the worst of it. They also stopped roots that drank for the Maw. "
-                   "We saved our hall; we have less to give the next Step.", when="undertow_grove_cut"),
-    Line("Wrenna", "The whole wood held. It can still help the Maw, but it has a limit. "
-                   "I will not pretend a living grove is an endless drain.", unless="undertow_grove_cut"),
-    Line("Wrenna", "One thing more. The roots trace the Chain's own plan. I showed that map to Sella Voss last winter, over tea. "
-                   "She was my friend. I did not ask what she meant to do with it."),
-    Line("Issa", "Then we warn Tarnlock. Her crews know which vaults are locks. Bring the root-map, Wrenna; we need the full drawing now."),
+    Line("Issa", "Pell's warrant has my seal. I'll send the cancellation to every crew. You choose where the saws go, Wrenna."),
+    Line("Wrenna", "I'll need people on the stump-line after we leave. Shoots will come back before the deep roots do.", when="undertow_grove_cut"),
+    Line("Wrenna", "Still whole. Listen: the leaves have stopped rattling. We can leave a few tenders here and go.", unless="undertow_grove_cut"),
+    Line("Wrenna", "Sella sat in my kitchen last winter. I showed her how the roots followed the Chain. "
+                   "She drew all afternoon; I kept making tea."),
+    Line("Issa", "You didn't know what she was planning."),
+    Line("Wrenna", "I didn't ask. Bring my root-map. Dagna will want to see what Sella copied."),
 )
 
 
 WEIGHT_BRIEFING: Dialog = (
-    Line("", "Three great vaults glow in Tarnlock's snow basin. Sella's Open Hand has brought a siege train to the south tree-ring."),
-    Line("Dagna", "They will go for the Weights. Someone gave them the right drawings. Keep two standing, and we keep the basin stable."),
-    Line("Issa", "Break the siege. Give your repair crews cover, and leave them a road back."),
-    Line("Dagna", "One more account waits north-east, at the endless seam. Mine and my council's. "
-                  "You will hear it before anyone decides what to do with that face."),
+    Line("", "Tarnlock's three Weights shine above a basin full of workshops. The Open Hand's siege train is moving up from the south."),
+    Line("Dagna", "Keep two Weights standing. Lose another and the basin spills through the workshops. My repair crews are already out there."),
+    Line("Issa", "Cover the crews. Break the siege train before it reaches them."),
+    Line("Dagna", "After that, come north-east to the seam. There's a drawing I should have shown Sella thirty years ago. "
+                  "I won't ask you to fight for Tarnlock without seeing it."),
 )
 
 
 WEIGHT_SELLA_EXCHANGE: Dialog = (
-    Line("Sella", "I taught you to read a strain gauge, Issa. Read these. Draw rates rise every year. "
-                  "The Compact rejected my survey; stone does not obey a vote."),
-    Line("Issa", "You also taught me to clear the crew before releasing pressure. Your people are working under this siege."),
-    Line("Sella", "The towers sell spell-light while the lower camps take the spills. "
-                  "I will open the locks while people can still move. What does another season of waiting buy them?"),
-    Line("Dagna", "Room for us to show you the Tarnlock survey. You were denied it. We owe you that much."),
+    Line("Sella", "You used to tap a gauge twice, Issa. Never trusted the first reading. "
+                  "Read these: draw rates rising every year, and another winter's spill signed off as normal."),
+    Line("Issa", "How many of your crews are still under those guns? You taught me to clear a worksite before releasing pressure."),
+    Line("Sella", "And the council taught me what waiting buys. Another season of spell-light for the towers. Another camp moving uphill. "
+                  "I need the Weights down before the next bloom."),
+    Line("Dagna", "You need the Tarnlock survey first, Sella. The one we wouldn't let you read. Stop the guns and I'll bring it myself."),
 )
 
 
 WEIGHT_CONFESSION: Dialog = (
-    Line("Dagna", "The seam is not a vein. It is two hundred years of aether, crystallised under this basin. We have been mining the lid."),
-    Line("Dagna", "Every cart thins the cap. Every cart also bought the gaskets that kept the locks shut. "
-                  "My family wrote the survey; my council kept its true measure from Sella."),
-    Line("Dagna", "Her sequence vents the locks before relieving the seam. That load meets a thinned cap here and bursts Tarnlock. "
-                  "The order of the work must change. Her diagnosis was right; our missing drawing made her remedy fatal."),
-    Choice("seam_intent", "Dagna", "What do we do with the seam?",
-           (Option("Cap it with a vault on its rift", "cap"),
-            Option("Work it and pay for the siege", "mine"),
-            Option("Post a guard and close the face", "guard"))),
-    Line("Dagna", "North-east. Do it where my crews can witness it. This account goes to the council with my name on it.", when="seam_intent"),
+    Line("Dagna", "See the layers? No ore in the stone above them. The gold is pressed aether. Two hundred years of it, holding the basin down."),
+    Line("Issa", "You've been mining the lid."),
+    Line("Dagna", "Thirty years. The gold paid for lock-gaskets, wages, all of this. "
+                  "My family made the survey. I signed the copies with this layer missing."),
+    Line("Dagna", "Sella's sequence releases the locks onto that thinned cap. Tarnlock bursts before her crews can leave. "
+                  "We must relieve the seam first. I'll mark the bypass on her drawing."),
+    Choice("seam_intent", "Dagna", "The face is still open. What do we do with it?",
+           (Option("Cap its rift; quiet the Maw", "cap"),
+            Option("Mine 300 gold; risk Maw blooms", "mine"),
+            Option("Post a guard; close the face", "guard"))),
+    Line("Dagna", "North-east. A vault on the throat-rift, three hundred gold hauled, or soldiers at the face after the siege. "
+                  "Tell my crews which. I'll stay to see it done.", when="seam_intent"),
 )
 
 
 WEIGHT_DEBRIEF: Dialog = (
-    Line("Dagna", "One of their engineers surrendered with her clearance orders. Sella promised her crew an hour to leave Tarnlock. "
-                  "Her own survey gave them nine minutes. She knew both figures."),
-    Line("Issa", "That is the clearance rule she taught me. She chose to break it. Bring the engineer and both surveys to the Maw. "
-                 "She will answer them herself."),
-    Line("Dagna", "And my confession goes with them. The seam's measure, what we drew, what we closed, and who concealed it. No redacted copy."),
+    Line("Dagna", "Tern, one of Sella's engineers, came through our line. She was promised an hour to clear the works. "
+                  "Sella's own gauge-sheet says nine minutes. Both in the same handwriting."),
+    Line("Issa", "She used to wait for the last apprentice before testing a valve. Bring Tern. I want Sella to look her in the face."),
+    Line("Dagna", "With both surveys. Mine goes on top. No missing layer this time."),
 )
 
 
 MAW_BRIEFING: Dialog = (
-    Line("", "At the Maw, the Keepers face Sella across the broken ring. The refuge tower behind her holds engineers, wounded crews and their drawings."),
-    Line("Sella", "My terms: open the locks over nine days, with the valley warned and moved. "
-                  "Count my dead beside the Compact's. Theirs are better filed."),
-    Line("Issa", "Your engineer was promised an hour at Tarnlock. Your own survey gave her nine minutes. "
-                 "Say it to the people waiting behind you, Sella."),
-    Line("Sella", "I lied about their margin. I told myself we had no time for fear; "
-                  "it was their nine minutes, and I took the choice from them."),
-    Line("Issa", "The first work chooses our course: peasants repairing the Keystone commit us to RESEAL. "
-                 "Mend heals people, not buildings. The first pylon destroyed commits OPEN; the first Maw vault completed commits GROUND."),
-    Line("Dagna", "Issa, stand at the marked Relief Sluice to open it to my corrected seam measure. "
-                  "It sheds the Weight's load safely; the Maw cannot release until that setting is made."),
-    Line("Wrenna", "GROUND needs the whole grove, or the Guardian, living or as heart-stone. Our grove stands whole. "
-                   "Three drinking vaults, and keepers tending them every day.", unless="undertow_grove_cut"),
-    Line("Wrenna", "With the grove cut, GROUND needs the Guardian standing until the works finish, or its stored heart-stone. "
-                   "If we brought neither, we must reseal or open.", when="undertow_grove_cut"),
-    Line("Issa", "Once we begin one, the other endings are closed. For GROUND, hold all three Maw vaults, bank 450 aether and beat the last surge. "
-                 "For RESEAL, repair the Keystone fully and defeat the final assault."),
+    Line("", "The river falls into the Maw without pooling. Across the broken ring, Sella waits. "
+             "The marked refuge tower in her southern camp holds wounded crews, including Tern's apprentices."),
+    Line("Sella", "Nine days. We open the locks in stages, move everyone uphill, and finish before the next bloom. "
+                  "You have Dagna's bypass now. We can do this."),
+    Line("Issa", "Tern was promised an hour at Tarnlock. You wrote nine minutes on the gauge-sheet. Which did her apprentices get told?"),
+    Line("Sella", "An hour. If I'd told them nine minutes, they'd have refused to work. "
+                  "I thought getting it finished would make that all right."),
+    Line("Brakk", "They're still in your tower. Ask them now."),
+    Line("Wrenna", "The grove can take a share, if we give the breath roots and vaults to pass through. "
+                   "It will need tenders long after we leave.", unless="undertow_grove_cut"),
+    Line("Wrenna", "With the grove cut, only the Guardian or its heart-stone can carry our share. "
+                   "If we brought neither, we cannot ground the Maw.", when="undertow_grove_cut"),
+    Line("", "Your first work commits the ending: RESEAL by repairing the Keystone with peasants; "
+             "OPEN by destroying a seal-pylon; GROUND by completing a vault on a Maw rift. The other courses then close. Mend heals people, not buildings."),
+    Line("", "RESEAL needs full repairs and victory over the final assault. OPEN needs Issa at the marked Relief Sluice, "
+             "all three pylons destroyed, and the bloom defeated. GROUND needs three Maw vaults, 450 stored aether, and victory over the last surge."),
+)
+
+
+MAW_REFUGE_WARNING: Dialog = (
+    Line("Dagna", "That marked tower is the refuge. Tern's apprentices are in there: Neri and the twins. Two came out of Tarnlock on stretchers."),
+    Line("Issa", "Keep siege fire off that tower. We're here for the ring. Leave the wounded somewhere to shelter."),
 )
 
 
 MAW_COMMIT_SEALED: Dialog = (
-    Line("Issa", "We reseal. Public gauges on every Step, spell quotas when pressure rises, "
-                 "and no vent without the downstream keeper's consent."),
-    Line("Dagna", "Repair the Keystone fully with peasants, then keep it whole through their last assault. "
-                  "A sealed lock still needs a watch. These limits will be our work, not just words."),
-    Line("Sella", "Quotas can be bought, Issa. Councils can forget. I will not leave another lambing camp beneath your promises."),
+    Line("Issa", "Repair the Keystone. No vent opens until the keeper below it agrees. Brakk, you take the lower gauge."),
+    Line("Brakk", "I want a key to the valve too. Orra's camp had a gauge."),
+    Line("Issa", "Take mine."),
+    Line("Sella", "And when a keeper says no? You'll be back here with the same pressure and fewer friends to carry it."),
 )
 
 
 MAW_COMMIT_OPEN: Dialog = (
-    Line("Issa", "We open the Hollow. The lower works will be lost; the people get out first. I will not trade them for free magic."),
-    Line("Dagna", "Captain, stand at the marked Relief Sluice and open it to the seam's measure. "
-                  "That relieves the Weight before we release the three seals."),
-    Line("Sella", "Show my crews that setting. Nobody works from a redacted page again."),
+    Line("Issa", "Open it. People uphill before we lose the lower works."),
+    Line("Dagna", "My workshop's down there. So is my father's. Give me a moment. "
+                  "Then, Captain: the Relief Sluice first. Stand at its mark; I've set the corrected measure."),
+    Line("Sella", "I'll pass that drawing to every crew. The actual clearance time, on every copy."),
 )
 
 
 MAW_RELIEF_OPENED: Dialog = (
-    Line("Dagna", "The relief is taking the Weight's load. With all three seal-pylons disabled, the Maw can release without forcing that load through Tarnlock."),
-    Line("Sella", "The gauges agree. Give every crew the true margin and a road out. Tools are replaceable."),
-    Line("Issa", "Hands clear of the ring. Disable any remaining seal-pylons, then soldiers back to the camp. We defend people while it vents."),
+    Line("Dagna", "The bypass is taking the seam's load. Gauge falling. Now we can release the three seals without bursting Tarnlock."),
+    Line("Sella", "I see it. Crews, check that reading yourselves. Then back from the ring."),
+    Line("Issa", "Disable the remaining pylons. Soldiers, fall back to the north camp when they're down. Keep the road clear."),
 )
 
 
 MAW_OPENED: Dialog = (
-    Line("Sella", "The Relief Sluice took the Weight first. I can see it on the gauges. "
-                  "Stand down, everyone. Tools to the camp; no one stays to measure this surge."),
-    Line("Issa", "Towers silent, soldiers to the north camp. The bloom is coming through. Keep the road clear."),
-    Line("Brakk", "The families are uphill. Hold this last front away from their road."),
+    Line("Sella", "Tools down. All companies back to camp. The Keepers have the road; nobody fights them."),
+    Line("Issa", "The bloom's through. Turn the company north. Hold it off the camp."),
+    Line("Brakk", "Ugga's got the families above the pans. I'll take the rear. This time I know where they're going."),
 )
 
 
 MAW_COMMIT_GROUND: Dialog = (
-    Line("Wrenna", "First vault drinking. Build the other two and bank 450 aether, then hold the ring through the last surge. "
-                   "Save your spells; each casting empties the store."),
-    Line("Issa", "We keep the valley, but we spend the surplus here. Four peoples on the maintenance rota, every day. "
-                 "The towers get no promise of cheap magic."),
-    Line("Sella", "I had tools and a deadline. You have roots, stone and people willing to stay. Make sure they hear what staying costs."),
+    Line("Wrenna", "First vault drinking. Two more, then hold 450 aether against the last surge. "
+                   "Keep that reserve; spells draw from it too."),
+    Line("Issa", "We'll need tenders from all four Steps. I'll send Lockwatch hands down for the first shift."),
+    Line("Wrenna", "And the next one? I can leave six here. They're six who won't be tending the grove."),
+    Line("Sella", "Put their wages ahead of spell-light. Otherwise you'll have built the council another cheap workshop."),
 )
 
 
 MAW_FINAL_SEALED: Dialog = (
-    Line("Sella", "The new rules are still a lid. My people will not spend another generation beneath it. Last company, to the ring."),
-    Line("Issa", "Anyone who lays down their tools comes through. Hold the Keystone. "
-                 "We promised the valley limits; we start with our own fire."),
+    Line("Sella", "You're giving the council back its locks. Last company, with me. Break the Keystone before it sets."),
+    Line("Issa", "Hold the Keystone. Anyone who puts down a weapon gets through to the refuge. Make room for them."),
 )
 
 
 MAW_DEBRIEF: Dialog = (
-    Line("Sella", "I still think a dam invites the next council to bargain with a flood. You gave its keepers a right to refuse. "
-                  "I will watch whether you honour it.", when="undertow_ending_sealed"),
-    Line("Sella", "The lower works are gone. We opened the relief before the locks and gave the valley warning. "
-                  "That was the choice I should have offered my crews.", when="undertow_ending_open"),
-    Line("Sella", "The gauges are falling without a Step going under. I was missing the roots and the people to tend them. "
-                  "Do not let another council call their work free.", when="undertow_ending_ground"),
-    Line("Brakk", "The Saltmarches have a home above the pans. That is today's account, Captain."),
-    Line("Brakk", "You heard us before choosing for us. I keep the paper; I no longer need it to make you listen.",
+    Line("Sella", "My last company broke. Are you sending guards to the tower?", when="undertow_ending_sealed"),
+    Line("Issa", "Stretcher crews first. Then you and I are going to the lower valve with Brakk.", when="undertow_ending_sealed"),
+    Line("Dagna", "The workshop roofs are under. I thought I'd have longer to look. "
+                  "Sella, help me find the crews before we start anything else.", when="undertow_ending_open"),
+    Line("Sella", "Tern can call the roll. I'll stand where they can see me.", when="undertow_ending_open"),
+    Line("Wrenna", "The leaves at Moon Hall are settling. I can feel it through the roots. "
+                   "Now I need to go home and tell six people why they aren't coming with me.", when="undertow_ending_ground"),
+    Line("Sella", "I'll take a shift. Tern can check my gauges before anyone works from them.", when="undertow_ending_ground"),
+    Line("Brakk", "Ugga sent word. The first roof's up on the Tooth. She wants to know how many beds to leave for Millfield."),
+    Line("Brakk", "I'll keep Orra's paper. But I'll walk down to the next valve with you.",
          when="undertow_mill_shuttered", unless="undertow_dam"),
-    Line("Brakk", "Ashford stays in my pouch. So does your promise that we get a say. I will hold you to the new one.",
+    Line("Brakk", "We start with the camps below Millfield, Captain. I'll show you the paths.",
          when="undertow_mill_vault", unless="undertow_dam"),
-    Line("Brakk", "Millfield lost its lock. We did not make that a reason to spend somebody else's camp. "
-                  "I will remember that beside the receipt.", when="undertow_mill_lost", unless="undertow_dam"),
-    Line("Brakk", "Millfield lost its water to buy our road. We owe Hasp a working mill. Put my name beside yours on that debt.",
-         when="undertow_dam"),
-    Line("Dagna", "The survey is public. The whole measure, my family's concealment, and the work we chose. "
-                  "Every new council reads it before touching a valve."),
-    Line("Dagna", "The refuge crew is through, with their gauges and drawings. They will work beside us, "
-                  "with clearance times posted where everyone can read them.", when="undertow_sella_tower_spared"),
-    Line("Dagna", "The refuge tower was destroyed. We can rebuild a gauge; we cannot recover every hand or drawing that was inside. "
-                  "The names go in the account too.", unless="undertow_sella_tower_spared"),
+    Line("Brakk", "When Hasp rebuilds, we go with her to see what lies below Millfield.",
+         when="undertow_mill_lost", unless="undertow_dam"),
+    Line("Brakk", "And then we go to Hasp. I've found six hands for her mill. Put yours down for the timber.", when="undertow_dam"),
+    Line("Dagna", "Tern's apprentices are coming out of the refuge. Neri's kept the gauge-sheets dry. "
+                  "I'll find her a place at the new works, if she wants one.", when="undertow_sella_tower_spared"),
+    Line("Dagna", "The refuge is gone. Tern is looking for her apprentices. Help her before you ask me for another drawing.",
+         unless="undertow_sella_tower_spared"),
 )
 
 
 EPILOGUE: Dialog = (
-    Line("", "The Chain was resealed. Public gauges now govern its spell quotas, and each downstream keeper can refuse a vent. "
-             "The Compact survives by accepting limits it once imposed only on other people.", when="undertow_ending_sealed"),
-    Line("", "The Relief Sluice relieved the Weight before the Maw released. The lower works went under violet weather; the warned valley had a road out. "
-             "Magic is free and wild, but the Hollow has mills, homes and livelihoods to rebuild.", when="undertow_ending_open"),
-    Line("", "Root, stone and three drinking vaults ground the Maw's breath. The locks remain as plumbing, tended every day by all four peoples. "
-             "Spell-light is dearer: the surplus that once bought it now keeps their valley habitable.", when="undertow_ending_ground"),
-    Line("", "Millfield remembers the night its lock held, and the crew who stood by it. "
-             "Its readings are no longer the small figures at the top of someone else's survey.", when="undertow_mill_vault"),
-    Line("", "Millfield mills by daylight. Its shuttered vault stores grain now; Hasp calls that a useful spell.",
-         when="undertow_mill_shuttered"),
-    Line("", "Millfield rebuilt after its vault fell. Hasp hangs the old gauge beside the flour scales: a warning, not a medal.",
-         when="undertow_mill_lost"),
-    Line("", "The millpond never returned. Saltmarch hands help rebuild the mill, and Hasp keeps the cost of the dry years in their shared account.",
-         when="undertow_dam"),
-    Line("", "The grove's firebreak remains a stump-scar. Wrenna marks the growth each spring, and every keeper knows what those missing roots once drank.",
-         when="undertow_grove_cut"),
-    Line("", "The Deep Grove was kept whole. Its share of the valley's work is measured now, instead of being mistaken for endless generosity.",
-         unless="undertow_grove_cut"),
-    Line("", "The grove sent its eldest to the Maw. Wrenna leaves the Ancient's stone ring open: an offered road, rather than a cage.",
-         when="undertow_guardian_ally"),
-    Line("", "The Guardian's heart-stone is set in the new works, its warmth metered instead of spent in one blaze. Wrenna calls it a debt, still.",
-         when="undertow_guardian_core"),
-    Line("", "The capped seam sleeps beneath its vault. Dagna's full confession is read to every new Tarnlock council before any other business.",
-         when="undertow_seam_capped"),
-    Line("", "Seam-gold paid wages and built refuge walls. Every haul remains in the public account beside the pressure it added.",
-         when="undertow_seam_mined"),
-    Line("", "The guarded seam's face stays closed. The watch is posted in public; the council can no longer turn a 'survey' into another mine shift.",
-         when="undertow_seam_guarded"),
-    Line("", "The engineers spared at the refuge tower join the new works. Their first common rule is that no leader gets to improve a clearance time by lying about it.",
-         when="undertow_sella_tower_spared"),
-    Line("", "A list of the refuge tower's missing hangs beside the public survey. The valley records losses from its own guns in the same ink.",
-         unless="undertow_sella_tower_spared"),
-    Line("", "Sella Voss keeps a workshop above the Saltmarches and still argues with every keeper who brings a repair. "
-             "The evacuation margins on her drawings are public now."),
+    Line("", "At the resealed locks, two keys hang above each valve. On Brakk's first watch the mill stops for half a day. "
+             "Hasp sends someone down to ask how long, and waits for his answer.", when="undertow_ending_sealed"),
+    Line("", "The lower workshops disappear beneath violet rain. Their crews carry the corrected bypass drawing uphill with the tools. "
+             "When the weather clears, Dagna stakes out a smaller shop above the old waterline.", when="undertow_ending_open"),
+    Line("", "Three vaults drink at the Maw. Four sets of boots wait by the watch-room door; the next shift brings its own supper. "
+             "The grove's tenders teach the lockwrights which roots to leave alone.", when="undertow_ending_ground"),
+    Line("", "Hasp adds the vault crew to the mill's supper rota. The night they held the lock is still an excuse for second helpings.", when="undertow_mill_vault"),
+    Line("", "The shuttered vault stores grain. The mill starts at sunrise; Hasp turns away anyone who wakes her night shift before then.", when="undertow_mill_shuttered"),
+    Line("", "Hasp hangs the fallen vault's gauge beside the flour scales. When the roof is mended, she starts asking for carpenters for the next Step.", when="undertow_mill_lost"),
+    Line("", "Without its millpond, Millfield buys flour through two lean seasons. Saltmarch carts bring timber back on every trip. "
+             "Ugga complains about the weight and never brings an empty cart.", when="undertow_dam"),
+    Line("", "Shoots cover the firebreak before the stump-line rots. Wrenna still takes the long way round it; "
+             "she is waiting for the deep roots, which grow more slowly.", when="undertow_grove_cut"),
+    Line("", "In the whole Deep Grove, the road needs clearing every spring. The road crew asks Wrenna to walk it with them before anyone starts a saw.", unless="undertow_grove_cut"),
+    Line("", "Wrenna keeps the eastern path to the Ancient's stone ring open. No guard is posted there.", when="undertow_guardian_ally"),
+    Line("", "The Guardian's heart-stone warms a chamber in the new works. Wrenna leaves water there on each visit. "
+             "She never tells the apprentices it was only a stone.", when="undertow_guardian_core"),
+    Line("", "Over the capped seam, a vault hums. Dagna hangs the complete survey in its doorway, low enough for an apprentice to read.", when="undertow_seam_capped"),
+    Line("", "Seam-gold pays the first crews. Dagna keeps the haul weights beside the gauges. When someone asks for another cart, "
+             "she makes them come down and read both.", when="undertow_seam_mined"),
+    Line("", "A guard sits at the closed seam. The council's next survey party is made to wait while an apprentice goes for Dagna.", when="undertow_seam_guarded"),
+    Line("", "Tern's apprentices mend gauges at a long bench. Neri writes the clearance time above every station before letting anyone take up a tool.", when="undertow_sella_tower_spared"),
+    Line("", "Tern pins three names beside the refuge's broken door. The next survey leaves a blank space there until she can finish looking.", unless="undertow_sella_tower_spared"),
+    Line("", "Sella keeps a workshop above the Saltmarches. On its first morning, Tern sends back a drawing with the clearance time circled. "
+             "The corrected copy arrives before work begins."),
     Line("", "Mother Hasp keeps a sack by the mill door marked 'for those coming uphill'. She charges the keepers for it, monthly, with receipts."),
 )

@@ -6,6 +6,8 @@ Vesskar Hollow's Five Steps — Humans, Orcs, Elves, Dwarves, Humans — each wi
 choices fulfilled through ordinary orders, and flags the next Steps and the finale read back.
 World and story design: `docs/campaign-setting.md`. This note records what shipped.
 The entrance and Millfield's revised first playable sequence: [first impression criteria and design](undertow-opening.md).
+Character voices, branch continuity and the revision's craft sources:
+[narrative design](undertow-story.md).
 
 Each playable keeper has a named map tag and an authored portrait in dialogue, the selection
 card and the army grid. **F3** selects and centres the current keeper; that link follows a rescue
@@ -42,7 +44,9 @@ left-click looks there, right-click sends the selected units.
 
 Exactly one of `undertow_ending_sealed/open/ground` is remembered; the epilogue composes a verse
 per flag. Sparing or destroying Sella’s refuge mage tower is also remembered and changes the closing
-account of its engineers and wounded crews. Every remembered flag defaults in setup and is set by an action before victory, so
+account of its engineers and wounded crews. The map charts this occupied refuge;
+an approaching army hears who is inside before reaching ordinary siege range.
+Every remembered flag defaults in setup and is set by an action before victory, so
 leaving at the result screen never skips one.
 
 ## What carries into the Maw

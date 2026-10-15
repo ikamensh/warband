@@ -116,6 +116,9 @@ class DialogStage:
             key = _projection(scene.game, previous)
             if key is not None:
                 scene.draw_image(key, ox + sw * .50 - rx, cy - ry, rx * 2, ry * 2, opacity=.35)
+            else:
+                draw_production_icon(scene, previous.subject, previous.player, previous.race,
+                                     ox + sw * .50 - rx, cy - rx, rx * 2, opacity=.35)
         if self.speaker is not None:
             if self.projection:
                 scene.draw_image(self.projection, cx - rx, cy - ry + math.sin(self.clock * 1.3) * 1.2,

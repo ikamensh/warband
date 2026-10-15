@@ -15,7 +15,8 @@ def test_a_character_portrait_draws_and_the_dialogue_advances(tmp_path) -> None:
         scene = DialogScene((Line("Issa", "Then we walk down, one lock at a time."),), {"Issa": speaker}, {})
         game.push(scene)
         game.tick(1 / 60)
-        assert any(image["width"] == 104 and image["height"] == 104 for image in game.backend.images)
+        portrait = game.assets.image(f"story.portrait.{speaker.portrait}")
+        assert any(image["image"] == portrait and image["width"] == image["height"] for image in game.backend.images)
         assert "Captain Issa Renn" in [text["text"] for text in game.backend.texts]
         game.backend.inject_key("space")
         game.tick(1 / 60)
