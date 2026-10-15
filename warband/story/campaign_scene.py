@@ -291,7 +291,9 @@ class CampaignScene(Scene):
                 return
         mission = self.next_mission
         if mission is None:
-            self.game.push(DialogScene(self.campaign.epilogue, self.campaign.speakers, dict(self.progress.flags)))
+            self.game.push(DialogScene(self.campaign.epilogue, self.campaign.speakers, dict(self.progress.flags),
+                                       heading=f"{self.campaign.title} / EPILOGUE", end_label="Return to campaign",
+                                       backdrop=self.campaign.missions[-1].dialogue_art))
             return
         if self.resume is not None:
             self.game.clear_and_push(self.resume)

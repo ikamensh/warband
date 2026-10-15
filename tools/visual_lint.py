@@ -1327,7 +1327,7 @@ def mission_raid(game: Game) -> None:
 @screen
 def mission_choice(game: Game) -> None:
     scene = mission(game, "karst_hold")
-    game.push(DialogScene(scene.mission.debrief[2:], CAMPAIGN.speakers, scene.run.vars))
+    game.push(scene.conversation(scene.mission.debrief[2:]))
     ticks(game)
 
 
@@ -1364,7 +1364,7 @@ def _catalog_opening(game: Game, *, campaign: Campaign, mission: Mission) -> Non
 
 def _catalog_briefing(game: Game, *, campaign: Campaign, mission: Mission) -> None:
     scene = _catalog_mission(game, campaign=campaign, mission=mission)
-    game.push(DialogScene(mission.briefing, campaign.speakers, scene.run.vars))
+    game.push(scene.conversation(mission.briefing, briefing=True, end_label="Take command"))
     ticks(game)
 
 
@@ -1387,9 +1387,18 @@ def _undertow_choice(game: Game, *, campaign: Campaign) -> None:
     mission = campaign.mission("undertow_weight")
     scene = _catalog_mission(game, campaign=campaign, mission=mission)
     next(trigger for trigger in mission.triggers if trigger.id == "confession").do(scene.run)
-    game.push(DialogScene(scene.run.pending.pop(), campaign.speakers, scene.run.vars, record=True))
+    game.push(scene.conversation(scene.run.pending.pop()))
     while not isinstance(game.scene.current, Choice):
         game.scene.advance()
+    ticks(game)
+
+
+def _undertow_conversation(game: Game, *, campaign: Campaign) -> None:
+    """The dedicated illustrated field view uses the current level's location and a named portrait."""
+    from warband.story.undertow_dialogue import WEIGHT_SELLA_EXCHANGE
+
+    scene = _catalog_mission(game, campaign=campaign, mission=campaign.mission("undertow_weight"))
+    game.push(scene.conversation(WEIGHT_SELLA_EXCHANGE))
     ticks(game)
 
 
@@ -1531,6 +1540,7 @@ def campaign_cases(campaign: Campaign) -> dict[str, Screen]:
             "mission_undertow_handoff": partial(_undertow_handoff, campaign=campaign),
             "mission_undertow_first_command": partial(_undertow_first_command, campaign=campaign),
             "mission_undertow_choice": partial(_undertow_choice, campaign=campaign),
+            "mission_undertow_conversation": partial(_undertow_conversation, campaign=campaign),
             "mission_undertow_journal": partial(_undertow_journal, campaign=campaign),
             "mission_undertow_committed": partial(_undertow_committed, campaign=campaign),
             "mission_undertow_keeper_objectives": partial(_undertow_keeper_objectives, campaign=campaign),
@@ -1549,6 +1559,9 @@ def campaign_cases(campaign: Campaign) -> dict[str, Screen]:
 EXTRA_CAMPAIGN_SCREENS = {name: show for campaign in CAMPAIGNS if campaign.id != LEGACY_CAMPAIGN_ID
                           for name, show in campaign_cases(campaign).items()}
 SCREENS.update(EXTRA_CAMPAIGN_SCREENS)
+BRIEFING_SCREENS = {name: show for campaign in CAMPAIGNS for name, show in campaign_cases(campaign).items()
+                   if name.endswith("_briefing") and name not in SCREENS}
+SCREENS.update(BRIEFING_SCREENS)
 
 
 # -- Running ----------------------------------------------------------------------------

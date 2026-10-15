@@ -155,6 +155,7 @@ class Mission:
     win: Callable[[Run], bool] | None = None  # default: every required objective done
     remember: tuple[str, ...] = ()  # variables copied into the campaign's flags on completion
     opening_focus: Point | None = None  # fresh mission: frame this battlefield and select its starting company
+    dialogue_art: str = "campaign/scenes/millfield.webp"  # painted location, relative to assets; presentation only
 
     def won(self, run: Run) -> bool:
         """The mission's own rule, else every required objective on the panel is done."""

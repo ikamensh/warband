@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import math
 from collections import deque
-from typing import Any
+from typing import Any, Callable
 
 from saga2d import Anchor, Button, Column, Component, KeyHints, Label, Row, SaveError, Scene, Style
 from saga2d.effects import Banner, Toast
@@ -19,7 +19,8 @@ from warband.sim import mapgen
 from warband.brains.ai import make_brain
 from warband.ui.match import LocalMatch
 from warband.ui.match_record import check_save, saved_run_id
-from warband.story.campaign import LEGACY_CAMPAIGN_ID, Campaign, Mission, Progress, ProgressStore, Run, Speaker, shifted
+from warband.story.campaign import LEGACY_CAMPAIGN_ID, Campaign, Dialog, Mission, Progress, ProgressStore, Run, Speaker, shifted
+from warband.story.briefing import briefing_chart
 from warband.story.dialog import DialogScene, speaker_portrait
 from warband.story.journal import JournalScene
 from warband.story.landmarks import LandmarkView
@@ -89,15 +90,14 @@ def restart_mission(game, scene: MissionScene) -> str | None:
 
 
 def start_mission(game, campaign: Campaign, mission: Mission, progress: Progress, settings, *, briefing: bool = True) -> None:
-    """Brief over the actual battlefield, paused, then give the player the same company and camera."""
+    """Brief in the aether chamber, then give the player the prepared company and camera."""
     if progress.campaign != campaign.id or mission not in campaign.missions:
         raise ValueError("mission and progress must belong to the selected campaign")
     run = build_world(mission, flags=progress.flags)
     scene = MissionScene(campaign, run, difficulty=progress.difficulty, settings=settings)
     game.clear_and_push(scene)
     if briefing:
-        game.push(DialogScene(mission.briefing, campaign.speakers, run.vars, record=True,
-                              heading=f"CHAPTER {campaign.index(mission):02} / {mission.title}", end_label="Take command"))
+        game.push(scene.conversation(mission.briefing, briefing=True, end_label="Take command"))
 
 
 class _Notice(Toast):
@@ -176,6 +176,14 @@ class MissionScene(GameScene):
             self.camera.center_on(*to_world(self.mission.opening_focus))
         self._update_objectives()
         self._fold_objectives()
+
+    def conversation(self, dialog: Dialog, *, briefing: bool = False, end_label: str = "Continue",
+                     on_done: Callable[[], None] | None = None) -> DialogScene:
+        """One route into a story view: the level's art, chapter, journal and optional narrated field chart."""
+        return DialogScene(dialog, self.campaign.speakers, self.run.vars, record=True, on_done=on_done,
+                           heading=f"CHAPTER {self.campaign.index(self.mission):02} / {self.mission.title}",
+                           end_label=end_label, backdrop=self.mission.dialogue_art,
+                           chart=briefing_chart(self.run) if briefing else None)
 
     def draw(self) -> None:
         super().draw()
@@ -333,7 +341,7 @@ class MissionScene(GameScene):
             self.last_alert = point
         run.looks.clear()
         if run.pending:
-            self.game.push(DialogScene(run.pending.pop(0), self.campaign.speakers, run.vars, record=True))
+            self.game.push(self.conversation(run.pending.pop(0)))
 
     def _check_game_over(self) -> None:
         if self._game_over:
@@ -489,8 +497,7 @@ class MissionResultScene(_Overlay):
         if not self.won:
             return
         scene = self.scene
-        self.game.push(DialogScene(scene.mission.debrief, scene.campaign.speakers, scene.run.vars,
-                                   on_done=self._after_debrief, record=True))
+        self.game.push(scene.conversation(scene.mission.debrief, on_done=self._after_debrief))
 
     def _after_debrief(self) -> None:
         scene = self.scene
@@ -503,7 +510,9 @@ class MissionResultScene(_Overlay):
             except SaveError as error:
                 scene.progress_error = str(error)
         if scene.progress is not None and scene.progress.next_mission(scene.campaign) is None:
-            self.game.push(DialogScene(scene.campaign.epilogue, scene.campaign.speakers, dict(scene.progress.flags), on_done=self.campaign))
+            self.game.push(DialogScene(scene.campaign.epilogue, scene.campaign.speakers, dict(scene.progress.flags), on_done=self.campaign,
+                                       heading=f"{scene.campaign.title} / EPILOGUE", backdrop=scene.mission.dialogue_art,
+                                       end_label="Return to campaign"))
         else:
             self.campaign()
 

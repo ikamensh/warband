@@ -71,6 +71,7 @@ def _raid_3(run: Run) -> None:
 
 
 HOLLOWMERE = Mission(
+    dialogue_art="campaign/scenes/hollowmere.webp",
     id="hollowmere", title="Hollowmere", act=ACT_1,
     sides=(Side("Hollowmere", Race.HUMAN), Side("Bloodfang Raiders", Race.ORC)),
     size="Small", theme=MapTheme.SUMMER, layout=Layout.PLAINS, seed=1101,
@@ -150,6 +151,7 @@ def _truce(run: Run) -> None:
 
 
 GREYWATER = Mission(
+    dialogue_art="campaign/scenes/greywater.webp",
     id="greywater", title="Greywater Ford", act=ACT_1,
     sides=(Side("The Marches", Race.HUMAN), Side("Bloodfang Clan", Race.ORC, ai=Difficulty.EASY)),
     size="Medium", theme=MapTheme.WASTELAND, layout=Layout.CROSSINGS, seed=1202,
@@ -228,6 +230,7 @@ def _ambush(run: Run) -> None:
 
 
 SILENT_HOLD = Mission(
+    dialogue_art="campaign/scenes/frostcomb.webp",
     id="silent_hold", title="The Silent Hold", act=ACT_2,
     sides=(Side("Aldric's Company", Race.HUMAN), Side("Thornwood Wardens", Race.ELF)),
     size="Medium", theme=MapTheme.WINTER, layout=Layout.PLAINS, seed=1303,
@@ -281,6 +284,7 @@ def _assault(run: Run) -> None:
 
 
 KARST_HOLD = Mission(
+    dialogue_art="campaign/scenes/frostcomb.webp",
     id="karst_hold", title="Karst Hold", act=ACT_2,
     sides=(Side("Karst Hold", Race.DWARF), Side("Thornwood Host", Race.ELF, ai=Difficulty.MEDIUM)),
     size="Medium", theme=MapTheme.WINTER, layout=Layout.PLAINS, seed=1404,
@@ -331,6 +335,7 @@ def _setup_retaken(run: Run) -> None:
 
 
 RETAKEN = Mission(
+    dialogue_art="campaign/scenes/greywater.webp",
     id="retaken", title="Greywater Retaken", act=ACT_3,
     sides=(Side("The Marches", Race.HUMAN), Side("Thornwood Lodges", Race.ELF, ai=Difficulty.MEDIUM)),
     size="Medium", theme=MapTheme.SUMMER, layout=Layout.CROSSINGS, seed=1505,
@@ -388,6 +393,7 @@ def _setup_court(run: Run) -> None:
 
 
 COURT_OF_THORNS = Mission(
+    dialogue_art="campaign/scenes/thorn-court.webp",
     id="court_of_thorns", title="The Court of Thorns", act=ACT_3,
     sides=(Side("The Marches", Race.HUMAN), Side("The Court of Thorns", Race.ELF, ai=Difficulty.HARD),
            Side("Ironjaw's Warband", Race.ORC, ai=Difficulty.MEDIUM)),

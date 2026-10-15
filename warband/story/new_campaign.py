@@ -255,6 +255,7 @@ def _mill_hold(run: Run) -> None:
 
 
 MILL = Mission(
+    dialogue_art="campaign/scenes/millfield.webp",
     id="undertow_mill", title="Millfield", act=ACT_1,
     sides=(Side("Millfield", Race.HUMAN), Side("The Straining", Race.ORC)),
     size="Small", theme=MapTheme.SUMMER, layout=Layout.PLAINS, seed=2101,
@@ -422,6 +423,7 @@ def _caravan_resolved(run: Run) -> None:
 
 
 CARAVAN = Mission(
+    dialogue_art="campaign/scenes/saltmarch.webp",
     id="undertow_caravan", title="The Salt Caravan", act=ACT_1,
     sides=(Side("The Saltmarches", Race.ORC), Side("The Open Hand", Race.HUMAN), Side("The Old Camp", Race.ORC)),
     size="Medium", theme=MapTheme.WASTELAND, layout=Layout.CROSSINGS, seed=2202,
@@ -597,6 +599,7 @@ def _grove_guardian_core(run: Run) -> None:
 
 
 GROVE = Mission(
+    dialogue_art="campaign/scenes/deep-grove.webp",
     id="undertow_grove", title="The Grove That Drinks", act=ACT_2,
     sides=(Side("Deep Grove", Race.ELF), Side("The Woodcutters", Race.HUMAN), Side("The Bloom-Front", Race.ORC)),
     size="Medium", theme=MapTheme.SUMMER, layout=Layout.FOREST, seed=2303,
@@ -786,6 +789,7 @@ def _weight_siege_broken(run: Run) -> None:
 
 
 WEIGHT = Mission(
+    dialogue_art="campaign/scenes/tarnlock.webp",
     id="undertow_weight", title="The Weight", act=ACT_2,
     sides=(Side("Tarnlock", Race.DWARF), Side("The Open Hand", Race.HUMAN)),
     size="Medium", theme=MapTheme.WINTER, layout=Layout.BASTION, seed=2404,
@@ -1040,6 +1044,7 @@ def _maw_relief(run: Run) -> None:
 
 
 MAW = Mission(
+    dialogue_art="campaign/scenes/maw.webp",
     id="undertow_maw", title="The Maw", act=ACT_3,
     sides=(Side("Keepers", Race.HUMAN), Side("The Open Hand", Race.HUMAN), Side("The Bloom", Race.ORC)),
     size="Large", theme=MapTheme.WASTELAND, layout=Layout.KLONDIKE, seed=2505,
