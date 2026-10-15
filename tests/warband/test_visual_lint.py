@@ -251,7 +251,7 @@ SCREENS = ("title", "library", "multiplayer_setup", "multiplayer_lan", "multipla
            "commands_pips", "commands_tags",
            "modes_home", "modes_build", "modes_build_more", "modes_train", "modes_upgrade", "modes_orders", "modes_withdraw", "modes_spells", "modes_place", "modes_target",
            "alerts", "battle_wood",
-           "help", "codex_0", "codex_2", "codex_3", "codex_4", "codex_5", "save_browser", "game_over_won", "high_scores",
+           "settings", "settings_grid", "settings_modal", "help", "codex_0", "codex_2", "codex_3", "codex_4", "codex_5", "save_browser", "game_over_won", "high_scores",
            "campaign_fresh", "campaign_under_way", "mission_raid", "mission_choice", "mission_result",
            "neutral_raid", "neutral_stronghold", "neutral_ancient", "neutral_slam", "neutral_air_defense", "neutral_guardian_reach", "neutral_reward", "neutral_results", "codex_wilds", "codex_wilds_open") + tuple(screens.EXTRA_CAMPAIGN_SCREENS)
 

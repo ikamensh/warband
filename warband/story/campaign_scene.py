@@ -20,7 +20,7 @@ from warband.story.mission_scene import MissionScene, build_world, campaign_save
 from warband.story import catalog
 from warband.sim.rules import Difficulty
 from warband.ui.profile_scene import home_relative
-from warband.ui.scene import _clock, load_game
+from warband.ui.scene import CAMPAIGN_SPEEDS, DEFAULT_SETTINGS, _clock, load_game
 from warband.audio.sound import play_sound
 from warband.ui.style import ACTION_BUTTON, BAD, DIM, GHOST_BUTTON, GOLD, GOOD, MUTED, OVERLAY_STYLE, PICKED_BUTTON, TEXT
 
@@ -34,7 +34,8 @@ class CampaignScene(Scene):
     controls = {("return", "c"): "continue_campaign", "r": "restart_mission", "escape": "back", "e": "easy", "n": "medium", "h": "hard"}
 
     def __init__(self, settings: dict[str, Any] | None = None, *, campaign: Campaign | None = None) -> None:
-        self.settings = settings
+        self.settings = settings if settings is not None else dict(DEFAULT_SETTINGS)
+        self.settings.setdefault("campaign_speed", 1.0)
         self.campaign = campaign if campaign is not None else catalog.DEFAULT_CAMPAIGN
         self.progress: Progress | None = None
         self.unreadable = ""  # why the progress file on disk cannot be read; while it is set, nothing here writes
@@ -108,10 +109,7 @@ class CampaignScene(Scene):
         panel = Column(spacing=12, anchor=Anchor.CENTER, style=OVERLAY_STYLE)
         panel.add(Label(self.campaign.title, text_style="title"))
         panel.add(Label(self.campaign.tagline, text_style="sub"))
-        if len(catalog.CAMPAIGNS) > 1:
-            panel.add(Row(*(Button(campaign.title, on_click=lambda selected=campaign: self.select_campaign(selected),
-                                   style=ACTION_BUTTON if campaign.id == self.campaign.id else GHOST_BUTTON,
-                                   width=360) for campaign in catalog.CAMPAIGNS), spacing=8))
+        panel.add(self._campaign_controls(300))
         if self.unreadable:
             self._build_unreadable(panel)
         elif self.progress is None:
@@ -128,10 +126,7 @@ class CampaignScene(Scene):
 
     def _build_cover(self) -> None:
         """The first visit sells the journey; mission navigation belongs to the campaign already under way."""
-        self.ui.add(Row(*(Button(campaign.title, on_click=lambda selected=campaign: self.select_campaign(selected),
-                                style=PICKED_BUTTON if campaign.id == self.campaign.id else GHOST_BUTTON,
-                                width=210) for campaign in catalog.CAMPAIGNS),
-                        spacing=8, anchor=Anchor.TOP_RIGHT, margin=(40, 32)))
+        self.ui.add(self._campaign_controls(200, anchor=Anchor.TOP_RIGHT, margin=(40, 32)))
         width = min(520, self.game.width - 100)
         hero = Column(spacing=22, width=width, anchor=Anchor.LEFT_CENTER, margin=(64, 0))
         hero.add(Label("WARBAND  /  STORY CAMPAIGN", text_style="caption", text_color=GOLD, width=width))
@@ -149,6 +144,20 @@ class CampaignScene(Scene):
         self.ui.add(hero)
         self.ui.add(Label(f"{len(self.campaign.missions)} chapters  ·  Your choices reshape the final battle", text_style="sub",
                           text_color=MUTED, anchor=Anchor.BOTTOM_LEFT, margin=(64, 32)))
+
+    def _campaign_controls(self, width: int, **layout: Any) -> Row:
+        return Row(*(Button(campaign.title, on_click=lambda selected=campaign: self.select_campaign(selected),
+                            style=PICKED_BUTTON if campaign.id == self.campaign.id else GHOST_BUTTON, width=width)
+                     for campaign in catalog.CAMPAIGNS),
+                   Button(lambda: f"Speed: ×{self.settings['campaign_speed']:g}", on_click=self.cycle_speed,
+                          style=GHOST_BUTTON, width=150,
+                          tooltip="Click to cycle campaign speed. Also adjustable in the mission's Settings."), spacing=8, **layout)
+
+    def cycle_speed(self) -> None:
+        index = CAMPAIGN_SPEEDS.index(self.settings["campaign_speed"])
+        self.settings["campaign_speed"] = CAMPAIGN_SPEEDS[(index + 1) % len(CAMPAIGN_SPEEDS)]
+        if hasattr(self.settings, "save"):
+            self.settings.save()
 
     def _build_unreadable(self, panel: Column) -> None:
         """The player's place is in a file this version cannot read: say why, and offer no way in that would write over it."""

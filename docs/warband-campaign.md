@@ -26,6 +26,14 @@ or Retry), and a **debrief**. The pause menu of a mission offers Restart
 mission and Campaign (which saves first) instead of New game and Resign.
 Missions are not ranked: the leaderboard is for skirmishes.
 
+**Speed** on the campaign screen cycles through 0.5×, 0.75×, 1× (the default),
+1.2×, 1.5×, 2× and 3×. During a mission, open **Menu (F10) → Settings →
+Campaign speed** to adjust it with the −/+ buttons or arrow keys. The preference
+is saved across both campaigns, restarts and resumed missions; it does not alter
+skirmish or multiplayer speed. The HUD shows the multiplier when it differs from
+1×. Dialogue and menus still pause the mission, and text and notices keep their
+normal reading pace.
+
 ## The plot
 
 Ten years of quiet on the Greywater end when orc warbands cross the river and

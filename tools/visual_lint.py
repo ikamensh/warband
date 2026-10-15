@@ -1231,10 +1231,14 @@ def pause(game: Game) -> None:
 
 
 @screen
-def settings(game: Game) -> None:
-    scene = town(game)
+def settings(game: Game, *, controls: str = "classic") -> None:
+    scene = town(game, controls=controls)
     game.push(SettingsScene(scene))
     ticks(game)
+
+
+for _controls in ("grid", "modal"):
+    SCREENS[f"settings_{_controls}"] = partial(settings, controls=_controls)
 
 
 @screen
