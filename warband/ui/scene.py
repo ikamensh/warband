@@ -53,7 +53,8 @@ from warband.ui.tutorial import OBJECTIVES, Tutorial
 from warband.ui.view import CONDITION_LOOKS, FLIGHT, SHOT_LOOKS, SHOT_SIZE, MapView, Overlay, Sighting, rgba, to_tiles, to_world
 
 DEFAULT_SETTINGS: dict[str, Any] = {"music": 0.6, "sfx": 0.8, "edge_scroll": True, "scroll_speed": 1.0, "fullscreen": False, "tutorial": True, "blood": True,
-                                    "controls": "modal"}
+                                    "controls": "modal", "campaign_speed": 1.0}
+CAMPAIGN_SPEEDS = (0.5, 0.75, 1.0, 1.2, 1.5, 2.0, 3.0)
 #: What is built rather than born, and throws up wood chips where it is struck: a body of timber (``bodies.material``).
 MACHINES = {u.value for u in UnitType if bodies.material(u) == "wood"}
 #: What bleeds when hit: a body its armour decides, flesh under it.  The machines are timber and a golem is stone.
@@ -3747,8 +3748,8 @@ class _Overlay(Scene):
     pause_below = False
     pop_on_cancel = True
 
-    def panel(self, title: str) -> Column:
-        panel = Column(spacing=10, anchor=Anchor.CENTER, style=OVERLAY_STYLE)
+    def panel(self, title: str, *, spacing: int = 10) -> Column:
+        panel = Column(spacing=spacing, anchor=Anchor.CENTER, style=OVERLAY_STYLE)
         panel.add(Label(title, text_style="title"))
         self.ui.add(panel)
         return panel
@@ -3967,7 +3968,7 @@ class SettingsScene(_Overlay):
     ROWS: tuple[tuple[str, str, str], ...] = (
         ("Music volume", "music", "percent"), ("Sound volume", "sfx", "percent"), ("Edge scrolling", "edge_scroll", "toggle"),
         ("Scroll speed", "scroll_speed", "speed"), ("Fullscreen", "fullscreen", "toggle"), ("Tutorial", "tutorial", "toggle"),
-        ("Blood", "blood", "toggle"), ("Controls", "controls", "scheme"),
+        ("Blood", "blood", "toggle"), ("Controls", "controls", "scheme"), ("Campaign speed", "campaign_speed", "campaign_speed"),
     )
 
     def __init__(self, game_scene: GameScene) -> None:
@@ -3982,7 +3983,7 @@ class SettingsScene(_Overlay):
         value = self.settings[key]
         if kind == "percent":
             return f"{round(value * 100)}%"
-        if kind == "speed":
+        if kind in ("speed", "campaign_speed"):
             return f"×{value:g}"
         if kind == "scheme":
             return SCHEMES[value].name
@@ -3990,7 +3991,7 @@ class SettingsScene(_Overlay):
 
     def on_enter(self) -> None:
         self.ui.enable_focus(navigation="vertical", activate=())
-        panel = self.panel("Settings")
+        panel = self.panel("Settings", spacing=6)  # all nine options and the control hint fit a 680-pixel window
         for name, key, kind in self.ROWS:
             row = Row(spacing=12, focusable=True)
             self.row_keys[row] = key
@@ -4004,7 +4005,7 @@ class SettingsScene(_Overlay):
             ))
             panel.add(row)
         self.ui.focus(next(iter(self.row_keys)))
-        panel.add(Label(lambda: SCHEMES[self.settings["controls"]].summary, text_style="sub", width=420, wrap=True))
+        panel.add(Label(lambda: SCHEMES[self.settings["controls"]].summary, text_style="sub", width=500, wrap=True))
         panel.add(Label("Settings are saved when you leave this screen.", text_style="sub"))
         panel.add(KeyHints([("Tab / ↑↓", "select"), ("←→", "adjust"), ("Esc", "close")]))
 
@@ -4015,6 +4016,9 @@ class SettingsScene(_Overlay):
             apply_volumes(self.settings["music"], self.settings["sfx"])
         elif kind == "speed":
             self.settings[key] = round(max(0.5, min(2.0, self.settings[key] + 0.25 * direction)), 2)
+        elif kind == "campaign_speed":
+            index = CAMPAIGN_SPEEDS.index(self.settings[key])
+            self.settings[key] = CAMPAIGN_SPEEDS[max(0, min(len(CAMPAIGN_SPEEDS) - 1, index + direction))]
         elif kind == "scheme":
             order = list(SCHEMES)
             self.settings[key] = order[(order.index(self.settings[key]) + direction) % len(order)]

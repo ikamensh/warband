@@ -162,6 +162,10 @@ class MissionScene(GameScene):
         self._notice: _Notice | None = None
         self._banner_until = -math.inf  # the mission's title has the screen to itself until then
 
+    def apply_settings(self) -> None:
+        super().apply_settings()
+        self.execution.speed = float(self.settings["campaign_speed"])
+
     def on_enter(self) -> None:
         super().on_enter()
         self.landmarks = LandmarkView(self)
