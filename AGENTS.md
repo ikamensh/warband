@@ -116,6 +116,9 @@ keeps where code goes and the rules below.
 
 ## Rules
 
+- Finished work lands on `main`. Branches and worktrees isolate work in progress;
+  after verification, merge and push to `main`. A branch or PR is not a finished
+  handoff unless the user explicitly asks for one.
 - Game code imports from `saga2d` and `sagaforge`, never from
   `saga2d.backends`. Framework changes belong in `../saga2d` and need a
   concrete game need.
