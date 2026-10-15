@@ -20,7 +20,7 @@ import random
 from typing import Any
 
 from warband.story.campaign import (
-    Campaign, Choice, Line, Mission, Objective, Option, Run, Side, Speaker, Trigger,
+    Campaign, Line, Mission, Objective, Run, Side, Speaker, Trigger,
     after, all_of, any_of, at, objective_done, var,
 )
 from warband.story import undertow_dialogue as dialogue
@@ -361,7 +361,8 @@ def _setup_caravan(run: Run) -> None:
               middle_ford=[31.5, 23.5], ford_east=[35.5, 23.5])
     _landmark(run, "old_camp", "The Old Camp (salvage it)", (10.5, 21.5), kind="memorial", state="active")
     _landmark(run, "mesa", "The Broken Tooth mesa", (51.0, 23.0), kind="refuge", radius=6, state="active")
-    _landmark(run, "dam_pylon", "Mill-dam pylon", dam_pylon.center, kind="gate", state="active")
+    _landmark(run, "dam_pylon", "Hasp's millpond dam (blast floods the camp)", dam_pylon.center,
+              kind="gate", state="active")
     _landmark(run, "middle_ford", "The causeway ford", (31.5, 23.5), kind="gate", state="open")
     world.update_vision()
 
@@ -382,7 +383,8 @@ def _caravan_rockfall(run: Run) -> None:
 def _caravan_sappers(run: Run) -> None:
     run.spawn(0, [U.SAPPER] * 2, (3.5, 24.5))
     run.toast("Goblin sappers join the caravan", "Their blast fells buildings. One for the rockfall — if you spend it")
-    run.say(Line("Ugga", "Sappers! One blast opens the causeway. Save the other little madman for the dam crew, eh?"))
+    run.say(Line("Ugga", "Sappers! One blast opens the causeway. That leaves one spare. "
+                         "Mind where he stands; I've only just packed those timbers."))
 
 
 def _caravan_stores(run: Run) -> None:
@@ -392,8 +394,8 @@ def _caravan_stores(run: Run) -> None:
     player.lumber += 1600
     _landmark_state(run, "old_camp", "ruined")
     run.say(
-        Line("Ugga", "That's the Old Camp on our backs: hall-timbers, farm-frames, salt and coin. A homeland packs down small."),
-        Line("Brakk", "Then up. Hall and three farms on the Tooth, and at least five drovers standing on it. On our feet, in our time."),
+        Line("Ugga", "Last peg's out. I've kept the old doorpost too. Help me with this end, will you?"),
+        Line("Brakk", "Up to the Tooth. Hall and three farms, with five drovers there to finish them. Check who's still on the road."),
     )
     run.toast("Packed stores unpacked", "+2600 gold, +1600 lumber for the mesa camp")
 
@@ -405,9 +407,8 @@ def _caravan_flood(run: Run) -> None:
     run.world.take_events()
     _landmark_state(run, "dam_pylon", "ruined")
     run.say(
-        Line("Brakk", "That water was Millfield's millpond. You spent their river to buy our road, and it worked. "
-                      "I know that arithmetic. I have carried it six years, folded in my pouch."),
-        Line("Ugga", "North bank's clear, whatever it cost. Move, drovers."),
+        Line("Ugga", "The north camp's gone. That's our crossing. Come on, before the mud settles."),
+        Line("Brakk", "Someone needs to tell Hasp before the night shift. We'll go back when our people are across."),
     )
 
 
@@ -519,14 +520,7 @@ def _setup_grove(run: Run) -> None:
 
 def _grove_parley(run: Run) -> None:
     run.set("parleyed", True)
-    run.say(
-        Line("Pell", "Hold! Sergeant Pell, Lockwatch militia. We're cutting a firebreak against the bloom-front — "
-                     "Captain Renn's standing order, signed and sealed. I'd rather be sawing than fighting, Warden."),
-        Line("Wrenna", "Issa's order. Of course it is. The grove drinks the bloom, Sergeant — that's what it's for. "
-                       "Cut its throat to save its heart, or trust it to drink at full strength?"),
-        Line("Pell", "Your wood, your call. We strike camp and keep the south road — armed men can't work saw-to-saw "
-                     "with your guard anyway. Finish the marked line, or muster at your hall and take the bloom whole."),
-    )
+    run.say(*dialogue.GROVE_PARLEY)
     run.toast("Parley at the woodcutters' camp", "Fell the marked line, or muster at the Moon Hall and weather the bloom")
     # The crew strikes camp and withdraws for good; the mill stands empty behind them.
     run.world.resign(1)
@@ -591,8 +585,8 @@ def _grove_guardian_ally(run: Run) -> None:
 def _grove_guardian_core(run: Run) -> None:
     run.set("undertow_guardian_core", True)
     _landmark_state(run, "guardian_ring", "ruined")
-    run.say(Line("Wrenna", "Its heart-stone, still warm. A vault built around that could drink a river of breath. "
-                           "We will spend it at the Maw, and spend it well. That is the debt now."))
+    run.say(Line("Wrenna", "Its heart is still warm. Wrap it. Dagna may be able to set it into the Maw's works. "
+                           "I'll stay here a moment."))
     run.toast("The Guardian's heart-stone", "Carried to the Maw: a vault's worth of holding")
 
 
@@ -631,8 +625,7 @@ GROVE = Mission(
                                          lambda run: not run.get("parleyed")), _grove_rout_aftermath),
         Trigger("grove_plan", all_of(objective_done("parley_or_rout"),
                                      lambda run: bool(run.get("parleyed") or run.get("grove_order_revealed"))),
-                lambda run: run.say(Choice("grove_intent", "Wrenna", "How shall the grove meet the bloom?",
-                                          (Option("Cut the firebreak", "cut"), Option("Keep the grove whole", "whole"))))),
+                lambda run: run.say(*dialogue.GROVE_PLAN)),
         Trigger("bloom", any_of(
             all_of(var("grove_intent", "cut"), lambda run: _felled(run) >= STRIP_NEEDED),
             all_of(var("grove_intent", "whole"), after("grove_plan", 15),
@@ -767,13 +760,13 @@ def _weight_settle(kind: str):
         if kind == "cap":
             run.set("undertow_seam_capped", True)
             _landmark_state(run, "seam_rift", "open")
-            run.say(Line("Dagna", "Capped. Let the council read that and weep. The confession goes to them in writing, with my name on it."))
+            run.say(Line("Dagna", "Cap's seated. Leave the complete survey with the watch. I'll sign it before we go."))
         elif kind == "mine":
             run.set("undertow_seam_mined", True)
-            run.say(Line("Dagna", "Three hundred out of the lid, spent on not dying. The Maw will feel every cart of it. So be it."))
+            run.say(Line("Dagna", "Three hundred hauled. Pay the crews. Keep those weights; we'll need them to judge the pressure at the Maw."))
         else:
             run.set("undertow_seam_guarded", True)
-            run.say(Line("Dagna", "Guard posted, face closed, nothing drawn and nothing capped. A held breath, honestly held."))
+            run.say(Line("Dagna", "Guard posted. No more carts. I'll leave the watch a gauge; the pressure still needs tending."))
         run.set("seam_settled", kind)
         _landmark_state(run, "seam", "open")
 
@@ -790,8 +783,8 @@ WEIGHT = Mission(
     sides=(Side("Tarnlock", Race.DWARF), Side("The Open Hand", Race.HUMAN)),
     size="Medium", theme=MapTheme.WINTER, layout=Layout.BASTION, seed=2404,
     briefing=dialogue.WEIGHT_BRIEFING + (
-        Line("Dagna", "Raze their southern hall, or raze the workshop and beat three bands. Either way, clear the attackers still here. "
-                      "Then cap the seam's rift with a Rune Vault, haul 300 gold, or choose a guard and post soldiers at its face."),
+        Line("", "Raze the southern hall, or raze the workshop and beat three bands. Clear the remaining attackers. "
+                 "Settle the seam by building a Rune Vault on its rift, hauling 300 gold, or choosing a guard and posting soldiers at the face after the siege."),
     ),
     debrief=dialogue.WEIGHT_DEBRIEF,
     setup=_setup_weight,
@@ -810,7 +803,7 @@ WEIGHT = Mission(
     triggers=(
         Trigger("sella_exchange", at(1), lambda run: run.say(*dialogue.WEIGHT_SELLA_EXCHANGE)),
         Trigger("band_1", all_of(at(20), _weight_siege_active), _weight_band([U.FOOTMAN] * 4 + [U.ARCHER] * 2, "band_1_band",
-                                               Line("Dagna", "There — past the towers, straight for Weight I. She knows. She has always known which ones."))),
+                                               Line("Dagna", "Past the towers, straight for Weight I. Wrenna's root-map showed her the connections. Get a crew over there."))),
         Trigger("band_2", all_of(_weight_siege_active, any_of(_band_cleared("band_1_band"), after("band_1", 180))),
                 _weight_band([U.FOOTMAN] * 5 + [U.ARCHER] * 2, "band_2_band")),
         Trigger("band_3", all_of(_weight_siege_active, any_of(_band_cleared("band_2_band"), after("band_2", 180))),
@@ -924,6 +917,8 @@ def _setup_maw(run: Run) -> None:
     _landmark(run, "keepers_camp", "The Keepers' camp", hall.center, kind="refuge", radius=6, state="active")
     _landmark(run, "relief_sluice", "Relief Sluice (Issa opens the surveyed bypass)", RELIEF_SLUICE,
               kind="gate", radius=4, state="active")
+    _landmark(run, "refuge_tower", "Refuge: Tern's wounded crew", sella_tower.center,
+              kind="refuge", radius=4, state="active")
     world.update_vision()
 
 
@@ -1053,7 +1048,7 @@ MAW = Mission(
                   lambda run: run.get("maw_resolved") == "open", optional=True),
         Objective("ground", f"GROUND: 3 vaults, {GROUND_AETHER} aether + surge",
                   lambda run: run.get("maw_resolved") == "ground", optional=True),
-        Objective("tower_spared", "Spare Sella's mage tower", lambda run: bool(run.get("maw_resolved"))
+        Objective("tower_spared", "Spare the crew's refuge tower", lambda run: bool(run.get("maw_resolved"))
                   and run.get("sella_tower") in run.world.buildings,
                   shown=lambda run: bool(run.get("ending_path")), optional=True),
         Objective("relief_sluice", "Issa operates the Relief Sluice", lambda run: bool(run.get("maw_relief_open")),
@@ -1069,6 +1064,9 @@ MAW = Mission(
     ),
     triggers=(
         Trigger("muster", at(1), _maw_muster),
+        Trigger("refuge_warning", lambda run: (tower := run.world.buildings.get(run.get("sella_tower"))) is not None
+                and any(dist(unit.pos, tower.center) <= 16 for unit in run.soldiers(0)),
+                lambda run: run.say(*dialogue.MAW_REFUGE_WARNING)),
         Trigger("assault_1", all_of(at(90), lambda run: "pylons_down" not in run.fired),
                 _wave(1, [U.FOOTMAN] * 4 + [U.ARCHER] * 2, (39.5, 50.5),
                                             "keystone_center", "assault_1_band")),
@@ -1133,7 +1131,7 @@ CAMPAIGN = Campaign(
     speakers=SPEAKERS,
     missions=(MILL, CARAVAN, GROVE, WEIGHT, MAW),
     cover="campaign/undertow.png",
-    introduction="Lead Captain Issa Renn down a valley whose ancient locks are failing. "
-                 "Save its people. Decide what deserves to survive.",
+    introduction="The locks feed the valley. Now they draw beasts uphill. "
+                 "Lead four keepers to the Maw and choose what to save.",
     epilogue=dialogue.EPILOGUE,
 )
