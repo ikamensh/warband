@@ -314,12 +314,14 @@ def native_journey(output: Path, endpoint: str, info: dict, *, campaign_only: bo
             settings = game.settings(DEFAULT_SETTINGS)
 
             def frames(count=3):
+                # This checks UI state, not frame cadence. A slow software renderer must not
+                # need ninety frames just to wait out a three-second mission banner.
                 for _ in range(count):
                     started = time.monotonic()
-                    game.tick(1 / 30)
+                    game.tick(.1)
                     if creator is not None:
                         creator.poll()
-                    time.sleep(max(0, 1 / 30 - (time.monotonic() - started)))
+                    time.sleep(max(0, .1 - (time.monotonic() - started)))
 
             def wait(condition):
                 deadline = time.monotonic() + 20
