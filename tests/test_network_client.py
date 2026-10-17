@@ -9,6 +9,8 @@ import sys
 
 import pytest
 
+from warband.online.protocol import GAME_ID
+
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "tools/check_network_client.py"
 
@@ -51,7 +53,7 @@ def test_separate_client_source_plays_watches_and_resumes(client_source):
     assert Path(report["client_model"]) == model
     assert model.with_name("decoded-by-fixture").read_text() == "decoded"
     assert set(report["checks"]) == {"create", "join", "move", "observe", "resume", "events"}
-    assert report["game_id"] == "warband-v2"
+    assert report["game_id"] == GAME_ID
     assert report["saga2d_version"] == version("saga2d")
     from saga2d.online import PROTOCOL
     assert report["transport_protocol"] == PROTOCOL

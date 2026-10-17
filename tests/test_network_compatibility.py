@@ -7,6 +7,8 @@ import sys
 
 import pytest
 
+from warband.online.protocol import GAME_ID
+
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / 'tools/network_compatibility.py'
 
@@ -42,16 +44,17 @@ def test_changed_rules_need_a_review_but_a_compatible_review_keeps_old_clients(s
     assert after['reviews'][-1]['game_id'] == before['reviews'][-1]['game_id']
 
 
-@pytest.mark.parametrize('effect,new_id,allowed', [
-    ('compatible', 'warband-v3', False),
-    ('breaking', 'warband-v2', False),
-    ('breaking', 'warband-v4', False),
-    ('breaking', 'warband-v3', True),
+@pytest.mark.parametrize('effect,advance,allowed', [
+    ('compatible', 1, False),
+    ('breaking', 0, False),
+    ('breaking', 2, False),
+    ('breaking', 1, True),
 ])
-def test_only_a_recorded_break_can_advance_the_network_identity(source, effect, new_id, allowed):
+def test_only_a_recorded_break_can_advance_the_network_identity(source, effect, advance, allowed):
     """A release number cannot accidentally drop old clients; an actual break has an explicit new identity."""
     path = source / 'warband/online/protocol.py'
-    path.write_text(path.read_text().replace('warband-v2', new_id) + '\n# reviewed edit\n')
+    new_id = f"warband-v{int(GAME_ID.removeprefix('warband-v')) + advance}"
+    path.write_text(path.read_text().replace(GAME_ID, new_id) + '\n# reviewed edit\n')
     ledger = source / '.github/network-compatibility.json'
     original = ledger.read_bytes()
     result = run(source, 'record', '--effect', effect, '--reason', 'A deliberate protocol decision.')
@@ -104,14 +107,15 @@ def test_runtime_clients_and_authority_share_the_reviewed_identity():
 def test_cli_follows_a_new_network_identity_without_loading_the_simulation(source):
     """The next breaking release must move CLI players with menu players, before simulation selection."""
     protocol = source / 'warband/online/protocol.py'
-    protocol.write_text(protocol.read_text().replace('warband-v2', 'warband-v999'))
+    future_id = f"warband-v{int(GAME_ID.removeprefix('warband-v')) + 1}"
+    protocol.write_text(protocol.read_text().replace(GAME_ID, future_id))
     result = subprocess.run([
         sys.executable, '-c',
         'import sys; from warband.__main__ import GAME_ID; '
         'assert "warband.sim" not in sys.modules; print(GAME_ID)',
     ], cwd=source, capture_output=True, text=True)
     assert result.returncode == 0, result.stderr
-    assert result.stdout.strip() == 'warband-v999'
+    assert result.stdout.strip() == future_id
 
 
 @pytest.mark.parametrize('declaration', ['protocol', 'title'])
@@ -119,15 +123,16 @@ def test_a_historical_client_cannot_be_relabelled_as_a_new_epoch(source, declara
     """Overriding the game ID sent by the probe cannot manufacture old-client compatibility."""
     if declaration == 'title':
         (source / 'warband/online/protocol.py').unlink()
-        (source / 'warband/ui/title.py').write_text('MatchSetupMenu("Warband", "warband-v2", None, None)\n')
+        (source / 'warband/ui/title.py').write_text(f'MatchSetupMenu("Warband", "{GAME_ID}", None, None)\n')
+    future_id = f"warband-v{int(GAME_ID.removeprefix('warband-v')) + 1}"
     result = subprocess.run([
         sys.executable, '-c',
         'import sys; from pathlib import Path; sys.path.insert(0, sys.argv[1]); '
         'from check_retained_clients import client_contract; '
-        'client_contract(Path(sys.argv[2]), {"game_id": "warband-v3", "saga2d_version": "0.3.18"})',
-        str(ROOT / 'tools'), str(source),
+        'client_contract(Path(sys.argv[2]), {"game_id": sys.argv[3], "saga2d_version": "0.3.18"})',
+        str(ROOT / 'tools'), str(source), future_id,
     ], capture_output=True, text=True)
-    assert result.returncode != 0 and 'uses warband-v2, not warband-v3' in result.stderr
+    assert result.returncode != 0 and f'uses {GAME_ID}, not {future_id}' in result.stderr
 
 
 @pytest.mark.slow
