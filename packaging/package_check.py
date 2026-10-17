@@ -179,6 +179,8 @@ def campaign_journey(game, frames, press, capture) -> dict:
     from warband.story.catalog import UNDERTOW
     from warband.story.dialog import DialogScene
     from warband.story.mission_scene import MissionScene, campaign_save_slot
+    from warband.story.campaign_visuals import building_image
+    from warband.art import campaign_units
     from warband.story.undertow_dialogue import GROVE_PARLEY
     from warband.ui.scene import SaveBrowserScene
     from warband.ui.title import TitleScene
@@ -187,6 +189,21 @@ def campaign_journey(game, frames, press, capture) -> dict:
     portraits = set()
     missions = []
     slot = campaign_save_slot(UNDERTOW)
+
+    def check_world_art(scene) -> None:
+        # Named ground needs navigation cues, not an invented prop. Physical subjects must
+        # instead wear their complete art in the same sprite the player selects.
+        for sighting in scene.view.building_sightings.values():
+            expected = building_image(scene.run, game, sighting)
+            if expected is not None:
+                sprite = scene.view.building_sprite(sighting.id)
+                assert sprite is not None and sprite.image == expected
+                assert min(game.backend.get_image_size(game.assets.image(expected))) > 1
+        for name in campaign_units.CHARACTERS:
+            unit = scene.run.unit(name)
+            if unit is not None and (sprite := scene.view.unit_sprite(unit.id)) is not None and sprite.visible:
+                assert sprite.image.startswith(f"campaign.unit.{name}.")
+                assert min(game.backend.get_image_size(game.assets.image(sprite.image))) > 1
 
     def read_dialogue(dialog):
         frames()
@@ -248,7 +265,7 @@ def campaign_journey(game, frames, press, capture) -> dict:
         saved_landmarks = json.loads(json.dumps(records))
         for id, record in records.items():
             assert scene.landmarks.known(id), id
-            assert game.assets.has_image(f"landmark.{record['kind']}.{record['state']}"), id
+        check_world_art(scene)
         capture(f"-campaign-{mission.id}")
         assert scene.objectives.visible and scene.objectives_body.visible, mission.id
         saved_time = scene.world.time
@@ -267,6 +284,7 @@ def campaign_journey(game, frames, press, capture) -> dict:
         resumed = game.scene
         assert type(resumed.world) is World and resumed.world.time >= saved_time
         assert resumed.run.get("landmarks") == saved_landmarks
+        check_world_art(resumed)
         capture(f"-campaign-{mission.id}-resumed")
         missions.append(mission.id)
         press("F10")

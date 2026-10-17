@@ -1,7 +1,8 @@
 """Saveable campaign landmarks, their occupation rule, and their view.
 
-A landmark is a story object rather than a simulation building: it neither blocks movement nor
-leaks an enemy's state. Mission scripts add and change JSON records in ``Run.vars``; the scene
+A landmark is a navigation record, independent of a simulation building. Named buildings wear
+their complete body in MapView; only empty sites and witnessed ruins need separate scenery.
+Mission scripts add and change JSON records in ``Run.vars``; the scene
 creates :class:`LandmarkView` after its ordinary map view, calls ``update()`` after the script,
 and ``draw()`` with its map overlays. Ground props sit below the fog. Names appear only on
 explored ground, inside the camera's clear area, and away from UI panels.
@@ -14,11 +15,12 @@ from typing import Any
 
 from saga2d import Component, RenderLayer, Sprite, SpriteAnchor
 from warband.art import campaign_landmarks as art
-from warband.art.textures import TILE
+from warband.art.textures import TILE, placements
 from warband.audio import campaign as audio, sound
 
 from warband.sim.model import Point, dist
 from warband.story.campaign import Run
+from warband.story.campaign_visuals import ruined_form, scenery_form
 
 KINDS = frozenset(("bell", "anchor", "gate", "refuge", "memorial"))
 STATES = frozenset(("dormant", "active", "ruined", "open"))
@@ -86,7 +88,7 @@ class _LandmarkMarkers(Component):
             if not self.view.known(id):
                 continue
             x, y = scene.minimap.to_screen(*(value*TILE for value in record["point"]))
-            color = art.hue(record["kind"], record["state"])
+            color = art.hue(record["kind"], self.view.presented_state(id))
             for radius, tint in ((4.5, (13, 22, 29, 255)), (3, (*color, 255))):
                 self._game.backend.draw_polygon([(x, y-radius), (x+radius, y), (x, y+radius), (x-radius, y)],
                                                 tint, order=self._order)
@@ -99,6 +101,7 @@ class LandmarkView:
         self.scene = scene
         self._sprites: dict[str, Sprite] = {}
         self._states: dict[str, str] = {}
+        self._appearance_states: dict[str, str] = {}
         scene.minimap.add(_LandmarkMarkers(self))
         scene.minimap.tooltip = self.minimap_hint
         self.update()
@@ -116,7 +119,7 @@ class LandmarkView:
             gap = (mx - x) ** 2 + (my - y) ** 2
             if gap <= distance:
                 nearest, distance = record, gap
-        name = f"{nearest['name']} · {nearest['state']}\n" if nearest is not None else "Diamonds mark charted objectives.\n"
+        name = f"{nearest['name']} · {self.presented_state(nearest['id'])}\n" if nearest is not None else "Diamonds mark charted objectives.\n"
         return name + "Left-click to look; right-click to order."
 
     def known(self, id: str) -> bool:
@@ -125,27 +128,46 @@ class LandmarkView:
         x, y = record["point"]
         return record["revealed"] or self.scene.world.is_explored(self.scene.human, (int(x), int(y)))
 
+    def presented_state(self, id: str) -> str:
+        """The story state, or the destruction the player's own map has already witnessed."""
+        return self._appearance_states.get(id, landmark(self.scene.run, id)["state"])
+
     def update(self) -> None:
         """Refresh changed art and hear state transitions once. Initial and newly discovered states are silent."""
         scene = self.scene
         records = scene.run.vars.get("landmarks", {})
-        for id in self._sprites.keys() - records.keys():
-            self._sprites.pop(id).remove()
+        for id in self._states.keys() - records.keys():
+            sprite = self._sprites.pop(id, None)
+            if sprite is not None:
+                sprite.remove()
             del self._states[id]
+            del self._appearance_states[id]
         for id, record in records.items():
             state, kind = record["state"], record["kind"]
-            key = f"landmark.{kind}.{state}"
-            if not scene.game.assets.has_image(key):
-                scene.game.assets.image_from_pil(key, art.image(kind, state))
-            if id not in self._sprites:
-                self._sprites[id] = scene.add_sprite(Sprite(key, size=art.SIZE, anchor=SpriteAnchor.BOTTOM_CENTER,
-                                                           layer=RenderLayer.UNITS, y_sort=True, ground=art.DROP))
-            sprite = self._sprites[id]
-            if sprite.image != key:
-                sprite.image = key
-            x, y = record["point"]
-            sprite.position = (x*TILE, y*TILE + art.DROP)
-            sprite.visible = self.known(id)
+            body = scenery_form(scene.run, id)
+            appearance_state = state
+            rubble = ruined_form(scene.run, id)
+            if rubble is not None and hasattr(scene, "view"):
+                point = tuple(record["point"])
+                # The map's sightings, not enemy live state, decide whether a body still stands.
+                standing = any(sighting.center == point for sighting in scene.view.building_sightings.values())
+                if not standing and scene.world.is_explored(scene.human, (int(point[0]), int(point[1]))):
+                    body, appearance_state = rubble, "ruined"
+            if body is not None:
+                form, footprint = body
+                key = art.register_image(scene.game, form, appearance_state, footprint)
+                placement = placements[key]
+                if id not in self._sprites:
+                    self._sprites[id] = scene.add_sprite(Sprite(key, anchor=SpriteAnchor.BOTTOM_CENTER,
+                                                               layer=RenderLayer.UNITS, y_sort=True))
+                sprite = self._sprites[id]
+                sprite.image, sprite.size, sprite.ground = key, placement.size, placement.ground
+                x, y = record["point"]
+                sprite.position = (x*TILE, y*TILE + placement.drop)
+                sprite.visible = self.known(id)
+            elif id in self._sprites:
+                self._sprites.pop(id).remove()
+            self._appearance_states[id] = appearance_state
             previous = self._states.get(id)
             if previous is not None and previous != state and self.known(id):
                 cue = audio.cue(kind, state)
@@ -168,10 +190,11 @@ class LandmarkView:
             x, y = record["point"]
             wx, wy = x*TILE, y*TILE
             radius = record["radius"]*TILE
-            color = art.hue(record["kind"], record["state"])
+            state = self.presented_state(id)
+            color = art.hue(record["kind"], state)
             if wx+radius < left or wx-radius > right or wy+radius < top or wy-radius > bottom:
                 continue
-            if record["state"] != "ruined":
+            if state != "ruined":
                 scene.draw_circle(wx, wy, radius, (*color, 7), space="world", layer=RenderLayer.OBJECTS)
                 for i in range(48):
                     a, b = i*math.tau/48, (i+.72)*math.tau/48
@@ -180,7 +203,7 @@ class LandmarkView:
                                     (*color, 115), 1.4, space="world", layer=RenderLayer.OBJECTS)
             if not world.is_explored(scene.human, (int(x), int(y))):
                 continue
-            self.draw_label(record["name"], (wx, wy+art.DROP+5), color=color)
+            self.draw_label(record["name"], (wx, wy+29), color=color)
 
     def draw_label(self, text: str, point: Point, *, color: tuple[int, int, int], above: bool = False) -> bool:
         """A compact nameplate at a presented world-pixel point, clipped clear of fog-agnostic HUD geometry.

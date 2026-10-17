@@ -1,0 +1,673 @@
+{
+ "cell": [
+  160,
+  192
+ ],
+ "cols": 8,
+ "rows": 9,
+ "origin": [
+  80,
+  130
+ ],
+ "scale": 1.25,
+ "pad": [
+  0,
+  0
+ ],
+ "chroma": [
+  255,
+  0,
+  255
+ ],
+ "grid": false,
+ "cells": [
+  {
+   "key": "campaign.unit.wrenna.0.0.stand",
+   "col": 0,
+   "row": 0,
+   "tags": {
+    "facing": 0,
+    "frame": "stand"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.1.stand",
+   "col": 1,
+   "row": 0,
+   "tags": {
+    "facing": 1,
+    "frame": "stand"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.2.stand",
+   "col": 2,
+   "row": 0,
+   "tags": {
+    "facing": 2,
+    "frame": "stand"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.3.stand",
+   "col": 3,
+   "row": 0,
+   "tags": {
+    "facing": 3,
+    "frame": "stand"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.4.stand",
+   "col": 4,
+   "row": 0,
+   "tags": {
+    "facing": 4,
+    "frame": "stand"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.5.stand",
+   "col": 5,
+   "row": 0,
+   "tags": {
+    "facing": 5,
+    "frame": "stand"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.6.stand",
+   "col": 6,
+   "row": 0,
+   "tags": {
+    "facing": 6,
+    "frame": "stand"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.7.stand",
+   "col": 7,
+   "row": 0,
+   "tags": {
+    "facing": 7,
+    "frame": "stand"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.0.walk1",
+   "col": 0,
+   "row": 1,
+   "tags": {
+    "facing": 0,
+    "frame": "walk1"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.1.walk1",
+   "col": 1,
+   "row": 1,
+   "tags": {
+    "facing": 1,
+    "frame": "walk1"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.2.walk1",
+   "col": 2,
+   "row": 1,
+   "tags": {
+    "facing": 2,
+    "frame": "walk1"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.3.walk1",
+   "col": 3,
+   "row": 1,
+   "tags": {
+    "facing": 3,
+    "frame": "walk1"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.4.walk1",
+   "col": 4,
+   "row": 1,
+   "tags": {
+    "facing": 4,
+    "frame": "walk1"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.5.walk1",
+   "col": 5,
+   "row": 1,
+   "tags": {
+    "facing": 5,
+    "frame": "walk1"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.6.walk1",
+   "col": 6,
+   "row": 1,
+   "tags": {
+    "facing": 6,
+    "frame": "walk1"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.7.walk1",
+   "col": 7,
+   "row": 1,
+   "tags": {
+    "facing": 7,
+    "frame": "walk1"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.0.walk2",
+   "col": 0,
+   "row": 2,
+   "tags": {
+    "facing": 0,
+    "frame": "walk2"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.1.walk2",
+   "col": 1,
+   "row": 2,
+   "tags": {
+    "facing": 1,
+    "frame": "walk2"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.2.walk2",
+   "col": 2,
+   "row": 2,
+   "tags": {
+    "facing": 2,
+    "frame": "walk2"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.3.walk2",
+   "col": 3,
+   "row": 2,
+   "tags": {
+    "facing": 3,
+    "frame": "walk2"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.4.walk2",
+   "col": 4,
+   "row": 2,
+   "tags": {
+    "facing": 4,
+    "frame": "walk2"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.5.walk2",
+   "col": 5,
+   "row": 2,
+   "tags": {
+    "facing": 5,
+    "frame": "walk2"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.6.walk2",
+   "col": 6,
+   "row": 2,
+   "tags": {
+    "facing": 6,
+    "frame": "walk2"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.7.walk2",
+   "col": 7,
+   "row": 2,
+   "tags": {
+    "facing": 7,
+    "frame": "walk2"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.0.walk3",
+   "col": 0,
+   "row": 3,
+   "tags": {
+    "facing": 0,
+    "frame": "walk3"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.1.walk3",
+   "col": 1,
+   "row": 3,
+   "tags": {
+    "facing": 1,
+    "frame": "walk3"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.2.walk3",
+   "col": 2,
+   "row": 3,
+   "tags": {
+    "facing": 2,
+    "frame": "walk3"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.3.walk3",
+   "col": 3,
+   "row": 3,
+   "tags": {
+    "facing": 3,
+    "frame": "walk3"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.4.walk3",
+   "col": 4,
+   "row": 3,
+   "tags": {
+    "facing": 4,
+    "frame": "walk3"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.5.walk3",
+   "col": 5,
+   "row": 3,
+   "tags": {
+    "facing": 5,
+    "frame": "walk3"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.6.walk3",
+   "col": 6,
+   "row": 3,
+   "tags": {
+    "facing": 6,
+    "frame": "walk3"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.7.walk3",
+   "col": 7,
+   "row": 3,
+   "tags": {
+    "facing": 7,
+    "frame": "walk3"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.0.walk4",
+   "col": 0,
+   "row": 4,
+   "tags": {
+    "facing": 0,
+    "frame": "walk4"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.1.walk4",
+   "col": 1,
+   "row": 4,
+   "tags": {
+    "facing": 1,
+    "frame": "walk4"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.2.walk4",
+   "col": 2,
+   "row": 4,
+   "tags": {
+    "facing": 2,
+    "frame": "walk4"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.3.walk4",
+   "col": 3,
+   "row": 4,
+   "tags": {
+    "facing": 3,
+    "frame": "walk4"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.4.walk4",
+   "col": 4,
+   "row": 4,
+   "tags": {
+    "facing": 4,
+    "frame": "walk4"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.5.walk4",
+   "col": 5,
+   "row": 4,
+   "tags": {
+    "facing": 5,
+    "frame": "walk4"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.6.walk4",
+   "col": 6,
+   "row": 4,
+   "tags": {
+    "facing": 6,
+    "frame": "walk4"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.7.walk4",
+   "col": 7,
+   "row": 4,
+   "tags": {
+    "facing": 7,
+    "frame": "walk4"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.0.wind",
+   "col": 0,
+   "row": 5,
+   "tags": {
+    "facing": 0,
+    "frame": "wind"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.1.wind",
+   "col": 1,
+   "row": 5,
+   "tags": {
+    "facing": 1,
+    "frame": "wind"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.2.wind",
+   "col": 2,
+   "row": 5,
+   "tags": {
+    "facing": 2,
+    "frame": "wind"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.3.wind",
+   "col": 3,
+   "row": 5,
+   "tags": {
+    "facing": 3,
+    "frame": "wind"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.4.wind",
+   "col": 4,
+   "row": 5,
+   "tags": {
+    "facing": 4,
+    "frame": "wind"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.5.wind",
+   "col": 5,
+   "row": 5,
+   "tags": {
+    "facing": 5,
+    "frame": "wind"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.6.wind",
+   "col": 6,
+   "row": 5,
+   "tags": {
+    "facing": 6,
+    "frame": "wind"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.7.wind",
+   "col": 7,
+   "row": 5,
+   "tags": {
+    "facing": 7,
+    "frame": "wind"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.0.strike",
+   "col": 0,
+   "row": 6,
+   "tags": {
+    "facing": 0,
+    "frame": "strike"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.1.strike",
+   "col": 1,
+   "row": 6,
+   "tags": {
+    "facing": 1,
+    "frame": "strike"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.2.strike",
+   "col": 2,
+   "row": 6,
+   "tags": {
+    "facing": 2,
+    "frame": "strike"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.3.strike",
+   "col": 3,
+   "row": 6,
+   "tags": {
+    "facing": 3,
+    "frame": "strike"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.4.strike",
+   "col": 4,
+   "row": 6,
+   "tags": {
+    "facing": 4,
+    "frame": "strike"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.5.strike",
+   "col": 5,
+   "row": 6,
+   "tags": {
+    "facing": 5,
+    "frame": "strike"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.6.strike",
+   "col": 6,
+   "row": 6,
+   "tags": {
+    "facing": 6,
+    "frame": "strike"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.7.strike",
+   "col": 7,
+   "row": 6,
+   "tags": {
+    "facing": 7,
+    "frame": "strike"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.0.follow",
+   "col": 0,
+   "row": 7,
+   "tags": {
+    "facing": 0,
+    "frame": "follow"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.1.follow",
+   "col": 1,
+   "row": 7,
+   "tags": {
+    "facing": 1,
+    "frame": "follow"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.2.follow",
+   "col": 2,
+   "row": 7,
+   "tags": {
+    "facing": 2,
+    "frame": "follow"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.3.follow",
+   "col": 3,
+   "row": 7,
+   "tags": {
+    "facing": 3,
+    "frame": "follow"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.4.follow",
+   "col": 4,
+   "row": 7,
+   "tags": {
+    "facing": 4,
+    "frame": "follow"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.5.follow",
+   "col": 5,
+   "row": 7,
+   "tags": {
+    "facing": 5,
+    "frame": "follow"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.6.follow",
+   "col": 6,
+   "row": 7,
+   "tags": {
+    "facing": 6,
+    "frame": "follow"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.7.follow",
+   "col": 7,
+   "row": 7,
+   "tags": {
+    "facing": 7,
+    "frame": "follow"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.0.recover",
+   "col": 0,
+   "row": 8,
+   "tags": {
+    "facing": 0,
+    "frame": "recover"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.1.recover",
+   "col": 1,
+   "row": 8,
+   "tags": {
+    "facing": 1,
+    "frame": "recover"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.2.recover",
+   "col": 2,
+   "row": 8,
+   "tags": {
+    "facing": 2,
+    "frame": "recover"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.3.recover",
+   "col": 3,
+   "row": 8,
+   "tags": {
+    "facing": 3,
+    "frame": "recover"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.4.recover",
+   "col": 4,
+   "row": 8,
+   "tags": {
+    "facing": 4,
+    "frame": "recover"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.5.recover",
+   "col": 5,
+   "row": 8,
+   "tags": {
+    "facing": 5,
+    "frame": "recover"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.6.recover",
+   "col": 6,
+   "row": 8,
+   "tags": {
+    "facing": 6,
+    "frame": "recover"
+   }
+  },
+  {
+   "key": "campaign.unit.wrenna.0.7.recover",
+   "col": 7,
+   "row": 8,
+   "tags": {
+    "facing": 7,
+    "frame": "recover"
+   }
+  }
+ ]
+}

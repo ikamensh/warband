@@ -154,3 +154,106 @@ into a speaking face.
 ### thorn-court.webp
 
 > Use case: illustration-story. Asset type: a production background painting for a fantasy RTS campaign conversation view, wide 16:9. Rich painterly fantasy strategy-game illustration, grounded medieval materials, cinematic light, strong geography and atmospheric depth. Wide establishing shot with no foreground faces or heroes. Quiet lower quarter for composited dialogue. No text, interface, logos, watermark, modern technology. The Court of Thorns, an ancient elven Moon Hall grown from colossal living trees, many lofty eyries and wooden lodges connected by root bridges beneath a magnificent uncut canopy. A narrow human siege road ends at a clearing in the foreground. Dense green and copper foliage, moonlight and warm gold lanterns, shafts through twilight mist, living architecture with intricate bark and leaf detail; beautiful, proud, immense, on the brink of invasion. No mechanical dam or industrial vaults.
+
+
+## Campaign world structures and characters (2026-10-17)
+
+Campaign subjects use complete sprites in the ordinary MapView entity pipeline.
+The hostile FARM that implements a pylon's rules therefore wears the entire
+lock-pylon image; no farm or generic gate is drawn beneath it. Selection names
+and portraits identify the same physical subject. These are presentation
+variants, with no changes to simulation statistics, orders, replays or saves.
+
+`story/campaign_visuals.py` binds by mission, owner, footprint and rules type.
+A rebuilt Tarnlock Weight gets the same brass-and-stone body even with a new
+entity id. A Sighting supplies all damage/construction facts, including after
+a save or under fog. The original building art supplies construction stages.
+Named ordinary halls, farms, mines, rifts, woodcutters and the Ancient retain
+their original bodies and get navigation labels only. Empty mesa and bypass
+sites have their own shelter camp and relief sluice. Individual destroyed
+pylons leave matching rubble once their disappearance is witnessed.
+
+The three source atlases `campaign/structures/{intact,damaged,changed}.png` are a 3×3
+grid, row-major: pylon, dam winch, Keystone; Weight vault, rootbound Third Lock,
+wounded crews' refuge tower; relief sluice, mesa refuge, causeway rockfall.
+They were produced with the built-in imagegen tool. The damaged atlas keeps
+each mechanism operational with cracked masonry and worn fittings. The changed atlas supplies
+destroyed objects, a shut Weight compartment and an open sluice. The loader
+uses sagaforge's normal despill, residue removal and neighbouring-fragment
+cleanup and one common frame across all states; source paintings remain intact. The original four landmark cue
+states continue to drive mission scripting and audio.
+
+Shared generation specification:
+
+> Production transparent RTS building sprite atlas, regular 3-column ×3-row
+> grid, one isolated full object per cell, no text or grid. Cohesive hand-painted
+> Warcraft 2 fantasy sprites, crisp outlines, aged brass machinery, warm
+> weathered stone, restrained violet aether, teal shadows, light upper left.
+> Elevated orthographic camera, complete plinth and machinery, no conventional
+> building behind it. Lock-pylon with crystal and locking collar; closed dam
+> winch; concentric brass Keystone engine; chained Weight vault; living-root
+> containment vault; red-canopied infirmary tower; wheel-driven watergate;
+> ochre hide refuge camp; grey rockfall with splintered beam and red pennant.
+> The matching state sheet preserves camera and footprint, breaks each
+> structure in its own materials, closes the Weight's brass shutters and
+> raises the relief gate. Real alpha transparency and clear cell gutters.
+
+Verification: `tools/verify_campaign_art.py DIR` captures the actual native
+renderer, every campaign structure, the embodied cast in every facing and pose,
+all five mission maps, real movement/combat, and destruction/rebuilding through
+ordinary orders. Final retained frames belong to
+`~/saga/evidence/warband/campaign-world-art/`, with their source commit and
+reproduction command. Source atlases and animated rigs are production assets,
+not disposable verification output.
+
+## Embodied campaign characters (2026-10-17)
+
+Issa, Brakk, Wrenna, Dagna, Aldric, Maren and the hostile Sergeant Pell have
+complete painted animation sheets in `campaign/units/<name>.png`, with matching
+`<name>.json` placement metadata. Each sheet holds eight facings across and nine
+poses down: stand, four walking phases, wind-up, strike, follow-through and
+recovery. The shared production cells are 160×192 pixels, at 1.25 pixels per
+logical unit, with the feet anchor at (80, 130). Names are the saved story links,
+so rescues, loading and an ordinary soldier of the same type cannot confuse the
+character's body. Pell's selection name and portrait follow his visible body;
+the friendly keepers retain F3 focus. Sella, Hasp and Ugga remain dialogue
+characters where the script has no embodied unit.
+
+The anatomical helpers and animation clock are shared with ordinary units, but
+the whole costume and articulated equipment are authored together in
+`art/campaign_units.py`: mounted captains with uncovered faces and cavalry
+swords, Brakk's shepherd crook and medicine pouch, Wrenna's living-root staff
+and keeper sash, Dagna's open-jawed lock wrench and pressure gauge, Maren's
+cream travelling habit, and Pell's mail and sealed warrant. A floating crown
+or a second image over a generic soldier cannot keep those tools attached
+through a turn and a blow. The ordinary knight's lance afterimage is omitted
+for these complete sword animations. The simulation roles are unchanged.
+
+References are reproducible with
+`uv run python tools/campaign_units.py reference /tmp/campaign-unit-refs`.
+The seven production sheets were edited with the built-in imagegen tool from
+those posed mesh references. The initial references used 160×180 cells; final
+registration adds twelve pixels of transparent lower padding for Pell's low
+sword strike. Reuse this shared generation specification with the character
+description above:
+
+> Edit the attached transparent RTS animation sprite sheet. Repaint every
+> low-poly figure as crisp hand-painted Warcraft 2 style game art with rich,
+> readable shaded anatomy, natural cloth, steel, leather and restrained brass.
+> Preserve the exact eight columns and nine rows, cell centres, scale, 3/4
+> top-down camera, facing, feet anchor, each limb and tool pose, and the
+> differences between animation frames. Exactly 72 separate complete sprites.
+> Columns face east, southeast, south, southwest, west, northwest, north,
+> northeast. Rows are stand, walk contact one, passing one, contact two,
+> passing two, wind-up, strike, follow-through, recovery. Tools are gripped
+> by hands; pouches and clothes are attached to the body. No labels, grid,
+> background, outlines, ground, shadows, floating badges, crowns or detached
+> effects. Genuine transparent alpha everywhere outside the figures.
+
+`tools/campaign_units.py install NAME GENERATED.png` finds the alpha gutters
+instead of assuming imagegen kept the outer margins. It applies one uniform
+anatomy scale to a character's complete sheet and registers each pose against
+its authored body and feet, preserving alpha. It refuses missing bands, empty
+frames and clipped solid pixels. The runtime requires all 72 frames and warms
+only the cast embodied in the current mission. `WARBAND_ART=procedural` remains
+the explicit opt-out for inspecting the authored rigs.

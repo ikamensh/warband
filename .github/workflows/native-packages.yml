@@ -26,7 +26,14 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ github.sha }}
+          fetch-depth: 0 # Compatibility review history and immutable retained client sources.
           persist-credentials: false
+      - name: Require a compatibility decision and preserve historical clients
+        env:
+          BASE: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          if [[ -z "$BASE" || "$BASE" =~ ^0+$ ]]; then BASE=$(git rev-parse HEAD^); fi
+          python3 tools/network_compatibility.py check --base "$BASE"
       - name: Resolve one immutable identity for both platforms
         id: identity
         run: |
@@ -39,6 +46,13 @@ jobs:
               for key in ('sagaforge_commit', 'python', 'uv'):
                   print(f'{key}={identity[key]}', file=output)
           PY
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          version: ${{ steps.identity.outputs.uv }}
+          python-version: ${{ steps.identity.outputs.python }}
+          enable-cache: false
+      - name: Play retained clients against the current authority before packaging
+        run: uv run --no-project --python "${{ steps.identity.outputs.python }}" python tools/check_retained_clients.py
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         id: upload
         with:

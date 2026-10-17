@@ -12,7 +12,7 @@ import math
 from saga2d import RenderLayer
 from warband.sim.model import RIFT
 from warband.sim.rules import BuildingType, MapTheme, Race, UnitType
-from warband.art import textures
+from warband.art import campaign_landmarks, textures
 from warband.art.textures import PROJECTION, TILE
 
 STRIKE_EVERY = 0.7  # seconds from one hammer blow to the next at a site
@@ -63,6 +63,8 @@ def draw(scene, world, player: int) -> None:
             builder = world.units.get(building.builder) if building.builder is not None else None
             if builder is not None and builder.constructing == building.id:
                 _site_at_work(scene, building, builder, x, y, phase, layer)
+            continue
+        if campaign_landmarks.draw_ambience(scene, building, x, y, phase, layer):
             continue
         if building.has_gold:
             # A faint halo grounds the crystals; the glints stay small and bright.
@@ -193,7 +195,8 @@ def _rifts(scene, world, player: int, view: tuple[float, float, float, float], l
             continue
         if vault.player == player and full:
             continue  # a full store: the vault draws nothing, and the motes stop
-        _drawing(scene, x, y, phase, layer)
+        if campaign_landmarks.custom_structure(scene, vault.id) is None:
+            _drawing(scene, x, y, phase, layer)
 
 
 def _streaming(scene, x: float, y: float, phase: float, layer: dict) -> None:
