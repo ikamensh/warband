@@ -29,9 +29,14 @@ def test_new_matches_have_no_magic_sources_by_default():
     assert list(scene.world.placeable(BuildingType.VAULT, 0, [(10, 10)])) == []
 
 
+@pytest.mark.slow
 @pytest.mark.parametrize("enabled", [False, True])
 def test_player_can_choose_magic_before_starting(tmp_path, monkeypatch, enabled):
-    """The setup toggle changes the preview and the match actually started by Enter."""
+    """The setup toggle changes the preview and the match actually started by Enter.
+
+    Title, preview regeneration and full match startup exceed half a second
+    locally even with a small seeded map, so both UI journeys run in the slow tier.
+    """
     from warband.sim import mapgen
 
     monkeypatch.setattr(mapgen, "fresh_seed", lambda: 3)
