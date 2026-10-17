@@ -80,7 +80,7 @@
       "game_id": "warband-v2",
       "protocol": 1,
       "effect": "compatible",
-      "reason": "Walking cadence and chopping effects use existing unit type, race, state, timer and travel data to choose client artwork. The authoritative source closure, snapshots, catalogs, room options and commands are unchanged; retained clients keep warband-v2.",
+      "reason": "Walking cadence, planted strides and woodcutting contact effects change presentation only. The shared MapView renderer retains its campaign callbacks; commands, snapshots, room options, catalogs and checkpoints are unchanged, so retained warband-v2 clients remain compatible.",
       "inputs": {
         "authority": "85c98dca9e434e109aeada77c79ee8b554674a177ac428ebfbd388a919c85243",
         "client": {
