@@ -64,6 +64,15 @@ preserving the old interface was impractical. A compatible change cannot
 change the identity, and a breaking decision cannot reuse it. Do not change
 Saga2D's transport number unless the engine itself changes its protocol.
 
+A deliberate new game ID also needs coordinated Saga Online changes. Its
+[catalog writer](../../saga-online/tools/warband_promotion.py), deployment
+preparation/smoke checks, retained-room rehearsal and public acceptance tools
+currently name `warband-v2`. Search that repository for the old ID and update
+the active callers and their tests for the planned epoch. Follow its
+[automatic rollout procedure](../../saga-online/deploy/README.md); the new
+epoch must pass create/join/resume and retained-room checks before promotion.
+Keep actual adapters or migrations for any older rooms the release retains.
+
 Keep previous reviews and client pins. CI compares this history against the
 push/PR base and checks the latest hashes against the actual checkout. A
 compatible change in a new epoch requires a pinned representative release of
