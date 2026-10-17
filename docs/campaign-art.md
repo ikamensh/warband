@@ -172,6 +172,9 @@ Named ordinary halls, farms, mines, rifts, woodcutters and the Ancient retain
 their original bodies and get navigation labels only. Empty mesa and bypass
 sites have their own shelter camp and relief sluice. Individual destroyed
 pylons leave matching rubble once their disappearance is witnessed.
+Empty-site scenery yields to any overlapping building the player has seen,
+starting with its foundation. Remembered footprints preserve that appearance
+under fog, so a mesa settlement never shares its body with the temporary tents.
 
 The three source atlases `campaign/structures/{intact,damaged,changed}.png` are a 3×3
 grid, row-major: pylon, dam winch, Keystone; Weight vault, rootbound Third Lock,
