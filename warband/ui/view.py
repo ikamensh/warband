@@ -36,6 +36,7 @@ CREATURE_SET = frozenset(CREATURES)  # the neutral creatures, asked of a unit's 
 WATER_PERIOD = 0.45  # seconds between water phase changes
 WATER_CYCLE = (0, 1, 2, 1)  # ping-pong through the phases so the ripples never jump
 CHOP_PERIOD = 0.8
+CHOP_CONTACT = 0.5  # fraction of the swing at which the axe hits; chips share this clock
 
 Color = tuple[int, int, int, int]
 FOG_COLOR = (10, 12, 20)
@@ -185,7 +186,7 @@ def minimap_terrain(world: World, terrain_at: Callable[[Pos], Terrain] | None = 
     return base
 
 
-STRIDE = 0.22  # tiles travelled per walk frame: feet stay planted instead of sliding, and faster units step faster
+ROLL_STEP = 0.22  # machines, gliding elementals and creatures keep their own non-footstep cycles
 STRIKE, FOLLOW, RECOVER = 0.1, 0.16, 0.16  # seconds after the blow: driven forward, swept across, settling to guard
 #: Whose shot is not the arrow the model flies it as.  The model tells a shot that follows its mark from a stone
 #: that comes down on the ground; what it looks like is the striker's, as what it lands as is (``sound.impact_sound``):
@@ -255,7 +256,9 @@ def unit_frame(u: Unit, travel: float, time: float) -> str:
     if u.flying and u.state != "attack":
         return beating
     if u.state == "move":
-        return textures.WALK_FRAMES[int(travel / STRIDE) % len(textures.WALK_FRAMES)]
+        step = (ROLL_STEP if u.type in CREATURE_SET or u.type in (UnitType.CATAPULT, UnitType.AETHER_ELEMENTAL)
+                else textures.walk_step(u.type, u.race))
+        return textures.WALK_FRAMES[int(travel / step) % len(textures.WALK_FRAMES)]
     if u.state == "attack":
         if u.windup > 0.0:
             return "wind"
@@ -272,7 +275,7 @@ def unit_frame(u: Unit, travel: float, time: float) -> str:
         if u.carrying is not None:
             return "stand"
         phase = (u.timer / CHOP_PERIOD) % 1.0
-        return textures.CHOP_FRAMES[0 if phase < 0.25 else 1 if phase < 0.45 else 2 if phase < 0.7 else 3]
+        return textures.CHOP_FRAMES[0 if phase < 0.4 else 1 if phase < CHOP_CONTACT else 2 if phase < 0.65 else 3]
     if u.state in ("repair", "salvage"):  # the same swing of the hammer, one way or the other
         return "strike" if (time * 2 + u.id * 0.37) % 1.0 < 0.35 else "stand"
     return "stand"
@@ -1423,9 +1426,9 @@ class MapView:
             if u.state != "chop" or u.carrying is not None or sprite is None or not sprite.visible:
                 continue
             phase = (u.timer / CHOP_PERIOD) % 1.0
-            if not 0.45 <= phase < 0.9:
+            if not CHOP_CONTACT <= phase < 0.9:
                 continue
-            t = (phase - 0.45) / 0.45
+            t = (phase - CHOP_CONTACT) / (0.9 - CHOP_CONTACT)
             wx, wy = to_world(u.pos)
             dx, dy = textures.chop_contact_offset(textures.facing_index(u.facing), u.race)
             wx, wy = wx + dx, wy + dy

@@ -54,10 +54,19 @@ back and its fuse flares in the wind-up, the Treant swings both branch arms down
 and the Rune Golem slams both fists. Their sheets hold every frame, painted from
 the renders as the others were (`OWN_ROWS` in `tools/restyle.py` names their rows).
 
-Workers lean back for the wind-up and bend into the strike through four
-chopping poses. Their head, torso, arms and axe move together around the
-hips while their feet stay planted. Blade contact positions follow the same
-transforms. The view uses the authoritative harvest timer for the swing and contact chips,
+Ground walkers advance their four frames by distance, using `walk_step` to
+match the contact excursion of their own legs and race proportions. Cavalry
+take longer steps than infantry: their diagonal pairs lift through the
+passing frames, with bent knees/hocks and the rider following the saddle's
+small bob. The walking rigs own their limbs; the combat pose transform must
+not shear a leg away from its planted boot.
+
+The human worker raises both hands beside the shoulder, brings the axe into
+a chest-height cut, then recovers with a small torso bend and planted feet.
+Its elbows articulate instead of spinning the axe about fixed waist-level
+hands. The lift and recovery take most of the cycle; the downswing is quick.
+Blade contact positions follow the same transforms. The view uses the
+authoritative harvest timer for the swing and contact chips,
 so pausing freezes the action and carrying wood replaces the tool. Animation
 images warm incrementally during the match opening.
 
@@ -66,6 +75,15 @@ images warm incrementally during the match opening.
 The low-poly renders are stand-ins: `tools/restyle.py` repaints every unit and
 every race's nine buildings with an image model and installs the result under
 `warband/assets/restyled/` (the procedure is `../../sagaforge/docs/restyle.md`).
+The October 2026 gait repair repainted only the four walk rows of the human
+archer and human/elf/dwarf knights, plus the human worker's four chop rows.
+The built-in ImageGen editor received the existing painted rows as its edit
+target and the updated procedural rows as its pose guide. The prompt kept
+the original character/style, all eight facings, exact cell positions and
+magenta background, while requiring the guide's bent knees, lifted swing
+feet and longer mounted reach (or raised two-handed axe grip). Cuts use
+`sagaforge.restyle.cut` against the new guide, then replace only those cells
+in the installed atlas; other rows and the sheet metadata stay unchanged.
 Buildings come in five looks, each its own sheet per race: `intact`, `active`
 (lit windows and open doors while a building trains or researches),
 `damaged` (holed roofs and scorched walls under half hit points, under the
@@ -115,6 +133,7 @@ uv run python -m pytest tests/warband -q
 uv run python tools/visual_lint.py --no-screens --evidence /tmp/warband-lint
 uv run python tools/verify_art.py /tmp/warband-art
 uv run python tools/verify_forest.py /tmp/warband-forest
+uv run python tools/verify_gait.py /tmp/warband-gait
 ```
 
 The lint checks every registered image without a window: empty or clipped
@@ -133,3 +152,6 @@ incremental warm-up, and unchanged ground after felling across all themes
 and chunk boundaries; the PNGs establish visual quality. The forest verifier
 captures all three themes, a live chopping cycle from three directions and
 the resulting clearing.
+The gait verifier records a native video over marked ground at real movement
+speed, an archer/knight/bear contact sheet and human chopping from three
+directions. It asserts that every phase is reached through actual orders.
