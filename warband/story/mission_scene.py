@@ -25,12 +25,12 @@ from warband.story.dialog import DialogScene, speaker_portrait
 from warband.story.journal import JournalScene
 from warband.story.landmarks import LandmarkView
 from warband.sim.model import Event, Unit, World
-from warband.art import textures
+from warband.art import campaign_units, textures
 from warband.art.production import fit
 from warband.sim.rules import BuildingType, Difficulty
 from warband.ui.scene import CARD_GAP, CARD_PANEL_WIDTH, HINT_BAR, HUD_TOP, OBJECTIVES_GAP, PANEL_MARGIN, GameScene, HelpScene, PauseScene, _clock, _Overlay
 from warband.ui.style import ACTION_BUTTON, BAD, GHOST_BUTTON, GOLD, GOOD, MUTED, PANEL_STYLE, RESULTS_STYLE, TEXT
-from warband.ui.view import Sighting, rgba, to_world
+from warband.ui.view import MapView, Sighting, rgba, to_world
 
 CAMPAIGN_SLOT = "campaign"
 NOTICE_HOLD = 4.0
@@ -166,6 +166,27 @@ class MissionScene(GameScene):
         super().apply_settings()
         self.execution.speed = float(self.settings["campaign_speed"])
 
+    def _make_view(self) -> MapView:
+        from warband.story.campaign_visuals import warm
+
+        warm(self.run, self.game)
+        for name in self.campaign.speakers:
+            if name.lower() in campaign_units.CHARACTERS and (unit := self.run.unit(name.lower())) is not None:
+                campaign_units.warm(self.game, name, unit.player)
+        return MapView(self, self.world, self.human, memory=self._seen,
+                       unit_art=self._unit_art, building_art=self._building_art)
+
+    def _unit_art(self, unit: Unit, facing: int, frame: str) -> str | None:
+        """The saved character link follows a rescue's replacement body and survives a load."""
+        name = self._character_name(unit)
+        return (campaign_units.unit_image(self.game, name, unit.player, facing, frame)
+                if name is not None and name.lower() in campaign_units.CHARACTERS else None)
+
+    def _building_art(self, sighting: Sighting) -> str | None:
+        from warband.story.campaign_visuals import building_image
+
+        return building_image(self.run, self.game, sighting)
+
     def on_enter(self) -> None:
         super().on_enter()
         self.landmarks = LandmarkView(self)
@@ -200,11 +221,23 @@ class MissionScene(GameScene):
                 if (unit := self.run.unit(name.lower())) is not None
                 and unit.player == self.human and unit.hp > 0 and not unit.hidden]
 
+    def _character_name(self, unit: Unit) -> str | None:
+        """Selection already checks visibility; hostile named characters have their own body and portrait too."""
+        return next((name for name in self.campaign.speakers if self.run.unit(name.lower()) is unit), None)
+
     def entity_name(self, entity: Unit | Sighting) -> str:
-        return next((name for name, _, unit in self._keeper_links() if unit is entity), super().entity_name(entity))
+        if isinstance(entity, Sighting):
+            from warband.story.campaign_visuals import building_title
+
+            return building_title(self.run, entity) or super().entity_name(entity)
+        return self._character_name(entity) or super().entity_name(entity)
 
     def _portrait(self, entity: Unit | Sighting, x: float, y: float, size: float) -> None:
-        speaker = next((speaker for _, speaker, unit in self._keeper_links() if unit is entity), None)
+        if isinstance(entity, Sighting) and (key := self._building_art(entity)) is not None:
+            self.draw_image(key, *fit(self.game, key, x, y, size))
+            return
+        name = self._character_name(entity) if isinstance(entity, Unit) else None
+        speaker = self.campaign.speakers[name] if name is not None else None
         key = speaker_portrait(self.game, speaker) if speaker is not None else None
         if key is not None:
             self.draw_image(key, *fit(self.game, key, x, y, size))

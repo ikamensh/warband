@@ -14,6 +14,8 @@ dist/
 *.gif
 docs/evidence/
 !warband/assets/restyled/*.png
+!warband/assets/campaign/structures/*.png
+!warband/assets/campaign/units/*.png
 !warband/assets/icon.png
 !packaging/icon-schematic.png
 /warband/assets/fastsim/

@@ -156,8 +156,8 @@ def test_landmark_nameplates_leave_the_hud_clear(game) -> None:
 
 
 @pytest.mark.parametrize("kind", ("bell", "anchor", "gate", "refuge", "memorial"))
-def test_every_landmark_state_executes_in_the_real_scene_pipeline(game, kind) -> None:
-    """All final images are registered and rendered, including collapse and open art; native pixels are reviewed separately."""
+def test_navigation_cues_render_in_every_story_state_without_inventing_extra_bodies(game, kind) -> None:
+    """Labels remain useful for every cue kind; named ground alone does not acquire a second monument."""
     run = empty_run()
     run.world.reveal_all(0)
     add_landmark(run, "object", "The Lock", (12.5, 12.5), kind=kind)
