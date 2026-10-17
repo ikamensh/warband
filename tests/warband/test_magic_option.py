@@ -30,11 +30,14 @@ def test_new_matches_have_no_magic_sources_by_default():
 
 
 @pytest.mark.parametrize("enabled", [False, True])
-def test_player_can_choose_magic_before_starting(tmp_path, enabled):
+def test_player_can_choose_magic_before_starting(tmp_path, monkeypatch, enabled):
     """The setup toggle changes the preview and the match actually started by Enter."""
+    from warband.sim import mapgen
+
+    monkeypatch.setattr(mapgen, "fresh_seed", lambda: 3)
     game = Game("Magic option", backend="mock", resolution=(1280, 800), theme=build_theme(), save_dir=tmp_path / "saves")
     try:
-        game.push(TitleScene(settings=dict(DEFAULT_SETTINGS, tutorial=False, music=0, sfx=0)))
+        game.push(TitleScene(size="Small", settings=dict(DEFAULT_SETTINGS, tutorial=False, music=0, sfx=0)))
         game.scene.new_game()
         game.tick(0.1)  # lays the panel out, so its buttons can be clicked
         setup = game.scene
