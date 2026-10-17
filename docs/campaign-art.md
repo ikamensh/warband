@@ -257,3 +257,18 @@ its authored body and feet, preserving alpha. It refuses missing bands, empty
 frames and clipped solid pixels. The runtime requires all 72 frames and warms
 only the cast embodied in the current mission. `WARBAND_ART=procedural` remains
 the explicit opt-out for inspecting the authored rigs.
+
+## The Ancient's standing stones (2026-10-17)
+
+`campaign/structures/stone-ring.png` is a separate painted scenery source,
+generated with the built-in imagegen tool. Eight weathered gray stones with
+olive moss surround the Ancient's clearing; their open transparent centre
+preserves the existing Guardian and the live ground. The ten-tile composition
+is anchored to the circle of stone feet, 58% down the source canvas. The
+stones remain standing after the Guardian leaves or falls; story cue changes
+alter navigation ink, rather than inventing a second monster or collapsing
+the landscape. No simulation footprint or save fields are added.
+
+Generation prompt:
+
+> Use case: stylized-concept. Asset type: one production transparent fantasy RTS scenery sprite for Warband. A complete hollow circle of eight LOW weathered gray standing stones, with subtle olive moss and warm stone highlights, as a sacred clearing boundary for a stone guardian. Crisp hand-painted Warcraft 2 strategy-game style; aged gray stone, teal shadows, light from upper left, match brass-and-stone campaign sprites but NO brass machinery. Elevated orthographic top-down 3/4 game camera, see tops and front faces. Ring occupies most of a square canvas, viewed as a gently compressed ground-plane ellipse. Each standing stone is a short irregular monolith, varied heights, each no more than one tenth the full ring diameter. Widely separated stones, complete circle with visible front and back arcs. The large middle 65 percent is completely empty genuine alpha so the game can show its own ground and guardian; background and all space between stones also actual transparency. Minimal small contact shadows only at stone feet. No ground disk, grass patch, platform, connecting walls, altar, central stone, character, guardian, rune glow, text, grid, border, UI or watermark. Keep all stones fully inside the canvas with a clean outer alpha margin. High quality compact readable stone forms, restrained texture, no photographic rendering.

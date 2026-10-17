@@ -84,7 +84,8 @@ def building_title(run: Run, sighting: Sighting) -> str | None:
 def scenery_form(run: Run, id: str) -> tuple[str, int] | None:
     """Only empty sites need scenery; buildings, trees, mines and rifts supply their own bodies."""
     return {("undertow_caravan", "mesa"): ("refuge", 3),
-            ("undertow_maw", "relief_sluice"): ("sluice", 2)}.get((run.mission.id, id))
+            ("undertow_maw", "relief_sluice"): ("sluice", 2),
+            ("undertow_grove", "guardian_ring"): ("stone_ring", 10)}.get((run.mission.id, id))
 
 
 def ruined_form(run: Run, id: str) -> tuple[str, int] | None:
@@ -96,7 +97,8 @@ def ruined_form(run: Run, id: str) -> tuple[str, int] | None:
 def warm(run: Run, game: Game) -> None:
     """Extract this mission's structure paintings before combat or first destruction can need them."""
     forms = {subject.form for subject in structures(run.mission.id)}
-    forms.update(body[0] for id in run.vars.get("landmarks", {}) if (body := scenery_form(run, id)) is not None)
+    scenery = {body[0]: body[1] for id in run.vars.get("landmarks", {}) if (body := scenery_form(run, id)) is not None}
+    forms.update(scenery)
     for form in forms:
         for state in ("active", "damaged", "ruined", "dormant", "open"):
-            art.register_image(game, form, state, 3 if form == "refuge" else 2)
+            art.register_image(game, form, state, scenery.get(form, 2))

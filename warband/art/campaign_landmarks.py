@@ -18,6 +18,7 @@ from warband.art import textures
 from warband.sim.rules import BuildingType
 
 FORMS = ("pylon", "dam", "keystone", "vault", "root_vault", "refuge_tower", "sluice", "refuge", "rockfall")
+SCENERY_FORMS = ("stone_ring",)
 STATES = ("dormant", "active", "damaged", "ruined", "open")
 SOURCE = Path(__file__).resolve().parents[1] / "assets" / "campaign" / "structures"
 CYAN = (111, 231, 244)
@@ -71,13 +72,23 @@ def _cells(form: str) -> dict[str, Image.Image]:
 
 def image(form: str, state: str = "active") -> Image.Image:
     """A complete transparent object. Dormant/open aliases are deliberate for each mechanism."""
-    if form not in FORMS or state not in STATES:
+    if form not in FORMS + SCENERY_FORMS or state not in STATES:
         raise ValueError(f"unknown campaign structure/state: {form!r}/{state!r}")
+    if form == "stone_ring":
+        return _stone_ring()
     variant = {"active": "intact", "damaged": "damaged", "dormant": "intact",
                "ruined": "changed", "open": "intact"}[state]
     if (form, state) in (("sluice", "open"), ("vault", "dormant")):
         variant = "changed"
     return _cells(form)[variant]
+
+
+@lru_cache(maxsize=1)
+def _stone_ring() -> Image.Image:
+    """An open circle of low standing stones; the Ancient and ground belong to the live map, not this image."""
+    with Image.open(SOURCE / "stone-ring.png") as source:
+        ring = source.convert("RGBA")
+    return restyle.clear_residue(restyle.declutter(restyle.clear_residue(restyle.despill(ring))))
 
 
 def register_image(game: Game, form: str, state: str = "active", footprint: int = 2, player: int = 0) -> str:
@@ -88,7 +99,8 @@ def register_image(game: Game, form: str, state: str = "active", footprint: int 
         source = image(form, state)
         width = footprint * textures.TILE + 8
         height = width * source.height / source.width
-        drop = footprint * textures.TILE / 2 + 3
+        # The ring's stone feet circle around 58% down its painted canvas; its clear centre is the unit's ground point.
+        drop = height * .42 if form == "stone_ring" else footprint * textures.TILE / 2 + 3
         # Cloth colours belong to these authored structures; ownership is also shown by the normal
         # selection ring, minimap and health bar. Crystal violet must never be team-recoloured.
         textures.placements[key] = textures.Placement((width, height), drop,
