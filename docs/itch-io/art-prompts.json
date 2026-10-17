@@ -1,0 +1,11 @@
+{
+  "tool": "built-in image_gen",
+  "cover.png": {
+    "reference": "warband/assets/icon.png",
+    "prompt": "Use case: ads-marketing. Create a polished illustrated itch.io game cover for WARBAND, a classic top-down fantasy real-time strategy game. Supporting reference is the game's actual icon: preserve its blue shield with gold cross, crossed silver sword and axe, painterly texture and recognizable heraldry. Landscape cover, requested aspect 315:250, target 1260x1000. Compose as a bold readable title card: exact text 'WARBAND' in large elegant gold medieval serif capitals across the upper third, strong dark outline and subtle dimensional metallic finish; the authentic shield and crossed weapons centered beneath, filling the middle; atmospheric deep woodland green, near-black blue and warm muted gold background with distant tiny castle towers and evergreen silhouettes. Understated premium strategy-game identity, confident generous composition. At thumbnail size the word and shield must remain crisp and readable. Keep the focal title and emblem comfortably within the central 75% for safe cropping. No extra text, no screenshots, no UI, no characters, no logos other than the provided heraldry, no watermark. This is promotional key art, not a depiction of gameplay."
+  },
+  "banner.png": {
+    "reference": "docs/itch-io/cover.png",
+    "prompt": "Adapt the attached WARBAND cover into a premium panoramic itch.io page header. Use case: ads-marketing. Target aspect 3:1, requested 1920x640 pixels. Preserve the exact WARBAND lettering design, gold material, dark dimensional edge, and the blue-and-gold shield with crossed axe and sword. Layout: emblem modestly on the left of center, the large full readable word WARBAND across center and right; let these two elements occupy most of the banner height with generous outer margins. Extend the same painterly dark evergreen forest, distant mountains, subtle warm golden castle light and blue storm clouds to the edges. The title and emblem must not overlap each other. Keep the visual calm and readable at a browser width of 960px. Exact text: 'WARBAND'. No other words, no new characters, no UI, no watermark. This is brand artwork, not gameplay. Make the far outer edges dark forest green so it blends with a near-black evergreen page background."
+  }
+}
