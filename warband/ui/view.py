@@ -350,7 +350,9 @@ class _Recoil:
 
 
 class MapView:
-    def __init__(self, scene: Scene, world: World, player: int, *, reveal: bool = False, memory: dict | None = None) -> None:
+    def __init__(self, scene: Scene, world: World, player: int, *, reveal: bool = False, memory: dict | None = None,
+                 unit_art: Callable[[Unit, int, str], str | None] | None = None,
+                 building_art: Callable[[Sighting], str | None] | None = None) -> None:
         """The map as *player* sees it, or the whole of it when *reveal* is set (a replay watched from above).
 
         *memory* is what an earlier view of this match remembered (see :meth:`memory`): ground out of
@@ -360,6 +362,9 @@ class MapView:
         self.player = player
         self.reveal = reveal
         self.game: Game = scene.game
+        # Optional story artwork uses the same sprites, sighting memory and animation clocks as ordinary entities.
+        self.unit_art = unit_art
+        self.building_art = building_art
         self.time = 0.0
         textures.register_static(self.game)
         textures.register_theme(self.game, world.theme)
@@ -577,6 +582,11 @@ class MapView:
         """What the player knows of a building: as it is while they see it, as they last saw it otherwise."""
         return self._sightings.get(building_id)
 
+    @property
+    def building_sightings(self) -> Mapping[int, Sighting]:
+        """The structures on the player's map, including those remembered under fog."""
+        return self._sightings
+
     def terrain_at(self, pos: Pos) -> Terrain:
         """The ground at *pos* as the player knows it: a tree felled out of sight still stands for them."""
         world = self.world
@@ -756,7 +766,10 @@ class MapView:
         lair = sighting.type is BuildingType.LAIR
         painted_site = not sighting.done and deposit is None and not lair and textures.has_look(sighting.race, sighting.look, sighting.type)
         rising = not painted_site and not lair and 0.5 <= sighting.built < 1.0
-        if lair:
+        custom = self.building_art(sighting) if self.building_art is not None else None
+        if custom is not None:
+            key = custom
+        elif lair:
             # One den per creature, never a race's and never a team's — wearing the match's landscape.
             key = monsters.lair_image(self.game, monsters.LairKind(sighting.lair_kind), sighting.look, self.world.theme)
         elif deposit is not None:
@@ -778,6 +791,8 @@ class MapView:
             sprite.size = textures.placements[key].size
             sprite.ground = textures.placements[key].ground
             self._building_keys[sighting.id] = key
+        # Artwork can change height/drop between a standing structure and its state variants.
+        sprite.position = (sighting.center[0] * TILE, sighting.center[1] * TILE + textures.placements[key].drop)
         sprite.opacity = 150 if rising else 255
         return sprite
 
@@ -843,8 +858,10 @@ class MapView:
             # A creature is nobody's: its sheet takes no player and is never team-recoloured, so it is
             # reached through warband.art.monsters rather than through the units' own table — in the
             # match's landscape coat, like the ground it stands on.
-            key = (monsters.monster_image(self.game, Monster(u.type.value), facing, frame, world.theme) if u.type in CREATURE_SET
-                   else textures.unit_image(self.game, u.type, u.player, facing, frame, carrying, race=u.race))
+            key = self.unit_art(u, facing, frame) if self.unit_art is not None else None
+            if key is None:
+                key = (monsters.monster_image(self.game, Monster(u.type.value), facing, frame, world.theme) if u.type in CREATURE_SET
+                       else textures.unit_image(self.game, u.type, u.player, facing, frame, carrying, race=u.race))
             if sprite is None:
                 sprite = self._units[u.id] = self._prop(key, position, layer=RenderLayer.EFFECTS if u.flying else RenderLayer.UNITS)
                 self._unit_keys[u.id] = key
@@ -1442,6 +1459,10 @@ class MapView:
                 continue
             sprite = self.unit_sprite(u.id)
             if sprite is None or not sprite.visible:
+                continue
+            # A complete custom animation owns its weapon; the role's sweep may be a different tool (a lance
+            # where the campaign captain carries a sword), so it cannot add an honest afterimage here.
+            if self.unit_art is not None and self.unit_art(u, textures.facing_index(u.facing), self._frame(u)) is not None:
                 continue
             wx, wy = sprite.x, sprite.y - textures.placements[sprite.image].drop
             key = textures.melee_trail_image(self.game, u.type, textures.facing_index(u.facing), u.race)
