@@ -63,7 +63,7 @@ def test_only_a_recorded_break_can_advance_the_network_identity(source, effect, 
         assert ledger.read_bytes() == original
 
 
-@pytest.mark.parametrize('name', ['warband/online/snapshot.py', 'warband/ui/multiplayer.py',
+@pytest.mark.parametrize('name', ['warband/online/snapshot.py', 'warband/ui/multiplayer.py', 'warband/__main__.py',
                                   'warband/assets/constants/units.toml', '.github/release-pins.json'])
 def test_wire_content_consumers_and_runtime_cannot_change_without_review(source, name):
     """Both sides of the wire, content catalogs, and Python/runtime pins are review inputs."""
@@ -95,9 +95,23 @@ def test_runtime_clients_and_authority_share_the_reviewed_identity():
     from warband.online.protocol import GAME_ID, PROTOCOL as TRANSPORT
     from warband.online.online_ai import GAME_ID as AI_ID
     from warband.ui.multiplayer import GAME_ID as HUMAN_ID
+    from warband.__main__ import GAME_ID as CLI_ID
 
-    assert list(ONLINE) == [GAME_ID] and GAME_ID == HUMAN_ID == AI_ID
+    assert list(ONLINE) == [GAME_ID] and GAME_ID == HUMAN_ID == AI_ID == CLI_ID
     assert TRANSPORT == PROTOCOL
+
+
+def test_cli_follows_a_new_network_identity_without_loading_the_simulation(source):
+    """The next breaking release must move CLI players with menu players, before simulation selection."""
+    protocol = source / 'warband/online/protocol.py'
+    protocol.write_text(protocol.read_text().replace('warband-v2', 'warband-v999'))
+    result = subprocess.run([
+        sys.executable, '-c',
+        'import sys; from warband.__main__ import GAME_ID; '
+        'assert "warband.sim" not in sys.modules; print(GAME_ID)',
+    ], cwd=source, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == 'warband-v999'
 
 
 @pytest.mark.parametrize('declaration', ['protocol', 'title'])

@@ -29,10 +29,10 @@ from pathlib import Path
 import sys
 from typing import Any
 
+from warband.online.protocol import GAME_ID
+
 ICON = Path(__file__).parent / "assets" / "icon.png"  # what the Dock, the taskbar and the built app draw Warband under
 
-#: This game's rooms on the server, shared by the screen and the command line.
-GAME_ID = "warband-v2"
 #: Seats an online room holds; LAN stays a two-seat game.
 ROOM_SEATS = (2, 3, 4)
 #: The saved-seat record's shape, exactly the framework's: the base lobby lifecycle writes it.

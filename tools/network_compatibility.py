@@ -25,7 +25,7 @@ LEDGER = '.github/network-compatibility.json'
 # The authority's closure already includes rules, content, snapshots and save
 # decoders. Also review the code that sends commands or consumes snapshots.
 CLIENT_FILES = (
-    'warband/online/online_ai.py', 'warband/ui/multiplayer.py',
+    'warband/__main__.py', 'warband/online/online_ai.py', 'warband/ui/multiplayer.py',
     'warband/ui/match.py', 'warband/ui/observer.py', 'warband/ui/scene.py',
     'warband/ui/view.py', 'warband/ui/controls.py', 'warband/ui/spellbar.py',
     'warband/ui/tech.py',
