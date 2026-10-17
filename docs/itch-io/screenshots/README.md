@@ -6,8 +6,8 @@ Captured from Warband **v0.2.280**, source commit
 `69eb6690d7a312f8814b28df3b75b07785945ff3`.
 
 The screenshots are 1600 × 1000 native game frames normalized from Retina device
-scale. The gameplay GIF is a crop of native battle frames, exported at 960 × 600,
-12 frames per second for three seconds. Its color palette is limited to 128
+scale. The gameplay GIF is a crop of native battle frames, exported at 800 × 500,
+12 frames per second for two seconds. Its color palette is limited to 96
 colors for download size. No unit art, effects, interface or other imagery is
 composited into the captures.
 
@@ -24,7 +24,7 @@ directory. They do not assert a naturally played match or benchmark.
 | `03-command-the-aether.png` | Flame Strike landing in that same live battle |
 | `04-dwarven-winter.png` | Dwarves fighting orcs in winter, including rune golems |
 | `06-the-undertow-campaign.png` | Authored Millfield briefing with Issa, Hasp and the field chart |
-| `warband-battle.gif` | Three seconds of the battle and Flame Strike, cropped from the real framebuffer |
+| `warband-battle.gif` | Two seconds of the battle and Flame Strike, cropped from the real framebuffer |
 
 Reproduce from this source checkout with its release dependencies installed:
 

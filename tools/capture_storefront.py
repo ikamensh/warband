@@ -187,14 +187,14 @@ def main(out: Path, animation_only: bool = False):
             from PIL import Image
             scene.camera.center_on(24 * 32, 14.2 * 32)
             animation = []
-            for _ in range(36):
+            for _ in range(24):
                 frames(5)
                 capture = game.backend.capture_frame().convert("RGB")
                 scale = game.backend.scale_factor
                 # A crop of the actual battlefield: no HUD or composited overlay.
                 crop = capture.crop(tuple(round(v * scale) for v in (350, 238, 1200, 769)))
-                animation.append(crop.resize((960, 600), Image.Resampling.LANCZOS).quantize(colors=128))
-            animation[0].save(out / "warband-battle.gif", save_all=True, append_images=animation[1:], duration=[80, 80, 90] * 12, loop=0, optimize=True)
+                animation.append(crop.resize((800, 500), Image.Resampling.LANCZOS).quantize(colors=96))
+            animation[0].save(out / "warband-battle.gif", save_all=True, append_images=animation[1:], duration=[80, 80, 90] * 8, loop=0, optimize=True)
             print((out / "warband-battle.gif").resolve(), flush=True)
 
             if animation_only:
