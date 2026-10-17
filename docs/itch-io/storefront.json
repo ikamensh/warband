@@ -1,0 +1,97 @@
+{
+  "page": "https://ikamensh.itch.io/warband",
+  "project_id": 5172499,
+  "title": "Warband",
+  "short_description": "Classic fantasy RTS with four factions, two story campaigns, and online battles. Build your base. Command your warband.",
+  "pricing": "free-no-payments",
+  "status": "in_development",
+  "genre": "strategy",
+  "tags": [
+    "real-time-strategy",
+    "fantasy",
+    "multiplayer",
+    "singleplayer",
+    "2d",
+    "top-down",
+    "retro",
+    "procedural"
+  ],
+  "languages": [
+    "English"
+  ],
+  "inputs": [
+    "keyboard",
+    "mouse"
+  ],
+  "players": {
+    "minimum": 1,
+    "maximum": 4
+  },
+  "multiplayer": [
+    "server",
+    "adhoc"
+  ],
+  "ai_disclosure": [
+    "graphics",
+    "sounds",
+    "text-and-dialog",
+    "code"
+  ],
+  "theme": {
+    "background": "#091411",
+    "content_background": "#12221c",
+    "text": "#eee8d7",
+    "links": "#e6bd67",
+    "headings": "#e6bd67",
+    "buttons": "#365a8e",
+    "font": "Lato",
+    "font_size": "Large",
+    "screenshots": "Sidebar"
+  },
+  "release": {
+    "channel": "preview",
+    "game_ids": [
+      "warband-v2"
+    ],
+    "name": "Warband",
+    "notes": "https://github.com/ikamensh/warband/releases/tag/v0.2.280",
+    "packages": [
+      {
+        "arch": "x64",
+        "bytes": 185274101,
+        "file": "Warband-0.2.280-windows-x64-portable.zip",
+        "kind": "portable-zip",
+        "min_os": "Windows 10",
+        "os": "windows",
+        "sha256": "9ad78217b435a43980bb9844765d2f893ee1ea00e606f3854747dec0f21d085d",
+        "signed": false,
+        "url": "https://github.com/ikamensh/warband/releases/download/v0.2.280/Warband-0.2.280-windows-x64-portable.zip"
+      },
+      {
+        "arch": "x64",
+        "bytes": 173901787,
+        "file": "Warband-0.2.280-windows-x64-setup.exe",
+        "kind": "installer",
+        "min_os": "Windows 10",
+        "os": "windows",
+        "sha256": "dd03ce2ec8a3d947e3eed364d5c874bea92fefadf60fc89e29671e12fa505d23",
+        "signed": false,
+        "url": "https://github.com/ikamensh/warband/releases/download/v0.2.280/Warband-0.2.280-windows-x64-setup.exe"
+      },
+      {
+        "arch": "arm64",
+        "bytes": 178642290,
+        "file": "Warband-0.2.280-darwin-arm64-app.zip",
+        "kind": "app-zip",
+        "min_os": "macOS 14 on Apple Silicon",
+        "os": "macos",
+        "sha256": "db8778c8499527427a6a31db4ca676b7a78ebc2897bca6c0e16dff99259520bd",
+        "signed": false,
+        "url": "https://github.com/ikamensh/warband/releases/download/v0.2.280/Warband-0.2.280-darwin-arm64-app.zip"
+      }
+    ],
+    "released": "2026-10-16",
+    "source_commit": "c9d74d8ac74dcb8f389cac8ed16e1cfa0223d5d2",
+    "version": "0.2.280"
+  }
+}

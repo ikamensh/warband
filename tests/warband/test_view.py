@@ -7,7 +7,7 @@ from PIL import Image
 from saga2d import Game
 from warband.art import textures
 from warband.sim.model import tile_center
-from warband.sim.rules import BUILT, PLAYABLE_UNITS, BuildingType, Layout, MapTheme, Resource, Terrain, UnitType
+from warband.sim.rules import BUILT, PLAYABLE_UNITS, BuildingType, Layout, MapTheme, Race, Resource, Terrain, UnitType
 from warband.ui.scene import GameScene, new_game
 from warband.ui.view import FOG_MARGIN, NEUTRAL_MINIMAP, STAFF_REACH, WATER_PERIOD
 from warband.sim import mapgen
@@ -368,14 +368,55 @@ def test_water_moves_once_its_phases_are_painted_while_land_stays_still() -> Non
 def test_walk_frames_follow_the_distance_walked_not_the_clock(play) -> None:
     """Feet stay planted: a unit's walk frame advances with the ground it covers, so a fast unit
     steps faster and a unit held in place keeps its frame."""
-    from warband.ui.view import STRIDE, unit_frame
+    from warband.ui.view import unit_frame
 
     game, scene = play
     u = scene.world.spawn_unit(scene.human, UnitType.FOOTMAN, (10.5, 10.5))
     u.state = "move"
-    seen = [unit_frame(u, travel, 0.0) for travel in (0.0, STRIDE, 2 * STRIDE, 3 * STRIDE, 4 * STRIDE)]
+    step = textures.walk_step(u.type, u.race)
+    seen = [unit_frame(u, (index + 0.01) * step, 0.0) for index in range(5)]
     assert seen == list(textures.WALK_FRAMES) + [textures.WALK_FRAMES[0]]
-    assert unit_frame(u, 0.5 * STRIDE, 0.0) == unit_frame(u, 0.5 * STRIDE, 9.0)  # the clock does not move the feet
+    assert unit_frame(u, 0.5 * step, 0.0) == unit_frame(u, 0.5 * step, 9.0)  # the clock does not move the feet
+
+
+@pytest.mark.parametrize("race,kind", [(race, kind) for race in Race
+                                     for kind in (UnitType.ARCHER, UnitType.KNIGHT)])
+def test_walk_cadence_matches_the_races_feet_and_mount(race, kind) -> None:
+    """Every body completes one gait over its own footprint, including the bipedal Orc knight."""
+    from warband.sim.model import World
+    from warband.ui.view import unit_frame
+
+    world = World(20, 20, [[Terrain.GRASS] * 20 for _ in range(20)], 1, races=[race])
+    unit = world.spawn_unit(0, kind, (5.5, 5.5))
+    world.move([unit.id], (15.5, 5.5))
+    world.step()
+    step = textures.walk_step(kind, race)
+    assert [unit_frame(unit, (n + 0.01) * step, 0.0) for n in range(8)] == list(textures.WALK_FRAMES) * 2
+    if kind is UnitType.KNIGHT:
+        infantry_step = textures.walk_step(UnitType.ARCHER, race)
+        if race is Race.ORC:
+            assert step == infantry_step  # The ogre walks on two feet.
+        else:
+            assert step > infantry_step  # Cavalry cover ground without frantic tiny steps.
+
+
+def test_chopping_spends_longer_raising_and_recovering_than_in_the_downswing() -> None:
+    """A deliberate lift and a quick cut avoid the old slow wrist-twirl rhythm."""
+    from collections import Counter
+    from warband.sim.model import World
+    from warband.ui.view import CHOP_PERIOD, unit_frame
+
+    world = World(10, 10, [[Terrain.GRASS] * 10 for _ in range(10)], 1)
+    worker = world.spawn_unit(0, UnitType.PEASANT, (5.5, 5.5))
+    worker.state = "chop"
+    frames = []
+    for sample in range(80):
+        worker.timer = CHOP_PERIOD * (sample + 0.5) / 80
+        frames.append(unit_frame(worker, 0.0, 0.0))
+    holds = Counter(frames)
+    assert set(holds) == set(textures.CHOP_FRAMES)
+    assert holds["chop1"] >= 3 * holds["chop2"]
+    assert holds["chop4"] >= 3 * holds["chop2"]
 
 
 def test_a_blow_winds_up_before_it_lands_and_follows_through_after(play) -> None:

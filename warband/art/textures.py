@@ -1488,6 +1488,8 @@ _LEG_SWING = {"walk1": 0.19, "walk2": 0.0, "walk3": -0.19, "walk4": 0.0, "wind":
 _LEG_LIFT = {"walk2": (0.0, 0.11), "walk4": (0.11, 0.0)}  # (left, right) foot lifted while passing
 #: Vertical bob of the body: up on the passing frames, crouched into a blow.
 _BOB = {"walk2": 0.05, "walk4": 0.05, "wind": -0.02, "strike": -0.04, "follow": -0.02}
+_MOUNT_SWING = {"walk1": 0.24, "walk2": 0.0, "walk3": -0.24, "walk4": 0.0, "strike": 0.1, "follow": 0.08}
+_MOUNT_SIZE = 1.08
 
 
 def _striking(frame: str) -> bool:
@@ -1500,9 +1502,31 @@ def _legs(frame: str, color: Color, spread: float = 0.09) -> Mesh:
     lift = _LEG_LIFT.get(frame, (0.0, 0.0))
     mesh: Mesh = []
     for x, step, up in ((-spread, swing, lift[0]), (spread, -swing, lift[1])):
-        mesh += _unit_rod((x, 0, 0.28), (x, step, 0.08 + up), 0.065, color)
-        mesh += r3.box((x, step + 0.035, 0.065 + up), (0.13, 0.2, 0.13), INK)
+        if frame in WALK_FRAMES:
+            hip = (x, 0.0, 0.28 + _BOB.get(frame, 0.0))
+            ankle = (x, step, 0.11 + up)
+            knee = _limb_joint(hip, ankle, 0.28)
+            mesh += _unit_rod(hip, knee, 0.065, color)
+            mesh += _unit_rod(knee, ankle, 0.055, color)
+        else:
+            mesh += _unit_rod((x, 0, 0.28), (x, step, 0.08 + up), 0.065, color)
+        boot = r3.box((x, step + 0.035, 0.065 + up), (0.13, 0.2, 0.13), INK)
+        mesh += _unit_pitch(boot, 12.0, (x, step, 0.11 + up)) if up else boot
     return mesh
+
+
+def _limb_joint(hip: r3.Vec3, ankle: r3.Vec3, length: float, bend: float = 1.0) -> r3.Vec3:
+    """The knee of two equal-length links, bent forward (or back for a hock).
+
+    Solving the joint from the endpoints keeps the limb's length through a step;
+    shortening a straight rod to lift the foot made the walkers telescope.
+    """
+    x, y, z = hip
+    _, ay, az = ankle
+    dy, dz = ay - y, az - z
+    distance = math.hypot(dy, dz)
+    offset = math.sqrt((length / 2) ** 2 - (distance / 2) ** 2) * bend
+    return x, y + dy / 2 - dz / distance * offset, z + dz / 2 + dy / distance * offset
 
 
 def _unit_rod(start: r3.Vec3, end: r3.Vec3, radius: float, color: Color, sides: int = 6) -> Mesh:
@@ -1642,14 +1666,41 @@ def _sword(frame: str, race: Race = Race.HUMAN) -> Mesh:
 
 _WORKER_SWING = {"chop1": 35, "chop2": -28, "chop3": -96, "chop4": -48, "wind": 30, "strike": -96, "follow": -60, "recover": -30}
 _WORKER_LEAN = {"chop1": 12, "chop2": -5, "chop3": -18, "chop4": -6}
+_HUMAN_CHOP_SWING = {"chop1": 65, "chop2": -55, "chop3": -70, "chop4": -45}
+_HUMAN_CHOP_LEAN = {"chop1": 4, "chop2": -2, "chop3": -7, "chop4": -3}
 _WORKER_HIP = (0.0, 0.0, 0.26)
 _WORKER_GRIP = (0.29, 0.16, 0.55)
 _WORKER_AXE_EDGE = ((0.29, 0.42, 0.99), (0.29, 0.4, 1.21))
+# The upper hand lifts beside the shoulder, then reaches into a chest-height cut.
+# The second hand stays lower on the handle: the axe is lifted by the arms, not
+# spun about a fixed wrist while the whole body bows from the hips.
+_WORKER_CHOP_GRIPS = {"chop1": (0.12, -0.02, 0.78), "chop2": (0.12, 0.2, 0.66),
+                      "chop3": (0.1, 0.29, 0.625), "chop4": (0.12, 0.18, 0.64)}
+_WORKER_CHOP_ELBOWS = {"chop1": ((0.3, -0.07, 0.7), (-0.12, 0.16, 0.65)),
+                       "chop2": ((0.31, 0.12, 0.68), (-0.11, 0.2, 0.59)),
+                       "chop3": ((0.3, 0.18, 0.58), (-0.1, 0.18, 0.53)),
+                       "chop4": ((0.29, 0.11, 0.58), (-0.12, 0.16, 0.53))}
 
 
-def _worker_axe_angle(frame: str) -> float:
+def _worker_lean(frame: str, race: Race) -> float:
+    return (_HUMAN_CHOP_LEAN if race is Race.HUMAN else _WORKER_LEAN).get(frame, 0)
+
+
+def _worker_axe_angle(frame: str, race: Race = Race.HUMAN) -> float:
     # Counter the torso bend so the blade keeps its intended cutting direction.
-    return _WORKER_SWING.get(frame, -12) - _WORKER_LEAN.get(frame, 0)
+    swing = _WORKER_SWING.get(frame, -12)
+    if race is Race.HUMAN:
+        swing = _HUMAN_CHOP_SWING.get(frame, swing)
+    return swing - _worker_lean(frame, race)
+
+
+def _worker_axe_pose(mesh: Mesh, frame: str, race: Race) -> Mesh:
+    """The tool's articulation before the worker's torso bend, shared by its contact point."""
+    mesh = _unit_pitch(mesh, _worker_axe_angle(frame, race), _WORKER_GRIP)
+    if race is Race.HUMAN and frame in _WORKER_CHOP_GRIPS:
+        grip = _WORKER_CHOP_GRIPS[frame]
+        mesh = _shift(mesh, tuple(a - b for a, b in zip(grip, _WORKER_GRIP)))
+    return mesh
 
 
 def _worker_axe(frame: str, race: Race = Race.HUMAN) -> Mesh:
@@ -1663,7 +1714,7 @@ def _worker_axe(frame: str, race: Race = Race.HUMAN) -> Mesh:
         axe += _unit_panel([(x, 0.19, 1.16), (x, 0.41, 1.22),
                             (x, 0.43, 0.98), (x, 0.19, 1.03)], metal)
     axe += _unit_rod(*_WORKER_AXE_EDGE, 0.045, (228, 234, 242))
-    return _unit_pitch(axe, _worker_axe_angle(frame), _WORKER_GRIP)
+    return _worker_axe_pose(axe, frame, race)
 
 
 def _shield(x: float, y: float, z: float, team: Color, size: float = 1.0, race: Race = Race.HUMAN) -> Mesh:
@@ -1698,7 +1749,7 @@ def _shield(x: float, y: float, z: float, team: Color, size: float = 1.0, race: 
 def _mount(frame: str, heavy: bool, team: Color, race: Race = Race.HUMAN) -> Mesh:
     """The race's steed on the same four-legged rig: a knight's horse, stag or bear (*heavy*), or the wolf, deer or ram
     that stands saddled in the yard of a race's stables."""
-    swing = {"walk1": 0.12, "walk2": 0.03, "walk3": -0.12, "walk4": -0.03, "strike": 0.1, "follow": 0.08}.get(frame, 0.0)
+    swing = _MOUNT_SWING.get(frame, 0.0)
     if race is Race.HUMAN:
         coat = (78, 65, 65) if heavy else (174, 123, 68)
     elif race is Race.ORC:
@@ -1707,18 +1758,31 @@ def _mount(frame: str, heavy: bool, team: Color, race: Race = Race.HUMAN) -> Mes
         coat = FUR_STAG if heavy else (188, 150, 100)
     else:
         coat = FUR_BEAR if heavy else FUR_RAM
-    size = 1.08 if heavy else 0.92
+    size = _MOUNT_SIZE if heavy else 0.92
     body_h, head_z = (0.48, 0.83), (0.48, 0.83)
     if race is Race.ORC:
         body_h, head_z = (0.42, 0.62), (0.42, 0.62)  # a wolf runs low
     elif race is Race.DWARF and heavy:
         body_h, head_z = (0.5, 0.74), (0.5, 0.74)
     bz, hz = body_h[0], head_z[1]
-    mesh = _shadow(0.44)
+    planted = _shadow(0.44)
+    bob = _BOB.get(frame, 0.0) if frame in WALK_FRAMES else 0.0
+    lift = _LEG_LIFT.get(frame, (0.0, 0.0))
     for x, y in ((-0.17, -0.28), (0.17, -0.28), (-0.17, 0.29), (0.17, 0.29)):
-        stride = swing if (x < 0) == (y < 0) else -swing
-        mesh += _unit_rod((x, y, bz), (x, y + stride, 0.1), 0.065 if race is not Race.DWARF else 0.085, coat)
-        mesh += r3.box((x, y + stride + 0.025, 0.065), (0.125, 0.16, 0.13), INK)
+        diagonal = (x < 0) == (y < 0)
+        stride = swing if diagonal else -swing
+        up = lift[0 if diagonal else 1]
+        radius = 0.065 if race is not Race.DWARF else 0.085
+        hip, ankle = (x, y, bz + bob), (x, y + stride, (0.105 if frame in WALK_FRAMES else 0.1) + up)
+        if frame in WALK_FRAMES:
+            knee = _limb_joint(hip, ankle, 0.5, 1.0 if y > 0 else -1.0)
+            planted += _unit_rod(hip, knee, radius, coat)
+            planted += _unit_rod(knee, ankle, radius * 0.8, coat)
+        else:
+            planted += _unit_rod(hip, ankle, radius, coat)
+        hoof = r3.box((x, y + stride + 0.025, 0.065 + up), (0.125, 0.16, 0.13), INK)
+        planted += _unit_pitch(hoof, 16.0, ankle) if up else hoof
+    mesh: Mesh = []
     if race is Race.DWARF and heavy:
         mesh += r3.sphere((0, -0.025, bz + 0.05), 0.42, coat, rings=4, sides=8)  # a bear's bulk
         mesh += r3.box((0, -0.025, bz), (0.46, 0.8, 0.34), coat)
@@ -1781,7 +1845,7 @@ def _mount(frame: str, heavy: bool, team: Color, race: Race = Race.HUMAN) -> Mes
         mesh += r3.box((0, 0.29, bz + 0.2), (0.46, 0.2, 0.11), look.metal)
     else:
         mesh += r3.box((0, -0.07, bz + 0.135), (0.46, 0.44, 0.085), team)
-    return r3.scale(mesh, size)
+    return r3.scale(planted + _shift(mesh, (0.0, 0.0, bob)), size)
 
 
 UNIT_SCALE = 1.4  # figures are modelled at chibi size and blown up so they read from the usual zoom
@@ -1807,12 +1871,35 @@ HIP = 0.28  # the upper body pivots here; legs, feet and the shadow stay planted
 MOUNTED = (UnitType.KNIGHT,)
 
 
+def walk_step(unit_type: UnitType, race: Race) -> float:
+    """Tiles covered per walking frame, matching the rig's planted-foot excursion.
+
+    A foot moves from its forward contact through centre to its rear contact
+    in two frames, so one frame covers its contact offset. The projection
+    keeps both ground axes at a full tile, matching the map's movement.
+    Machines, gliding elementals and creatures have their own motion rigs.
+    """
+    if unit_type in (UnitType.PEASANT, UnitType.FOOTMAN, UnitType.ARCHER, UnitType.CLERIC, UnitType.SAPPER):
+        step = _LEG_SWING[WALK_FRAMES[0]]
+    elif unit_type is UnitType.KNIGHT:
+        step = (_LEG_SWING[WALK_FRAMES[0]] if race is Race.ORC else _MOUNT_SWING[WALK_FRAMES[0]] * _MOUNT_SIZE)
+    elif unit_type is UnitType.TREANT:
+        step = _LEG_SWING[WALK_FRAMES[0]] * 1.2
+    elif unit_type is UnitType.RUNE_GOLEM:
+        step = _LEG_SWING[WALK_FRAMES[0]] * 0.6
+    else:
+        raise ValueError(f"{unit_type.value} has no walking-foot rig")
+    if unit_type not in _OWN_PROPORTIONS:
+        step *= LOOKS[race].stretch[0]
+    return step * UNIT_SCALE
+
+
 def _posed(mesh: Mesh, frame: str, unit_type: UnitType) -> Mesh:
     """Apply the frame's :class:`Pose`.  Riders and their mounts only lunge (a leaning horse
     lifts its hooves); a catapult recoils instead of lunging; the figures in :data:`_SELF_POSED` keep their frame (a
     flying machine's frames turn its rotor or beat its wings, :func:`_flyer`; a race's own unit swings its own limbs)."""
     pose = POSES.get(frame)
-    if pose is None or unit_type in _SELF_POSED:  # a flyer's body stays level in the air; a race's own unit and an elemental move their own limbs
+    if pose is None or frame in WALK_FRAMES or unit_type in _SELF_POSED:  # walking rigs own their joints and planted feet
         return mesh
     if unit_type is UnitType.CATAPULT:
         return _shift(mesh, (0.0, {"strike": -0.06, "follow": -0.03}.get(frame, 0.0), 0.0))
@@ -1870,6 +1957,14 @@ def _worker(player: int, frame: str, carrying: Resource | None, race: Race) -> M
         mesh += _unit_rod((-0.21, 0, 0.55), (-0.3, 0.2, 0.4), 0.075, sleeve)
         mesh += _unit_rod((0.21, 0, 0.55), (-0.08, 0.26, 0.5), 0.075, sleeve)
         mesh += r3.sphere((-0.08, 0.28, 0.5), 0.055, look.skin, rings=3, sides=6)
+    elif race is Race.HUMAN and frame in _WORKER_CHOP_GRIPS:
+        angle = math.radians(_worker_axe_angle(frame, race))
+        gx, gy, gz = _WORKER_CHOP_GRIPS[frame]
+        lower_grip = (gx, gy + 0.16 * math.sin(angle), gz - 0.16 * math.cos(angle))
+        for side, elbow, hand in zip((1, -1), _WORKER_CHOP_ELBOWS[frame], ((gx, gy, gz), lower_grip)):
+            mesh += _unit_rod((side * 0.21, 0, 0.55), elbow, 0.07, sleeve)
+            mesh += _unit_rod(elbow, hand, 0.045, look.skin)
+            mesh += r3.sphere(hand, 0.055, look.skin, rings=3, sides=6)
     else:
         for x in (-0.21, 0.21):
             mesh += _unit_rod((x, 0, 0.55), (x * 1.15, 0.08, 0.45), 0.075, sleeve)
@@ -1885,12 +1980,13 @@ def _worker(player: int, frame: str, carrying: Resource | None, race: Race) -> M
         mesh += r3.box((0.12, 0.065, 1.0), (0.05, 0.37, 0.32), WOOD_DARK)
     else:
         mesh += _worker_axe(frame, race)
-        angle = math.radians(_worker_axe_angle(frame))
-        gx, gy, gz = _WORKER_GRIP
-        lower_grip = (gx, gy + 0.12 * math.sin(angle), gz - 0.12 * math.cos(angle))
-        mesh += _unit_rod((-0.24, 0.08, 0.45), lower_grip, 0.045, look.skin)
+        if race is not Race.HUMAN or frame not in _WORKER_CHOP_GRIPS:
+            angle = math.radians(_worker_axe_angle(frame, race))
+            gx, gy, gz = _WORKER_GRIP
+            lower_grip = (gx, gy + 0.12 * math.sin(angle), gz - 0.12 * math.cos(angle))
+            mesh += _unit_rod((-0.24, 0.08, 0.45), lower_grip, 0.045, look.skin)
     if carrying is None and frame in _WORKER_LEAN:
-        mesh = _unit_pitch(mesh, _WORKER_LEAN[frame], _WORKER_HIP)
+        mesh = _unit_pitch(mesh, _worker_lean(frame, race), _WORKER_HIP)
     return planted + mesh
 
 
@@ -2004,7 +2100,8 @@ def _knight(player: int, frame: str, race: Race) -> Mesh:
     rider_z, grip, _ = _knight_geometry(race)
     if race is Race.ORC:
         # An ogre: two heads, a club, no mount and no manners.
-        mesh = _shadow(0.42) + _legs(frame, look.skin, spread=0.16)
+        planted = _shadow(0.42) + _legs(frame, look.skin, spread=0.16)
+        mesh: Mesh = []
         mesh += r3.cylinder((0, 0, 0.26), 0.34, 0.62, look.skin, sides=8)
         mesh += r3.box((0, 0.2, 0.46), (0.5, 0.2, 0.3), team)  # a team-dyed loincloth and belt
         mesh += r3.cylinder((0, 0, 0.45), 0.35, 0.07, look.leather, sides=8)
@@ -2020,8 +2117,9 @@ def _knight(player: int, frame: str, race: Race) -> Mesh:
         for a in (0.3, 1.6, 2.9, 4.2, 5.5):
             club += r3.cone((0.44 + 0.15 * math.cos(a), 0.16 + 0.15 * math.sin(a), _OGRE_CLUB_HEAD_Z), 0.03, 0.1, look.metal, sides=4)
         mesh += _unit_pitch(club, _knight_pitch(frame, race), grip)
-        return mesh
-    mesh = _mount(frame, True, team, race)
+        return planted + _shift(mesh, (0.0, 0.0, _BOB.get(frame, 0.0) if frame in WALK_FRAMES else 0.0))
+    mount = _mount(frame, True, team, race)
+    mesh = []
     mesh += r3.cylinder((0, -0.11, rider_z), 0.21, 0.34, look.metal, sides=8)
     mesh += _unit_panel([(-0.21, -0.19, rider_z + 0.34), (0.21, -0.19, rider_z + 0.34),
                          (0.28, -0.45, rider_z - 0.19), (-0.28, -0.45, rider_z - 0.19)], trim)
@@ -2053,7 +2151,7 @@ def _knight(player: int, frame: str, race: Race) -> Mesh:
         weapon += r3.cone((0.34, 0.05, rider_z + _LANCE_POINT_ABOVE_RIDER), 0.085, _LANCE_POINT_LENGTH, look.metal, sides=4)
         weapon += _unit_panel([(0.34, 0.05, rider_z + 1.1), (0.34, -0.29, rider_z + 0.97), (0.34, 0.05, rider_z + 0.86)], team)
     mesh += _unit_pitch(weapon, _knight_pitch(frame, race), grip)
-    return mesh
+    return mount + _shift(mesh, (0.0, 0.0, _MOUNT_SIZE * _BOB.get(frame, 0.0) if frame in WALK_FRAMES else 0.0))
 
 
 def _shift(mesh: Mesh, offset: r3.Vec3) -> Mesh:
@@ -2595,22 +2693,13 @@ def facing_index(angle: float) -> int:
 
 def chop_contact_offset(facing: int, race: Race = Race.HUMAN) -> tuple[float, float]:
     """Projected cutting edge of the worker's contact pose, relative to its feet."""
-    across, tall = LOOKS[race].stretch
-    lean = math.radians(_WORKER_LEAN["chop3"])
-    swing = math.radians(_WORKER_SWING["chop3"])
-    _, gy, gz = _WORKER_GRIP
-    _, hy, hz = _WORKER_HIP
-    # Tool articulation counters the body bend: pitch the grip with the torso,
-    # then pitch the blade relative to that grip by its absolute swing angle.
-    bent_y = hy + (gy - hy) * math.cos(lean) - (gz - hz) * math.sin(lean)
-    bent_z = hz + (gy - hy) * math.sin(lean) + (gz - hz) * math.cos(lean)
-    edge_x, edge_y, edge_z = _WORKER_AXE_EDGE[1]
-    x = edge_x * across * UNIT_SCALE
-    y = (bent_y + (edge_y - gy) * math.cos(swing) - (edge_z - gz) * math.sin(swing)) * across * UNIT_SCALE
-    z = (bent_z + (edge_y - gy) * math.sin(swing) + (edge_z - gz) * math.cos(swing)) * tall * UNIT_SCALE
-    angle = math.radians(facing * 45 - 90)
-    c, s = math.cos(angle), math.sin(angle)
-    return PROJECTION.project((x * c - y * s, x * s + y * c, z))
+    edge = _WORKER_AXE_EDGE[1]
+    marker = [r3.Face((edge, edge, edge), (255, 255, 255))]
+    marker = _worker_axe_pose(marker, "chop3", race)
+    marker = _unit_pitch(marker, _worker_lean("chop3", race), _WORKER_HIP)
+    marker = _stretch(marker, *LOOKS[race].stretch)
+    marker = r3.rotate_z(r3.scale(marker, UNIT_SCALE), facing * 45 - 90)
+    return PROJECTION.project(marker[0].points[0])
 
 
 @lru_cache(maxsize=4 * FACINGS * len(Race))
