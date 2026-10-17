@@ -211,6 +211,73 @@ def test_caravan_rockfall_blockers_have_boulder_bodies_instead_of_farms(game):
     assert not scene.view.building_sprite(ordinary.id).image.startswith("campaign.structure.")
 
 
+def test_mesa_settlement_replaces_refuge_scenery_as_soon_as_its_foundation_is_known(game):
+    """A legal Hall at the campaign's actual mesa site replaces the tents instead of sharing their pixels."""
+    run = small_run("undertow_caravan", width=64, height=48)
+    world = run.world
+    add_landmark(run, "mesa", "The Broken Tooth mesa", (51.0, 23.0), kind="refuge", state="active")
+    world.reveal_all(0)
+    scene = StoryMap(run)
+    game.push(scene)
+    game.tick(.1)
+    key = campaign_landmarks.register_image(game, "refuge", footprint=3)
+    tents = game.assets.image(key)
+
+    def tent_count():
+        return sum(item["image"] == tents for item in game.backend.sprites.values())
+
+    assert tent_count() == 1
+    assert world.can_place(BuildingType.TOWN_HALL, (50, 22), 0) is None
+    hall = world.place_building(0, BuildingType.TOWN_HALL, (50, 22), done=False)
+    game.tick(.1)
+    assert scene.view.building_sprite(hall.id) is not None
+    assert tent_count() == 0
+    hall.progress = hall.info.build_time
+    game.tick(.1)
+    assert tent_count() == 0
+    assert scene.landmarks.known("mesa")
+    assert scene.landmarks.presented_state("mesa") == "active"
+
+
+def test_hidden_settlement_changes_scenery_only_when_scouted(game):
+    """Unseen enemy construction and demolition cannot replace a charted site's remembered appearance."""
+    run = small_run("undertow_caravan", width=64, height=48)
+    world = run.world
+    add_landmark(run, "mesa", "The Broken Tooth mesa", (51.0, 23.0), kind="refuge", state="active")
+    scout = world.spawn_unit(0, UnitType.FOOTMAN, (2.5, 40.5))
+    world.update_vision()
+    scene = StoryMap(run)
+    game.push(scene)
+    game.tick(.1)
+    tents = game.assets.image(campaign_landmarks.register_image(game, "refuge", footprint=3))
+
+    def tent_count():
+        return sum(item["image"] == tents for item in game.backend.sprites.values())
+
+    hall = world.place_building(1, BuildingType.TOWN_HALL, (50, 22))
+    game.tick(.1)
+    assert scene.view.sighting(hall.id) is None
+    assert tent_count() == 1
+    scout.x, scout.y = 49.5, 26.5
+    world.update_vision()
+    game.tick(.1)
+    assert scene.view.sighting(hall.id) is not None
+    assert tent_count() == 0
+    scout.x, scout.y = 2.5, 40.5
+    world.update_vision()
+    hall.hp = 0
+    world.step()
+    game.tick(.1)
+    assert hall.id not in world.buildings
+    assert scene.view.sighting(hall.id) is not None
+    assert tent_count() == 0
+    scout.x, scout.y = 49.5, 26.5
+    world.update_vision()
+    game.tick(.1)
+    assert scene.view.sighting(hall.id) is None
+    assert tent_count() == 1
+
+
 @pytest.mark.parametrize("mission_id, building_type, player, pos, glows", [
     ("undertow_grove", BuildingType.VAULT, 0, (23, 17), True),
     ("undertow_maw", BuildingType.MAGE_TOWER, 0, (39, 29), True),

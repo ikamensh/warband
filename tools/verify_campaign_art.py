@@ -4,7 +4,8 @@
 
 Writes building/hero catalogues, a native catalogue animation, all five Undertow
 missions, real Issa movement and attacks, and a Weight destroyed and rebuilt with
-ordinary World orders. Mission captures reveal the map for inspection and pause
+ordinary World orders. A worker also settles the mesa over its temporary tents.
+Mission captures reveal the map for inspection and pause
 the script between captures; these are presentation fixtures, not balance runs.
 All saves, telemetry and profile data stay in a temporary directory. Keep the
 display awake and run through the Saga verification slot.
@@ -268,6 +269,30 @@ def hero_orders(game: Game, output: Path) -> dict[str, list[str]]:
     return {key: sorted(value) for key, value in seen.items()}
 
 
+def mesa_settlement(game: Game, output: Path) -> None:
+    """The actual mesa site's temporary refuge gives way to a real Hall foundation and finished body."""
+    scene = mission(game, "undertow_caravan")
+    run, world = scene.run, scene.world
+    pos = (50, 22)
+    focus(game, scene, (51.0, 23.0))
+    capture(game, output, "05_mesa_before_settlement")
+    # This fixture funds and brings one ordinary worker to the exact legal overlap site.
+    cost = BUILDINGS[B.TOWN_HALL].cost
+    world.players[0].gold, world.players[0].lumber = cost.gold, cost.lumber
+    worker = world.spawn_unit(0, U.PEASANT, (48.5, 23.0))
+    world.build(worker.id, B.TOWN_HALL, pos)
+    simulate_until(run, lambda: any(b.type is B.TOWN_HALL and b.pos == pos for b in world.buildings.values()),
+                   seconds=30, label="mesa Hall foundation")
+    hall = building_at(run, B.TOWN_HALL, pos)
+    assert not hall.done
+    focus(game, scene, hall.center, selection=hall.id)
+    capture(game, output, "05_mesa_foundation")
+    simulate_until(run, lambda: hall.done, seconds=120, label="mesa Hall construction")
+    focus(game, scene, hall.center, selection=hall.id)
+    frames(game, 35, .2)  # Let completion and campaign notices clear the finished body.
+    capture(game, output, "05_mesa_settled")
+
+
 def weight_rebuild(game: Game, output: Path) -> None:
     """A campaign art binding survives real demolition and a new building id on the same rift."""
     scene = mission(game, "undertow_weight")
@@ -337,6 +362,7 @@ def main(output: Path) -> None:
             fonts.load(game)
             catalogues(game, output)
             site_shots(game, output)
+            mesa_settlement(game, output)
             poses = hero_orders(game, output)
             weight_rebuild(game, output)
         finally:
@@ -351,7 +377,8 @@ def main(output: Path) -> None:
                                       f"Reproduce: `{command}`\n\nNative registered catalogues and all five real Undertow scenes. "
                                       "Map visibility is revealed for inspection. Issa moves and attacks through public World orders; "
                                       "a Weight is attacked, destroyed and rebuilt by an ordinary worker, changing its entity id. "
-                                      "The siege units used for the Weight are a presentation fixture.\n")
+                                      "A worker builds the mesa Hall over its temporary refuge, from foundation to completion. "
+                                      "The siege units used for the Weight and the funded mesa worker are presentation fixtures.\n")
     print(f"Campaign art verification passed: {output}", flush=True)
 
 

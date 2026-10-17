@@ -145,6 +145,14 @@ class LandmarkView:
         for id, record in records.items():
             state, kind = record["state"], record["kind"]
             body = scenery_form(scene.run, id)
+            if body is not None:
+                x, y = record["point"]
+                half = body[1] / 2
+                # A known foundation replaces the empty site's scenery. Use sightings so
+                # unseen construction or demolition never changes the player's remembered map.
+                if any(x-half < bx+bw and x+half > bx and y-half < by+bh and y+half > by
+                       for bx, by, bw, bh in (sighting.rect for sighting in scene.view.building_sightings.values())):
+                    body = None
             appearance_state = state
             rubble = ruined_form(scene.run, id)
             if rubble is not None and hasattr(scene, "view"):
