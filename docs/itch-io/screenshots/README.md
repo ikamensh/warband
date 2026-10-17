@@ -26,7 +26,11 @@ directory. They do not assert a naturally played match or benchmark.
 | `06-the-undertow-campaign.png` | Authored Millfield briefing with Issa, Hasp and the field chart |
 | `warband-battle.gif` | Two seconds of the battle and Flame Strike, cropped from the real framebuffer |
 
-Reproduce from this source checkout with its release dependencies installed:
+To reproduce this exact gallery, use the game source and dependency revisions
+listed above in an isolated checkout, and copy `tools/capture_storefront.py`
+into that checkout. Running the tool against a newer source intentionally
+captures the newer game; update this provenance when replacing the media.
+With the pinned release dependencies installed:
 
 ```sh
 caffeinate -u -t 180 python3 ~/saga/tools/slot.py -- \
