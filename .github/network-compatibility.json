@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "clients": [
+    {
+      "source_commit": "a98783000427b925d5210484d9d3013a55e4ca1b",
+      "saga2d_version": "0.3.14",
+      "game_id": "warband-v2",
+      "protocol": 1
+    },
+    {
+      "source_commit": "c9d74d8ac74dcb8f389cac8ed16e1cfa0223d5d2",
+      "saga2d_version": "0.3.18",
+      "game_id": "warband-v2",
+      "protocol": 1
+    }
+  ],
+  "reviews": [
+    {
+      "game_id": "warband-v2",
+      "protocol": 1,
+      "effect": "baseline",
+      "reason": "Track the existing warband-v2 contract. Centralizing its identity changes no commands, snapshots, options, catalogs or checkpoint fields; all currently compatible v2 clients keep their identity.",
+      "inputs": {
+        "authority": "85c98dca9e434e109aeada77c79ee8b554674a177ac428ebfbd388a919c85243",
+        "client": {
+          "warband/online/online_ai.py": "4843b4bf0748557f8e2eb4993162ea1c7e11fc458bde30d122ca4c3ea9725809",
+          "warband/ui/multiplayer.py": "712d1963ae3f18a78a51042749c6509a599ad266eed2c3d5886a1307bc448a13",
+          "warband/ui/match.py": "496f11f2e1c0212c2e3c35b079e65a167c581622c46fe892731f8509d6a40e27",
+          "warband/ui/observer.py": "eeeb75caddc1707c540ca866a7df273854e35358c4998639e60ea8fdaf8d9801",
+          "warband/ui/scene.py": "d447afc09f5a52ce1cf75d56c879dea1557faf464d6e8e32ca054e5e6aa51cae",
+          "warband/ui/view.py": "be9e95a178d3e0526b4651b046f1c5fe5d2b421a7dea430a0f44b585ce28d9a0",
+          "warband/ui/controls.py": "8c70313069ef8cd95624e600f996954504bf33ce2521b40b17b894e7c7884533",
+          "warband/ui/spellbar.py": "3ef9a1cbef82e85d2cf2ea8f457b62d94ef5b48c44be10b8b84043e9558fe38a",
+          "warband/ui/tech.py": "90926766a1dde7f5c21115be127039dc4d65818db36a3fd40942c81a501da7c4"
+        }
+      }
+    }
+  ]
+}

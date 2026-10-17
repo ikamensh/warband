@@ -6,6 +6,7 @@ from saga2d import Anchor, Button, Column, CommandError, Label, MatchLobby, Matc
 from saga2d.network import MatchClient, MatchHost
 from saga2d.settings import SettingsError
 from warband.records.profile import Profile, SaveError
+from warband.online.protocol import GAME_ID
 from warband.sim import mapgen
 from warband.sim.model import Event, RuleError, World
 from warband.sim.races import RACES
@@ -16,7 +17,6 @@ from warband.ui.scene import GameScene, HelpScene, SettingsScene, _Overlay, _clo
 from warband.ui.style import ACTION_BUTTON, GHOST_BUTTON, GOLD, GOOD, MENU_BUTTON, MUTED, OVERLAY_STYLE, PANEL_STYLE, PICKED_BUTTON
 from warband.ui.view import check_memory
 
-GAME_ID = "warband-v2"
 ROOM_SEATS = (2, 3, 4)
 IDENTITY_FILE = "online-identity.json"
 IDENTITY_NOTICE = ("Online identity record damaged — the file is kept unchanged. "

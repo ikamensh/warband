@@ -153,6 +153,13 @@ keeps where code goes and the rules below.
   (`rules.MAX_PLANS`, `MAX_QUEUED_ORDERS`). The HUD gives orders through
   `GameScene.attempt`, which turns a refusal into the status line's warning;
   never call `order` from a button or a key.
+- Online compatibility is independent of release numbering: keep
+  `online.protocol.GAME_ID` for compatible changes. Network input changes need
+  a compatible/breaking decision in `.github/network-compatibility.json`
+  (`tools/network_compatibility.py record`); only a recorded break advances
+  the game ID. Preserve historical client pins and reviews. See
+  `docs/network-compatibility.md`; CI plays retained clients against the new
+  server. Exact deployment hashes still identify server updates, not breaks.
 - What the authority sends a seat (`WarbandMatch.snapshot`) is the match as
   that seat may know it, not the save: all of its own; of the rest only what it
   sees now (strangers without orders, route or work), ground and mines out of

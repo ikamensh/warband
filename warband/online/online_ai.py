@@ -47,6 +47,7 @@ from saga2d import CommandError
 from saga2d.online import OnlineClient, server_endpoint
 from warband.brains.ai import make_brain
 from warband.online.authority import GROUP_ORDERS, ORDERS
+from warband.online.protocol import GAME_ID
 from warband.sim.model import World, tile_center
 from warband.sim.rules import Difficulty, MapTheme, Race
 
@@ -250,7 +251,7 @@ def run_bot(*, endpoint=None, room=None, difficulty=Difficulty.MEDIUM, options=N
             identity_kwargs["rated"] = True
         if race is not None:
             identity_kwargs["player_options"] = {"race": race}
-    client = OnlineClient("warband-v2", endpoint=endpoint, room=room, options=options, **identity_kwargs)
+    client = OnlineClient(GAME_ID, endpoint=endpoint, room=room, options=options, **identity_kwargs)
     brain = rng = None
     announced = ever_ready = last_ready = conn_waiting = False
     first_ready_at = None
@@ -364,7 +365,7 @@ def run_bot(*, endpoint=None, room=None, difficulty=Difficulty.MEDIUM, options=N
                 time.sleep(disconnect_for)
                 # The seat stays reserved on the server; rejoin it as any player client would,
                 # carrying the same identity and name.
-                client = OnlineClient("warband-v2", endpoint=endpoint, room=resume_room, resume_token=resume_token,
+                client = OnlineClient(GAME_ID, endpoint=endpoint, room=resume_room, resume_token=resume_token,
                                       **resume_identity)
                 pending.clear()
                 reconnected = True

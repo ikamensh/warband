@@ -1,6 +1,7 @@
 """Authoritative RTS matches and server registration, independent of client scenes."""
 
 from saga2d import CommandError
+from warband.online.protocol import GAME_ID
 from warband.online.snapshot import NO_DICE, observer_world, seat_world, terrain_rows  # NO_DICE re-exported for its readers
 from warband.sim import mapgen
 from warband.sim.model import ORDER_ENUMS, ORDER_SPECS, Unit, World, RuleError, bind_order, field_values, order_args
@@ -328,7 +329,7 @@ def _configure_player(match, player, options):
     match.world, match.begun = fresh.world, fresh.begun
 
 
-ONLINE = {'warband-v2': GameSpec(_create, _checkpoint, _restore, realtime=True,
+ONLINE = {GAME_ID: GameSpec(_create, _checkpoint, _restore, realtime=True,
                                  seats=lambda match: match.world.seats, needed=_needed,
                                  result=_result, rated=_rated, forfeit=_forfeit,
                                  configure_player=_configure_player,
