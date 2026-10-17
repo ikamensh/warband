@@ -20,6 +20,11 @@ def source(tmp_path):
     shutil.copytree(ROOT / '.github', tmp_path / '.github')
     shutil.copytree(ROOT / 'warband', tmp_path / 'warband', ignore=shutil.ignore_patterns('assets', '__pycache__'))
     shutil.copytree(ROOT / 'warband/assets/constants', tmp_path / 'warband/assets/constants')
+    ledger_path = tmp_path / '.github/network-compatibility.json'
+    ledger = json.loads(ledger_path.read_text())
+    unsupported = {entry['source_commit'] for entry in ledger.pop('historical_incompatibilities', [])}
+    ledger['clients'] = [client for client in ledger['clients'] if client['source_commit'] not in unsupported]
+    ledger_path.write_text(json.dumps(ledger))
     return tmp_path
 
 
@@ -157,3 +162,73 @@ def test_a_git_comparison_keeps_the_review_and_client_history(source):
     ledger.write_text(json.dumps(changed))
     result = run(source, 'check', '--base', base)
     assert result.returncode != 0 and 'retained unchanged' in result.stderr
+
+
+@pytest.mark.slow
+def test_only_a_pre_policy_break_can_correct_a_historical_support_claim(source):
+    """Real Git chronology admits a false initial baseline correction, never a future client retirement."""
+    def git(*args):
+        return subprocess.check_output(['git', '-C', str(source), *args], text=True).strip()
+
+    path = source / '.github/network-compatibility.json'
+    ledger = json.loads(path.read_text())
+    path.unlink()
+    git('init', '-q')
+    git('config', 'user.name', 'Compatibility test')
+    git('config', 'user.email', 'compatibility@example.test')
+    git('add', '.')
+    git('commit', '-qm', 'original client release')
+    original = git('rev-parse', 'HEAD')
+    marker = source / 'wire-history.txt'
+    marker.write_text('A server break before compatibility tracking.\n')
+    git('add', str(marker))
+    git('commit', '-qm', 'historical incompatible server')
+    historical_break = git('rev-parse', 'HEAD')
+    representative = ledger['clients'][-1]
+    old_client = {**representative, 'source_commit': original}
+    supported_client = {**representative, 'source_commit': historical_break}
+    ledger['clients'] = [old_client, supported_client]
+    path.write_text(json.dumps(ledger))
+    git('add', str(path))
+    git('commit', '-qm', 'begin compatibility policy')
+    policy = git('rev-parse', 'HEAD')
+
+    correction = {'source_commit': original, 'first_incompatible_commit': historical_break,
+                  'reason': 'The original client could not decode a camp introduced before tracking began.'}
+    ledger['historical_incompatibilities'] = [correction]
+    path.write_text(json.dumps(ledger))
+    result = run(source, 'check')
+    assert result.returncode == 0, result.stderr
+    assert json.loads(run(source, 'matrix').stdout) == {'include': [supported_client]}
+    assert json.loads(path.read_text())['clients'] == [old_client, supported_client]
+    ledger['historical_incompatibilities'] = [{**correction, 'first_incompatible_commit': original}]
+    path.write_text(json.dumps(ledger))
+    result = run(source, 'check')
+    assert result.returncode != 0 and 'client must precede' in result.stderr
+    ledger['historical_incompatibilities'] = [correction]
+    path.write_text(json.dumps(ledger))
+    git('add', str(path))
+    git('commit', '-qm', 'correct the historical support claim')
+    corrected = git('rev-parse', 'HEAD')
+
+    ledger['historical_incompatibilities'] = [{**correction, 'reason': 'Rewritten history'}]
+    path.write_text(json.dumps(ledger))
+    result = run(source, 'check', '--base', corrected)
+    assert result.returncode != 0 and 'retained unchanged' in result.stderr
+
+    marker.write_text('A future server break needs a new game identity.\n')
+    git('add', str(marker))
+    git('commit', '-qm', 'future server change')
+    future = git('rev-parse', 'HEAD')
+    for incompatible in (policy, future):
+        ledger['historical_incompatibilities'] = [{**correction, 'first_incompatible_commit': incompatible}]
+        path.write_text(json.dumps(ledger))
+        result = run(source, 'check')
+        assert result.returncode != 0 and 'before compatibility tracking' in result.stderr
+
+    model = source / 'warband/sim/model.py'
+    model.write_text(model.read_text() + '\n# A compatible internal change.\n')
+    before = path.read_bytes()
+    result = run(source, 'record', '--effect', 'compatible', '--reason', 'No wire change.')
+    assert result.returncode != 0 and 'before compatibility tracking' in result.stderr
+    assert path.read_bytes() == before

@@ -12,6 +12,12 @@
       "saga2d_version": "0.3.18",
       "game_id": "warband-v2",
       "protocol": 1
+    },
+    {
+      "source_commit": "5c2904ef384ad6d7085125c4ddf16933b1685dad",
+      "saga2d_version": "0.3.18",
+      "game_id": "warband-v2",
+      "protocol": 1
     }
   ],
   "reviews": [
@@ -96,6 +102,13 @@
           "warband/ui/tech.py": "90926766a1dde7f5c21115be127039dc4d65818db36a3fd40942c81a501da7c4"
         }
       }
+    }
+  ],
+  "historical_incompatibilities": [
+    {
+      "source_commit": "a98783000427b925d5210484d9d3013a55e4ca1b",
+      "first_incompatible_commit": "02a1e59fdeff90d00190f057c1e9712fd68adca4",
+      "reason": "Pre-policy break: four camp encounters were added to snapshots and camp_cleared events under the existing v2 identity. This client indexes its older encounter catalog in the HUD and cannot display cairn_watch, spider_hollow, troll_toll or wolf_outpost. The initial decoder-only probe missed that lookup; preserve the pin as evidence, without claiming support. Release v0.2.254 is the earliest published replacement baseline."
     }
   ]
 }

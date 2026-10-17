@@ -19,7 +19,7 @@ import tarfile
 import tempfile
 
 from ci_compatibility import fingerprint
-from network_compatibility import ROOT, check as check_ledger, identity
+from network_compatibility import ROOT, check as check_ledger, identity, supported_clients
 
 CLIENT_PATHS = ('warband/__init__.py', 'warband/sim', 'warband/online',
                 'warband/ui/multiplayer.py', 'warband/ui/title.py',
@@ -70,8 +70,7 @@ def check(root: Path, work_dir: Path | None = None) -> list[dict]:
     root = root.resolve()
     ledger = check_ledger(root)
     current = identity(root)
-    clients = [client for client in ledger['clients']
-               if all(client[key] == value for key, value in current.items())]
+    clients = supported_clients(ledger)
     if not clients:
         return []
     reports = []

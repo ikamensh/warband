@@ -51,9 +51,17 @@ def inputs(root: Path) -> dict:
         name: hashlib.sha256((root / name).read_bytes()).hexdigest() for name in CLIENT_FILES}}
 
 
+def supported_clients(ledger: dict) -> list[dict]:
+    """Retain current-epoch clients except documented incompatibilities predating this policy."""
+    current = ledger['reviews'][-1]
+    excluded = {entry['source_commit'] for entry in ledger.get('historical_incompatibilities', [])}
+    return [client for client in ledger['clients'] if client['source_commit'] not in excluded
+            and all(client[key] == current[key] for key in ('game_id', 'protocol'))]
+
+
 def validate(ledger: dict) -> None:
     """History records each decision and retains representatives of old releases."""
-    if (set(ledger) != {'schema_version', 'clients', 'reviews'}
+    if (set(ledger) - {'historical_incompatibilities'} != {'schema_version', 'clients', 'reviews'}
             or type(ledger['schema_version']) is not int or ledger['schema_version'] != 1):
         raise ValueError('Unsupported network compatibility ledger')
     reviews = ledger['reviews']
@@ -98,9 +106,47 @@ def validate(ledger: dict) -> None:
                 or not re.fullmatch(r'\d+\.\d+\.\d+', client['saga2d_version'])
                 or not any(all(client[key] == review[key] for key in ('game_id', 'protocol')) for review in reviews)):
             raise ValueError('Invalid pinned historical client')
-    if (reviews[-1]['effect'] != 'breaking'
-            and not any(all(client[key] == previous[key] for key in ('game_id', 'protocol')) for client in ledger['clients'])):
+    corrections = ledger.get('historical_incompatibilities', [])
+    if not isinstance(corrections, list):
+        raise ValueError('Historical incompatibilities must be a list')
+    corrected = set()
+    for entry in corrections:
+        if (not isinstance(entry, dict)
+                or set(entry) != {'source_commit', 'first_incompatible_commit', 'reason'}
+                or not all(isinstance(entry[key], str) and re.fullmatch(r'[0-9a-f]{40}', entry[key])
+                           for key in ('source_commit', 'first_incompatible_commit'))
+                or not isinstance(entry['reason'], str) or not entry['reason'].strip()
+                or entry['source_commit'] in corrected
+                or not any(client['source_commit'] == entry['source_commit'] for client in ledger['clients'])):
+            raise ValueError('Invalid historical incompatibility: retain a unique client pin and explain its old break')
+        corrected.add(entry['source_commit'])
+    if reviews[-1]['effect'] != 'breaking' and not supported_clients(ledger):
         raise ValueError('Pin a client source and engine for the current network identity')
+
+
+def check_historical_incompatibilities(root: Path, ledger: dict) -> None:
+    """Corrections can acknowledge pre-policy breaks, never retire clients after tracking began."""
+    corrections = ledger.get('historical_incompatibilities', [])
+    if not corrections:
+        return
+    additions = subprocess.check_output(
+        ['git', 'log', '--reverse', '--diff-filter=A', '--format=%H', '--', LEDGER], cwd=root, text=True).splitlines()
+    if not additions:
+        raise ValueError('Historical incompatibilities require committed compatibility tracking')
+    policy = additions[0]
+    for entry in corrections:
+        incompatible = entry['first_incompatible_commit']
+        if incompatible == entry['source_commit']:
+            raise ValueError('The retained client must precede its historical break')
+        if incompatible == policy:
+            raise ValueError('Historical incompatibilities must begin before compatibility tracking')
+        for older, newer, reason in (
+                (entry['source_commit'], incompatible, 'The retained client must precede its historical break'),
+                (incompatible, policy, 'Historical incompatibilities must begin before compatibility tracking')):
+            result = subprocess.run(['git', 'merge-base', '--is-ancestor', older, newer], cwd=root, capture_output=True)
+            if result.returncode == 1:
+                raise ValueError(reason)
+            result.check_returncode()
 
 
 def check(root: Path, base: str | None = None) -> dict:
@@ -109,11 +155,13 @@ def check(root: Path, base: str | None = None) -> dict:
     latest = ledger['reviews'][-1]
     if any(latest[key] != value for key, value in identity(root).items()) or latest['inputs'] != inputs(root):
         raise ValueError('Unreviewed network inputs: record a compatible or breaking decision with a reason')
+    check_historical_incompatibilities(root, ledger)
     if base and set(base) != {'0'}:
         names = subprocess.check_output(['git', 'ls-tree', '--name-only', base, '--', LEDGER], cwd=root, text=True)
         if names.strip():
             old = json.loads(subprocess.check_output(['git', 'show', f'{base}:{LEDGER}'], cwd=root, text=True))
-            if ledger['reviews'][:len(old['reviews'])] != old['reviews'] or ledger['clients'][:len(old['clients'])] != old['clients']:
+            if any(ledger.get(name, [])[:len(old.get(name, []))] != old.get(name, [])
+                   for name in ('reviews', 'clients', 'historical_incompatibilities')):
                 raise ValueError('Compatibility history and historical clients must be retained unchanged')
     return ledger
 
@@ -126,6 +174,7 @@ def record(root: Path, effect: str, reason: str) -> dict:
         raise ValueError('No network inputs changed since the last review')
     ledger['reviews'].append(review)
     validate(ledger)
+    check_historical_incompatibilities(root, ledger)
     path.write_text(json.dumps(ledger, indent=2) + '\n')
     return review
 
@@ -146,7 +195,7 @@ def main() -> None:
     else:
         ledger = check(args.root, getattr(args, 'base', None))
         current = identity(args.root)
-        clients = [client for client in ledger['clients'] if all(client[key] == value for key, value in current.items())]
+        clients = supported_clients(ledger)
         result = {'include': clients} if args.command == 'matrix' else {
             **current, 'effect': ledger['reviews'][-1]['effect'], 'historical_clients': len(clients)}
     print(json.dumps(result, sort_keys=True))

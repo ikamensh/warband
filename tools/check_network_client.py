@@ -30,11 +30,13 @@ SPEC = "warband.online.authority:ONLINE"
 
 def catalog() -> dict[str, list[str]]:
     """Every enumerated wire value, including content a short match may never encounter."""
-    from warband.sim import rules
+    from warband.sim import model, rules
 
     names = ("UnitType", "BuildingType", "Race", "Upgrade", "Terrain", "AttackType", "Resource", "MapTheme", "Layout")
     values = {name: sorted(member.value for member in getattr(rules, name)) for name in names}
-    return {**values, "Buff": sorted(rules.BUFFS)}
+    # This closed decoder registry is the authoritative spelling of queued orders on the wire.
+    return {**values, "Buff": sorted(rules.BUFFS), "CampEncounter": sorted(rules.CAMP_ENCOUNTERS),
+            "Order": sorted(model._ORDER_TYPES)}
 
 
 def play(endpoint: str, client_source: Path, game_id: str) -> dict:

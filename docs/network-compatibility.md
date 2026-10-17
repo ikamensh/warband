@@ -35,10 +35,10 @@ pinned authority for each, plus old-client and checkpoint tests.
 
 `.github/network-compatibility.json` retains explanations, reviewed input
 hashes and pinned representative client sources/engine versions. The initial
-matrix retains v0.2.232 (`a987830`, October 2, Saga2D 0.3.14) and the current
-v2 client (`c9d74d8`, Saga2D 0.3.18). Both passed actual player play/resume and
-event decoding against the current authority; the newer client also passed
-observation. The older transport predates that optional capability. These
+supported matrix retains v0.2.254 (`5c2904e`, October 13) and the newer
+v2 client (`c9d74d8`), both with Saga2D 0.3.18. Both pass actual player
+play/resume, observation, event decoding and content catalog checks against
+the current authority. These
 representatives establish a tested baseline, rather than proving every
 intermediate historical release.
 
@@ -49,6 +49,16 @@ the Mage Tower, nine spells, Aether Elemental and seven conditions. They are
 not claimed as supported; they would need real adapters before being added to
 the matrix. Future changes of this kind require a recorded break or a
 compatible representation.
+
+The initially pinned v0.2.232 (`a987830`, Saga2D 0.3.14) also predates
+`02a1e59` (October 12), which introduced four camp encounter identifiers.
+Its world decoder accepts them, but selecting a lair or receiving a
+`camp_cleared` event crashes its HUD's catalog lookup. The strengthened gate
+rejects these identifiers. Its pin remains in history, with an explicit
+`historical_incompatibilities` finding; it is not a supported representative.
+Such corrections must name an actual descendant break strictly before the
+first ledger commit. They cannot excuse a new break or retire a supported
+client on a future compatible release.
 
 After changing authoritative code/content/runtime or a tracked client
 consumer, inspect the diff and record the decision:

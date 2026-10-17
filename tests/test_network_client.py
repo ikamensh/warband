@@ -97,17 +97,22 @@ def test_event_fields_unknown_to_a_historical_client_fail_the_check(client_sourc
 
 
 @pytest.mark.slow
-@pytest.mark.parametrize('edit,error', [
-    ('BUFFS.pop("bleeding")', 'unknown Buff values: bleeding'),
-    ('BUFFS["retired_condition"] = BUFFS["bleeding"]', 'removed Buff values: retired_condition'),
+@pytest.mark.parametrize('module,edit,error', [
+    ('rules', 'BUFFS.pop("bleeding")', 'unknown Buff values: bleeding'),
+    ('rules', 'BUFFS["retired_condition"] = BUFFS["bleeding"]', 'removed Buff values: retired_condition'),
+    ('rules', 'CAMP_ENCOUNTERS.pop("wolf_den")', 'unknown CampEncounter values: wolf_den'),
+    ('rules', 'CAMP_ENCOUNTERS["retired_encounter"] = CAMP_ENCOUNTERS["wolf_den"]',
+     'removed CampEncounter values: retired_encounter'),
+    ('model', '_ORDER_TYPES.pop("Patrol")', 'unknown Order values: Patrol'),
+    ('model', '_ORDER_TYPES["RetiredOrder"] = _ORDER_TYPES["Move"]', 'removed Order values: RetiredOrder'),
 ])
-def test_content_catalogs_stay_compatible_in_both_directions(client_source, edit, error):
-    """A new buff can break later gameplay even when the initial map carries no conditions.
+def test_content_catalogs_stay_compatible_in_both_directions(client_source, module, edit, error):
+    """Unseen content must remain decodable even when a short match never exposes it.
 
     It runs the CLI's server and historical client subprocesses, so needs the slow tier.
     """
-    rules = client_source / "warband/sim/rules.py"
-    rules.write_text(rules.read_text() + '\n' + edit + '\n')
+    path = client_source / f"warband/sim/{module}.py"
+    path.write_text(path.read_text() + '\n' + edit + '\n')
 
     result = probe(client_source)
 
