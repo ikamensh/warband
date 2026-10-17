@@ -10,6 +10,7 @@ needed. ``--work-dir`` selects the parent for these temporary files.
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 from pathlib import Path
 import subprocess
@@ -21,7 +22,36 @@ from ci_compatibility import fingerprint
 from network_compatibility import ROOT, check as check_ledger, identity
 
 CLIENT_PATHS = ('warband/__init__.py', 'warband/sim', 'warband/online',
+                'warband/ui/multiplayer.py', 'warband/ui/title.py',
                 'warband/assets/constants', '.github/release-pins.json', 'uv.lock')
+
+
+def client_contract(source: Path, client: dict) -> dict:
+    """Verify the historical client's own identity before offering it to the server.
+
+    Older releases declared GAME_ID in their multiplayer scene, or passed a
+    literal to MatchSetupMenu in the title scene (the retained 0.2.232 client).
+    Passing a newer ID to their transport must never count as compatibility.
+    """
+    protocol = source / 'warband/online/protocol.py'
+    path = protocol if protocol.is_file() else source / 'warband/ui/multiplayer.py'
+    tree = ast.parse(path.read_text())
+    declarations = [node.value for node in tree.body if isinstance(node, ast.Assign)
+                    and any(isinstance(target, ast.Name) and target.id == 'GAME_ID' for target in node.targets)]
+    if not declarations and not protocol.is_file():
+        title = ast.parse((source / 'warband/ui/title.py').read_text())
+        declarations = [node.args[1] for node in ast.walk(title) if isinstance(node, ast.Call)
+                        and isinstance(node.func, ast.Name) and node.func.id == 'MatchSetupMenu'
+                        and len(node.args) >= 2]
+    if len(declarations) != 1:
+        raise ValueError('Unsupported historical game identity declaration')
+    game_id = ast.literal_eval(declarations[0])
+    if game_id != client['game_id']:
+        raise ValueError(f"Retained client uses {game_id}, not {client['game_id']}")
+    contract = fingerprint(source)
+    if contract['packages']['saga2d'] != client['saga2d_version']:
+        raise ValueError('Retained client Saga2D pin differs from its lock')
+    return contract
 
 
 def runtime(contract: dict, directory: Path) -> Path:
@@ -59,9 +89,7 @@ def check(root: Path, work_dir: Path | None = None) -> list[dict]:
                                 '--', *CLIENT_PATHS], cwd=root, stdout=output, check=True)
             with tarfile.open(archive) as bundle:
                 bundle.extractall(source, filter='data')
-            contract = fingerprint(source)
-            if contract['packages']['saga2d'] != client['saga2d_version']:
-                raise ValueError(f"Retained client {client['source_commit']} Saga2D pin differs from its lock")
+            contract = client_contract(source, client)
             client_python = runtime(contract, temporary / f'client-runtime-{index}')
             result = subprocess.run(
                 [str(server_python), str(root / 'tools/check_network_client.py'),

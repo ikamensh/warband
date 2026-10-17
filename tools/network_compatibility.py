@@ -53,7 +53,8 @@ def inputs(root: Path) -> dict:
 
 def validate(ledger: dict) -> None:
     """History records each decision and retains representatives of old releases."""
-    if set(ledger) != {'schema_version', 'clients', 'reviews'} or ledger['schema_version'] != 1:
+    if (set(ledger) != {'schema_version', 'clients', 'reviews'}
+            or type(ledger['schema_version']) is not int or ledger['schema_version'] != 1):
         raise ValueError('Unsupported network compatibility ledger')
     reviews = ledger['reviews']
     if not isinstance(reviews, list) or not reviews:
@@ -92,6 +93,7 @@ def validate(ledger: dict) -> None:
         raise ValueError('At least one pinned historical client is required')
     for client in ledger['clients']:
         if (set(client) != {'source_commit', 'saga2d_version', 'game_id', 'protocol'}
+                or type(client['protocol']) is not int
                 or not re.fullmatch(r'[0-9a-f]{40}', client['source_commit'])
                 or not re.fullmatch(r'\d+\.\d+\.\d+', client['saga2d_version'])
                 or not any(all(client[key] == review[key] for key in ('game_id', 'protocol')) for review in reviews)):

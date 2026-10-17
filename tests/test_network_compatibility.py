@@ -100,6 +100,22 @@ def test_runtime_clients_and_authority_share_the_reviewed_identity():
     assert TRANSPORT == PROTOCOL
 
 
+@pytest.mark.parametrize('declaration', ['protocol', 'title'])
+def test_a_historical_client_cannot_be_relabelled_as_a_new_epoch(source, declaration):
+    """Overriding the game ID sent by the probe cannot manufacture old-client compatibility."""
+    if declaration == 'title':
+        (source / 'warband/online/protocol.py').unlink()
+        (source / 'warband/ui/title.py').write_text('MatchSetupMenu("Warband", "warband-v2", None, None)\n')
+    result = subprocess.run([
+        sys.executable, '-c',
+        'import sys; from pathlib import Path; sys.path.insert(0, sys.argv[1]); '
+        'from check_retained_clients import client_contract; '
+        'client_contract(Path(sys.argv[2]), {"game_id": "warband-v3", "saga2d_version": "0.3.18"})',
+        str(ROOT / 'tools'), str(source),
+    ], capture_output=True, text=True)
+    assert result.returncode != 0 and 'uses warband-v2, not warband-v3' in result.stderr
+
+
 @pytest.mark.slow
 def test_a_git_comparison_keeps_the_review_and_client_history(source):
     """Real Git history protects old decisions and retained clients; committing a repository needs a process."""
